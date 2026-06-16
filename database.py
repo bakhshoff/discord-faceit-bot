@@ -13,8 +13,26 @@ def init_db():
             losses INTEGER DEFAULT 0
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS match_counter (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_number INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("INSERT OR IGNORE INTO match_counter (id, last_number) VALUES (1, 0)")
     conn.commit()
     conn.close()
+
+
+def get_next_match_number():
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE match_counter SET last_number = last_number + 1 WHERE id = 1")
+    cursor.execute("SELECT last_number FROM match_counter WHERE id = 1")
+    number = cursor.fetchone()[0]
+    conn.commit()
+    conn.close()
+    return number
 
 def register_player(discord_id, so2_nick, so2_id):
     conn = sqlite3.connect("bot_database.db")
@@ -39,6 +57,63 @@ def get_player(discord_id):
     row = cursor.fetchone()
     conn.close()
     return row
+
+def update_team_elo(winner_ids, loser_ids):
+    """
+    winner_ids, loser_ids: discord_id siyahıları (hər komandada bir neçə oyunçu)
+    Komandanın orta ELO-suna görə hesablanır, hər oyunçu fərdi yenilənir.
+    """
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+
+    def fetch_all(ids):
+        result = []
+        for discord_id in ids:
+            cursor.execute("SELECT discord_id, so2_nick, elo, wins, losses FROM players WHERE discord_id = ?", (discord_id,))
+            row = cursor.fetchone()
+            if row:
+                result.append(row)
+        return result
+
+    winners = fetch_all(winner_ids)
+    losers = fetch_all(loser_ids)
+
+    if not winners or not losers:
+        conn.close()
+        return None
+
+    winner_avg_elo = sum(p[2] for p in winners) / len(winners)
+    loser_avg_elo = sum(p[2] for p in losers) / len(losers)
+
+    K = 32
+    expected_winner = 1 / (1 + 10 ** ((loser_avg_elo - winner_avg_elo) / 400))
+    expected_loser = 1 / (1 + 10 ** ((winner_avg_elo - loser_avg_elo) / 400))
+
+    elo_change_winner = round(K * (1 - expected_winner))
+    elo_change_loser = round(K * (0 - expected_loser))
+
+    results = {"winners": [], "losers": []}
+
+    for discord_id, nick, elo, wins, losses in winners:
+        new_elo = elo + elo_change_winner
+        cursor.execute(
+            "UPDATE players SET elo = ?, wins = ? WHERE discord_id = ?",
+            (new_elo, wins + 1, discord_id)
+        )
+        results["winners"].append({"discord_id": discord_id, "nick": nick, "old_elo": elo, "new_elo": new_elo})
+
+    for discord_id, nick, elo, wins, losses in losers:
+        new_elo = elo + elo_change_loser
+        cursor.execute(
+            "UPDATE players SET elo = ?, losses = ? WHERE discord_id = ?",
+            (new_elo, losses + 1, discord_id)
+        )
+        results["losers"].append({"discord_id": discord_id, "nick": nick, "old_elo": elo, "new_elo": new_elo})
+
+    conn.commit()
+    conn.close()
+    return results
+
 
 def update_elo(winner_id, loser_id):
     conn = sqlite3.connect("bot_database.db")

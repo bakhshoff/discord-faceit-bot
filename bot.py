@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 from database import (
     init_db, register_player, get_player, update_elo,
     add_to_queue, remove_from_queue, queue_size, clear_queue,
-    is_in_queue, pop_10_and_balance, get_leaderboard
+    is_in_queue, pop_10_and_balance, get_leaderboard,
+    update_team_elo, get_next_match_number
 )
 from leaderboard_image import generate_leaderboard_image
 
@@ -16,6 +17,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 TEAM_A_VOICE_ID = 1500827030890221678
 TEAM_B_VOICE_ID = 1500827032261496913
+LOG_CHANNEL_ID = 1500790545172267028
 
 LOGO_PATH = "logo.jpg"
 
@@ -107,6 +109,68 @@ class RegisterView(discord.ui.View):
         await interaction.response.send_modal(RegisterModal())
 
 
+class MatchResultView(discord.ui.View):
+    def __init__(self, match_number, team_a, team_b):
+        super().__init__(timeout=None)
+        self.match_number = match_number
+        self.team_a = team_a
+        self.team_b = team_b
+        self.finished = False
+
+    async def _finish(self, interaction: discord.Interaction, winner_team, loser_team, winner_label, loser_label):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
+            return
+
+        if self.finished:
+            await interaction.response.send_message("⚠️ Bu matçın nəticəsi artıq qeyd olunub.", ephemeral=True)
+            return
+
+        winner_ids = [p["discord_id"] for p in winner_team]
+        loser_ids = [p["discord_id"] for p in loser_team]
+
+        results = update_team_elo(winner_ids, loser_ids)
+        if results is None:
+            await interaction.response.send_message("❌ Xəta: oyunçu məlumatları tapılmadı.", ephemeral=True)
+            return
+
+        self.finished = True
+        for child in self.children:
+            child.disabled = True
+
+        now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+        embed = discord.Embed(
+            title=f"✅ Matç No{self.match_number} — Nəticə qeyd edildi",
+            description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)\n🏆 Qalib: **{winner_label}**",
+            color=discord.Color.gold()
+        )
+        embed.add_field(
+            name=f"✅ {winner_label}",
+            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']})"
+                              for p, r in zip(winner_team, results["winners"])]),
+            inline=False
+        )
+        embed.add_field(
+            name=f"❌ {loser_label}",
+            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']})"
+                              for p, r in zip(loser_team, results["losers"])]),
+            inline=False
+        )
+
+        await interaction.response.edit_message(embed=embed, view=self)
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        if log_channel and log_channel.id != interaction.channel.id:
+            await log_channel.send(embed=embed)
+
+    @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a")
+    async def team_a_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._finish(interaction, self.team_a, self.team_b, "Komanda A", "Komanda B")
+
+    @discord.ui.button(label="Komanda B qalib", style=discord.ButtonStyle.danger, emoji="🔴", custom_id="result_b")
+    async def team_b_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._finish(interaction, self.team_b, self.team_a, "Komanda B", "Komanda A")
+
+
 class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -175,6 +239,30 @@ class MatchmakingView(discord.ui.View):
                         await member.move_to(team_b_channel)
                     except discord.Forbidden:
                         pass
+
+            match_number = get_next_match_number()
+            now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+            log_embed = discord.Embed(
+                title=f"📋 Matç No{match_number}",
+                description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)",
+                color=discord.Color.blurple()
+            )
+            log_embed.add_field(
+                name="🔵 Komanda A",
+                value="\n".join([f"{'👑 ' if p['discord_id']==captain_a['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_a]),
+                inline=True
+            )
+            log_embed.add_field(
+                name="🔴 Komanda B",
+                value="\n".join([f"{'👑 ' if p['discord_id']==captain_b['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_b]),
+                inline=True
+            )
+            log_embed.set_footer(text="Admin/moderator nəticəni aşağıdaki düymələrlə qeyd etməlidir.")
+
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                result_view = MatchResultView(match_number, team_a, team_b)
+                await log_channel.send(embed=log_embed, view=result_view)
 
     @discord.ui.button(label="Sıradan çıx", style=discord.ButtonStyle.secondary, emoji="🚪", custom_id="mm_leave")
     async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
