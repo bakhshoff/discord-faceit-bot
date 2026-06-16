@@ -16,18 +16,23 @@ LIGHT_GRAY = (220, 220, 220)
 FOOTER_GRAY = (110, 110, 120)
 LINE_COLOR = (60, 60, 70)
 
-# Windows-da Arial, Linux-da DejaVu Sans istifadə olunur (hansı varsa)
+# DejaVu Sans Azərbaycan hərflərini (ə, ç, ş, ğ, ı) düzgün göstərir,
+# Arial isə bunları dəstəkləməyə bilər — ona görə DejaVu prioritetlidir
 FONT_CANDIDATES_REGULAR = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "C:/Windows/Fonts/DejaVuSans.ttf",
+    "DejaVuSans.ttf",
     "arial.ttf",
     "Arial.ttf",
     "C:/Windows/Fonts/arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 ]
 FONT_CANDIDATES_BOLD = [
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "C:/Windows/Fonts/DejaVuSans-Bold.ttf",
+    "DejaVuSans-Bold.ttf",
     "arialbd.ttf",
     "Arial Bold.ttf",
     "C:/Windows/Fonts/arialbd.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
 
 
