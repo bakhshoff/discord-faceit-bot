@@ -195,6 +195,10 @@ def remove_from_queue(discord_id):
 def queue_size():
     return len(queue_list)
 
+
+def get_queue_list():
+    return list(queue_list)
+
 def clear_queue():
     global queue_list
     queue_list = []

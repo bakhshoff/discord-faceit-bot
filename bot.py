@@ -12,7 +12,8 @@ from database import (
     add_to_queue, remove_from_queue, queue_size, clear_queue,
     is_in_queue, pop_10_and_balance, get_leaderboard,
     update_team_elo, get_next_match_number,
-    create_giveaway, get_due_giveaways, mark_giveaway_finished
+    create_giveaway, get_due_giveaways, mark_giveaway_finished,
+    get_queue_list
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -48,6 +49,8 @@ def is_queue_open():
 
 leaderboard_channel_id = None
 leaderboard_message_id = None
+queue_status_channel_id = None
+queue_status_message_id = None
 
 
 LEADERBOARD_IMAGE_PATH = "leaderboard.png"
@@ -209,6 +212,36 @@ class MatchResultView(discord.ui.View):
         await self._finish(interaction, self.team_b, self.team_a, "Komanda B", "Komanda A")
 
 
+def build_queue_status_embed():
+    players = get_queue_list()
+    size = len(players)
+    embed = discord.Embed(
+        title=f"📋 Sırada: {size}/10",
+        color=discord.Color.teal()
+    )
+    if size == 0:
+        embed.description = "Hələ heç kim sırada deyil."
+    else:
+        lines = [f"{i+1}. {p['nick']} (ELO: {p['elo']})" for i, p in enumerate(players)]
+        embed.description = "\n".join(lines)
+    embed.set_footer(text="Bu mesaj real vaxtda yenilənir.")
+    return embed
+
+
+async def update_queue_status_message():
+    global queue_status_message_id
+    if queue_status_channel_id is None or queue_status_message_id is None:
+        return
+    channel = bot.get_channel(queue_status_channel_id)
+    if channel is None:
+        return
+    try:
+        message = await channel.fetch_message(queue_status_message_id)
+        await message.edit(embed=build_queue_status_embed())
+    except discord.NotFound:
+        pass
+
+
 class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -238,6 +271,7 @@ class MatchmakingView(discord.ui.View):
 
         size = queue_size()
         await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/10)", ephemeral=True)
+        await update_queue_status_message()
 
         if size >= 10:
             result = pop_10_and_balance()
@@ -304,11 +338,14 @@ class MatchmakingView(discord.ui.View):
                 result_view = MatchResultView(match_number, team_a, team_b)
                 await log_channel.send(embed=log_embed, view=result_view)
 
+            await update_queue_status_message()
+
     @discord.ui.button(label="Sıradan çıx", style=discord.ButtonStyle.secondary, emoji="🚪", custom_id="mm_leave")
     async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
         removed = remove_from_queue(interaction.user.id)
         if removed:
             await interaction.response.send_message("✅ Sıradan çıxdınız.", ephemeral=True)
+            await update_queue_status_message()
         else:
             await interaction.response.send_message("⚠️ Siz sırada deyilsiniz.", ephemeral=True)
 
@@ -319,6 +356,7 @@ class MatchmakingView(discord.ui.View):
             return
         clear_queue()
         await interaction.response.send_message("🧹 Sıra tam təmizləndi.", ephemeral=True)
+        await update_queue_status_message()
 
 
 @bot.event
@@ -544,6 +582,11 @@ async def setup(interaction: discord.Interaction):
         await interaction.channel.send(embed=embed, view=view, file=file)
     else:
         await interaction.channel.send(embed=embed, view=view)
+
+    global queue_status_channel_id, queue_status_message_id
+    status_message = await interaction.channel.send(embed=build_queue_status_embed())
+    queue_status_channel_id = interaction.channel.id
+    queue_status_message_id = status_message.id
 
     await interaction.response.send_message("✅ Matchmaking mesajı yaradıldı.", ephemeral=True)
 
