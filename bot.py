@@ -5,6 +5,7 @@ import os
 import datetime
 import random
 import asyncio
+import threading
 from dotenv import load_dotenv
 from database import (
     init_db, register_player, get_player, update_elo,
@@ -13,6 +14,7 @@ from database import (
     update_team_elo, get_next_match_number
 )
 from leaderboard_image import generate_leaderboard_image
+from web_server import run_web_server
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -574,5 +576,8 @@ async def giveaway_create_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
+
+web_thread = threading.Thread(target=run_web_server, daemon=True)
+web_thread.start()
 
 bot.run(TOKEN)
