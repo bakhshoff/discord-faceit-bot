@@ -4,6 +4,7 @@ from discord import app_commands
 import os
 import datetime
 import random
+import asyncio
 from dotenv import load_dotenv
 from database import (
     init_db, register_player, get_player, update_elo,
@@ -513,6 +514,63 @@ async def setup(interaction: discord.Interaction):
 
 @setup.error
 async def setup_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="giveaway_create", description="[Admin] Gizli qalibli giveaway yaradır")
+@app_commands.describe(
+    mukafat="Mükafatın adı (məs: 1000 Gold)",
+    muddet_saat="Çəkilişin neçə saat sürəcəyi",
+    qalib="Gizli qalib (yalnız siz görürsünüz)",
+    elan_kanal="Giveaway-in elan olunacağı kanal"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def giveaway_create(
+    interaction: discord.Interaction,
+    mukafat: str,
+    muddet_saat: float,
+    qalib: discord.Member,
+    elan_kanal: discord.TextChannel
+):
+    end_time = datetime.datetime.utcnow() + datetime.timedelta(hours=muddet_saat)
+    end_unix = int(end_time.timestamp())
+
+    embed = discord.Embed(
+        title="🎉 GIVEAWAY 🎉",
+        description=f"**Mükafat:** {mukafat}\n\nQoşulmaq üçün 🎉 emojisinə bas!\n\n⏰ Bitmə vaxtı: <t:{end_unix}:R>",
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Calestify Gaming Community")
+
+    message = await elan_kanal.send(embed=embed)
+    await message.add_reaction("🎉")
+
+    await interaction.response.send_message(
+        f"✅ Giveaway yaradıldı.\n📍 Kanal: {elan_kanal.mention}\n⏰ Bitmə: <t:{end_unix}:F>",
+        ephemeral=True
+    )
+
+    await asyncio.sleep(muddet_saat * 3600)
+
+    try:
+        result_channel = bot.get_channel(elan_kanal.id)
+        finished_message = await result_channel.fetch_message(message.id)
+    except discord.NotFound:
+        return
+
+    final_embed = discord.Embed(
+        title="🎉 GIVEAWAY BİTDİ 🎉",
+        description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {qalib.mention}\n\nTəbriklər!",
+        color=discord.Color.green()
+    )
+    final_embed.set_footer(text="Calestify Gaming Community")
+    await finished_message.edit(embed=final_embed)
+    await result_channel.send(f"🎉 Təbriklər {qalib.mention}! Sən **{mukafat}** qazandın!")
+
+
+@giveaway_create.error
+async def giveaway_create_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
