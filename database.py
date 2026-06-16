@@ -83,7 +83,7 @@ def get_leaderboard(limit=20):
     conn = sqlite3.connect("bot_database.db")
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT so2_nick, elo, wins, losses FROM players ORDER BY elo DESC LIMIT ?",
+        "SELECT so2_nick, so2_id, elo, wins, losses FROM players ORDER BY elo DESC LIMIT ?",
         (limit,)
     )
     rows = cursor.fetchall()

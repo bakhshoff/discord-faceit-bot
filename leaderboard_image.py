@@ -48,7 +48,7 @@ def _load_font(size, bold=False):
 
 def generate_leaderboard_image(rows, output_path="leaderboard.png"):
     """
-    rows: [(nick, elo, wins, losses), ...] ELO-ya görə sıralanmış
+    rows: [(nick, so2_id, elo, wins, losses), ...] ELO-ya görə sıralanmış
     """
     height = HEADER_HEIGHT + ROW_HEIGHT * max(len(rows), 1) + FOOTER_HEIGHT
     img = Image.new("RGB", (WIDTH, height), BG_COLOR)
@@ -63,8 +63,8 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png"):
     draw.text((30, 58), "Top 20 players by ELO", font=sub_font, fill=GRAY)
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=LINE_COLOR, width=2)
 
-    columns = ["#", "Player", "ELO", "M", "W", "L"]
-    col_x = [30, 90, 480, 580, 660, 740]
+    columns = ["#", "Player", "SO2 ID", "ELO", "M", "W", "L"]
+    col_x = [30, 90, 430, 600, 670, 730, 790]
     for i, col in enumerate(columns):
         draw.text((col_x[i], HEADER_HEIGHT + 12), col, font=header_font, fill=GOLD)
 
@@ -73,16 +73,17 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png"):
         draw.text((30, y), "Hələ qeydiyyatdan keçən oyunçu yoxdur.", font=row_font, fill=LIGHT_GRAY)
         y += ROW_HEIGHT
     else:
-        for idx, (nick, elo, wins, losses) in enumerate(rows):
+        for idx, (nick, so2_id, elo, wins, losses) in enumerate(rows):
             if idx % 2 == 0:
                 draw.rectangle([(0, y - 6), (WIDTH, y + ROW_HEIGHT - 6)], fill=ROW_ALT_COLOR)
             matches = wins + losses
             draw.text((col_x[0], y), f"#{idx + 1}", font=row_font, fill=GOLD)
-            draw.text((col_x[1], y), str(nick)[:28], font=row_font, fill=WHITE)
-            draw.text((col_x[2], y), str(elo), font=row_font, fill=GREEN)
-            draw.text((col_x[3], y), str(matches), font=row_font, fill=LIGHT_GRAY)
-            draw.text((col_x[4], y), str(wins), font=row_font, fill=LIGHT_GRAY)
-            draw.text((col_x[5], y), str(losses), font=row_font, fill=LIGHT_GRAY)
+            draw.text((col_x[1], y), str(nick)[:22], font=row_font, fill=WHITE)
+            draw.text((col_x[2], y), str(so2_id)[:15], font=row_font, fill=(140, 170, 230))
+            draw.text((col_x[3], y), str(elo), font=row_font, fill=GREEN)
+            draw.text((col_x[4], y), str(matches), font=row_font, fill=LIGHT_GRAY)
+            draw.text((col_x[5], y), str(wins), font=row_font, fill=LIGHT_GRAY)
+            draw.text((col_x[6], y), str(losses), font=row_font, fill=LIGHT_GRAY)
             y += ROW_HEIGHT
 
     draw.text((30, y + 10), "Auto-updated by Calestify FACEIT Bot", font=sub_font, fill=FOOTER_GRAY)
