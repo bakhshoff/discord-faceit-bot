@@ -20,6 +20,17 @@ def init_db():
         )
     """)
     cursor.execute("INSERT OR IGNORE INTO match_counter (id, last_number) VALUES (1, 0)")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS giveaways (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mukafat TEXT NOT NULL,
+            end_unix INTEGER NOT NULL,
+            winner_id INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
+            message_id INTEGER NOT NULL,
+            finished INTEGER DEFAULT 0
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -214,3 +225,36 @@ def pop_10_and_balance():
     captain_b = max(team_b, key=lambda p: p["elo"])
 
     return team_a, team_b, captain_a, captain_b
+
+
+def create_giveaway(mukafat, end_unix, winner_id, channel_id, message_id):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO giveaways (mukafat, end_unix, winner_id, channel_id, message_id, finished) VALUES (?, ?, ?, ?, ?, 0)",
+        (mukafat, end_unix, winner_id, channel_id, message_id)
+    )
+    conn.commit()
+    giveaway_id = cursor.lastrowid
+    conn.close()
+    return giveaway_id
+
+
+def get_due_giveaways(current_unix):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, mukafat, winner_id, channel_id, message_id FROM giveaways WHERE finished = 0 AND end_unix <= ?",
+        (current_unix,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def mark_giveaway_finished(giveaway_id):
+    conn = sqlite3.connect("bot_database.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE giveaways SET finished = 1 WHERE id = ?", (giveaway_id,))
+    conn.commit()
+    conn.close()

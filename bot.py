@@ -11,7 +11,8 @@ from database import (
     init_db, register_player, get_player, update_elo,
     add_to_queue, remove_from_queue, queue_size, clear_queue,
     is_in_queue, pop_10_and_balance, get_leaderboard,
-    update_team_elo, get_next_match_number
+    update_team_elo, get_next_match_number,
+    create_giveaway, get_due_giveaways, mark_giveaway_finished
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -67,6 +68,37 @@ async def refresh_leaderboard():
         await message.edit(attachments=[discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")])
     except discord.NotFound:
         pass
+
+
+@tasks.loop(seconds=30)
+async def check_giveaways():
+    now_unix = int(datetime.datetime.utcnow().timestamp())
+    due = get_due_giveaways(now_unix)
+    for giveaway_id, mukafat, winner_id, channel_id, message_id in due:
+        mark_giveaway_finished(giveaway_id)
+        channel = bot.get_channel(channel_id)
+        if channel is None:
+            continue
+        try:
+            message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            continue
+
+        guild = channel.guild
+        winner_member = guild.get_member(winner_id) if guild else None
+        winner_mention = winner_member.mention if winner_member else f"<@{winner_id}>"
+
+        final_embed = discord.Embed(
+            title="🎉 GIVEAWAY BİTDİ 🎉",
+            description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {winner_mention}\n\nTəbriklər!",
+            color=discord.Color.green()
+        )
+        final_embed.set_footer(text="Calestify Gaming Community")
+        try:
+            await message.edit(embed=final_embed)
+        except discord.HTTPException:
+            pass
+        await channel.send(f"🎉 Təbriklər {winner_mention}! Sən **{mukafat}** qazandın!")
 
 
 class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
@@ -295,6 +327,8 @@ async def on_ready():
     print(f"{bot.user} giriş etdi və hazırdır!")
     bot.add_view(MatchmakingView())
     bot.add_view(RegisterView())
+    if not check_giveaways.is_running():
+        check_giveaways.start()
     await bot.tree.sync()
 
 
@@ -555,27 +589,12 @@ async def giveaway_create(
     message = await elan_kanal.send(embed=embed)
     await message.add_reaction("🎉")
 
+    create_giveaway(mukafat, end_unix, qalib.id, elan_kanal.id, message.id)
+
     await interaction.response.send_message(
         f"✅ Giveaway yaradıldı.\n📍 Kanal: {elan_kanal.mention}\n⏰ Bitmə: <t:{end_unix}:F>",
         ephemeral=True
     )
-
-    await asyncio.sleep(total_seconds)
-
-    try:
-        result_channel = bot.get_channel(elan_kanal.id)
-        finished_message = await result_channel.fetch_message(message.id)
-    except discord.NotFound:
-        return
-
-    final_embed = discord.Embed(
-        title="🎉 GIVEAWAY BİTDİ 🎉",
-        description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {qalib.mention}\n\nTəbriklər!",
-        color=discord.Color.green()
-    )
-    final_embed.set_footer(text="Calestify Gaming Community")
-    await finished_message.edit(embed=final_embed)
-    await result_channel.send(f"🎉 Təbriklər {qalib.mention}! Sən **{mukafat}** qazandın!")
 
 
 @giveaway_create.error
