@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 from discord import app_commands
 import os
 import datetime
+import random
 from dotenv import load_dotenv
 from database import (
     init_db, register_player, get_player, update_elo,
@@ -18,6 +19,8 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 TEAM_A_VOICE_ID = 1500827030890221678
 TEAM_B_VOICE_ID = 1500827032261496913
 LOG_CHANNEL_ID = 1500790545172267028
+
+MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
 LOGO_PATH = "logo.jpg"
 
@@ -206,8 +209,10 @@ class MatchmakingView(discord.ui.View):
             if result is None:
                 return
             team_a, team_b, captain_a, captain_b = result
+            selected_map = random.choice(MAPS)
 
             embed = discord.Embed(title="🎮 Matç tapıldı! 5v5", color=discord.Color.purple())
+            embed.add_field(name="🗺️ Xəritə", value=f"**{selected_map}**", inline=False)
             embed.add_field(
                 name="🔵 Komanda A",
                 value="\n".join([f"{'👑 ' if p['discord_id']==captain_a['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_a]),
@@ -244,7 +249,7 @@ class MatchmakingView(discord.ui.View):
             now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
             log_embed = discord.Embed(
                 title=f"📋 Matç No{match_number}",
-                description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)",
+                description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)\n🗺️ Xəritə: **{selected_map}**",
                 color=discord.Color.blurple()
             )
             log_embed.add_field(
