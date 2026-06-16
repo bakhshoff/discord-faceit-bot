@@ -523,7 +523,8 @@ async def setup_error(interaction: discord.Interaction, error):
 @bot.tree.command(name="giveaway_create", description="[Admin] Gizli qalibli giveaway yaradır")
 @app_commands.describe(
     mukafat="Mükafatın adı (məs: 1000 Gold)",
-    muddet_saat="Çəkilişin neçə saat sürəcəyi",
+    saat="Çəkilişin neçə saat sürəcəyi (0 ola bilər)",
+    deqiqe="Çəkilişin neçə dəqiqə sürəcəyi (0 ola bilər)",
     qalib="Gizli qalib (yalnız siz görürsünüz)",
     elan_kanal="Giveaway-in elan olunacağı kanal"
 )
@@ -531,11 +532,17 @@ async def setup_error(interaction: discord.Interaction, error):
 async def giveaway_create(
     interaction: discord.Interaction,
     mukafat: str,
-    muddet_saat: float,
+    saat: int,
+    deqiqe: int,
     qalib: discord.Member,
     elan_kanal: discord.TextChannel
 ):
-    end_time = datetime.datetime.utcnow() + datetime.timedelta(hours=muddet_saat)
+    total_seconds = saat * 3600 + deqiqe * 60
+    if total_seconds <= 0:
+        await interaction.response.send_message("❌ Müddət 0-dan böyük olmalıdır.", ephemeral=True)
+        return
+
+    end_time = datetime.datetime.utcnow() + datetime.timedelta(seconds=total_seconds)
     end_unix = int(end_time.timestamp())
 
     embed = discord.Embed(
@@ -553,7 +560,7 @@ async def giveaway_create(
         ephemeral=True
     )
 
-    await asyncio.sleep(muddet_saat * 3600)
+    await asyncio.sleep(total_seconds)
 
     try:
         result_channel = bot.get_channel(elan_kanal.id)
