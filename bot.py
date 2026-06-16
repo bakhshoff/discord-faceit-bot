@@ -97,6 +97,13 @@ class RegisterView(discord.ui.View):
 
     @discord.ui.button(label="Qeydiyyat", style=discord.ButtonStyle.success, emoji="✅", custom_id="reg_open")
     async def open_register(self, interaction: discord.Interaction, button: discord.ui.Button):
+        existing = get_player(interaction.user.id)
+        if existing:
+            await interaction.response.send_message(
+                "⚠️ Siz artıq qeydiyyatdan keçmisiniz! `/profile` ilə baxa bilərsiniz.",
+                ephemeral=True
+            )
+            return
         await interaction.response.send_modal(RegisterModal())
 
 
