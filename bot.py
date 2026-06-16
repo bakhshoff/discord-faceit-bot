@@ -17,6 +17,8 @@ from database import (
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
+from profile_card import generate_profile_card
+import requests
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -380,13 +382,23 @@ async def profile(interaction: discord.Interaction):
     if not player:
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
         return
+
+    await interaction.response.defer()
+
     discord_id, nick, so2_id, elo, wins, losses = player
-    embed = discord.Embed(title=f"📊 {nick} — Profil", color=discord.Color.blue())
-    embed.add_field(name="ELO", value=elo, inline=True)
-    embed.add_field(name="Qalib", value=wins, inline=True)
-    embed.add_field(name="Məğlub", value=losses, inline=True)
-    embed.add_field(name="Standoff 2 ID", value=so2_id, inline=False)
-    await interaction.response.send_message(embed=embed)
+
+    avatar_bytes = None
+    try:
+        avatar_url = interaction.user.display_avatar.replace(size=256).url
+        avatar_bytes = await asyncio.to_thread(requests.get, avatar_url, timeout=10)
+        avatar_bytes = avatar_bytes.content
+    except Exception:
+        avatar_bytes = None
+
+    card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
+    await asyncio.to_thread(generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path)
+
+    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"))
 
 
 @bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")
