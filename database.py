@@ -1,7 +1,11 @@
 import sqlite3
+import os
+
+DB_PATH = os.path.join(os.environ.get("DATA_DIR", "."), "bot_database.db")
+
 
 def init_db():
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS players (
@@ -36,7 +40,7 @@ def init_db():
 
 
 def get_next_match_number():
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("UPDATE match_counter SET last_number = last_number + 1 WHERE id = 1")
     cursor.execute("SELECT last_number FROM match_counter WHERE id = 1")
@@ -46,7 +50,7 @@ def get_next_match_number():
     return number
 
 def register_player(discord_id, so2_nick, so2_id):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM players WHERE discord_id = ?", (discord_id,))
     existing = cursor.fetchone()
@@ -62,7 +66,7 @@ def register_player(discord_id, so2_nick, so2_id):
     return True
 
 def get_player(discord_id):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -74,7 +78,7 @@ def update_team_elo(winner_ids, loser_ids):
     winner_ids, loser_ids: discord_id siyahıları (hər komandada bir neçə oyunçu)
     Komandanın orta ELO-suna görə hesablanır, hər oyunçu fərdi yenilənir.
     """
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     def fetch_all(ids):
@@ -127,7 +131,7 @@ def update_team_elo(winner_ids, loser_ids):
 
 
 def update_elo(winner_id, loser_id):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     cursor.execute("SELECT elo, wins, losses FROM players WHERE discord_id = ?", (winner_id,))
@@ -166,7 +170,7 @@ def update_elo(winner_id, loser_id):
     }
 
 def get_leaderboard(limit=20):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT so2_nick, so2_id, elo, wins, losses FROM players ORDER BY elo DESC LIMIT ?",
@@ -232,7 +236,7 @@ def pop_10_and_balance():
 
 
 def create_giveaway(mukafat, end_unix, winner_id, channel_id, message_id):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO giveaways (mukafat, end_unix, winner_id, channel_id, message_id, finished) VALUES (?, ?, ?, ?, ?, 0)",
@@ -245,7 +249,7 @@ def create_giveaway(mukafat, end_unix, winner_id, channel_id, message_id):
 
 
 def get_due_giveaways(current_unix):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, mukafat, winner_id, channel_id, message_id FROM giveaways WHERE finished = 0 AND end_unix <= ?",
@@ -257,7 +261,7 @@ def get_due_giveaways(current_unix):
 
 
 def mark_giveaway_finished(giveaway_id):
-    conn = sqlite3.connect("bot_database.db")
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("UPDATE giveaways SET finished = 1 WHERE id = ?", (giveaway_id,))
     conn.commit()

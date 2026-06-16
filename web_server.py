@@ -2,9 +2,8 @@ from flask import Flask, jsonify, render_template
 import sqlite3
 import os
 
-# Bu fayl bot.py ilə eyni qovluqda olduğu üçün bot_database.db birbaşa yanındadır
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "bot_database.db")
+DB_PATH = os.path.join(os.environ.get("DATA_DIR", BASE_DIR), "bot_database.db")
 TEMPLATE_DIR = os.path.join(BASE_DIR, "web_leaderboard", "templates")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR)

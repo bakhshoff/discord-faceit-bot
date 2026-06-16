@@ -21,6 +21,10 @@ from web_server import run_web_server
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+DATA_DIR = os.environ.get("DATA_DIR")
+if DATA_DIR and not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+
 TEAM_A_VOICE_ID = 1500827030890221678
 TEAM_B_VOICE_ID = 1500827032261496913
 LOG_CHANNEL_ID = 1500790545172267028
