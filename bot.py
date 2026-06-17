@@ -24,6 +24,7 @@ from match_card import generate_match_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
+import backup
 import requests
 
 load_dotenv()
@@ -116,6 +117,20 @@ async def check_giveaways():
         await channel.send(f"🎉 Təbriklər {winner_mention}! Sən **{mukafat}** qazandın!")
 
 
+@tasks.loop(minutes=20)
+async def push_backup_task():
+    github_token = os.environ.get("GITHUB_TOKEN")
+    github_repo = os.environ.get("GITHUB_REPO")
+    if not github_token or not github_repo:
+        return
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    success, msg = await asyncio.to_thread(
+        backup.push_backup_to_github, repo_dir, github_token, github_repo
+    )
+    if not success:
+        print(f"[Backup] GitHub push xetasi: {msg}")
+
+
 class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
     so2_id = discord.ui.TextInput(
         label="Standoff 2 ID",
@@ -133,6 +148,7 @@ class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
     async def on_submit(self, interaction: discord.Interaction):
         success = register_player(interaction.user.id, str(self.nick), str(self.so2_id))
         if success:
+            await asyncio.to_thread(backup.export_backup)
             embed = discord.Embed(
                 title="✅ Qeydiyyat tamamlandı!",
                 description=f"**Nick:** {self.nick}\n**ID:** {self.so2_id}\n**Başlanğıc ELO:** 1000",
@@ -200,6 +216,7 @@ class GoldExchangeModal(discord.ui.Modal, title="Gold Exchange"):
             return
 
         new_balance = get_coins(interaction.user.id)
+        await asyncio.to_thread(backup.export_backup)
         await interaction.response.send_message(
             f"✅ Mübadilə tamamlandı!\n🪙 {coin_amount} Coin → 💰 {gold_amount} Gold\nYeni balansınız: 🪙 {new_balance}\n\nGold-unuz qısa zamanda Standoff 2 hesabınıza göndəriləcək.",
             ephemeral=True
@@ -248,6 +265,7 @@ class MarketItemView(discord.ui.View):
                 return
 
             add_to_inventory(self.discord_id, item["id"])
+            await asyncio.to_thread(backup.export_backup)
             await interaction.response.send_message(
                 f"✅ **{item['name']}** alındı! İnventarınıza əlavə olundu.\nAktiv etmək üçün `/profile` açıb inventardan seçin.",
                 ephemeral=True
@@ -280,6 +298,7 @@ class InventoryActivateView(discord.ui.View):
                 await interaction.response.send_message("❌ Bu inventar sizə aid deyil.", ephemeral=True)
                 return
             set_active_banner(self.discord_id, item_id)
+            await asyncio.to_thread(backup.export_backup)
             await interaction.response.send_message(f"✅ **{item_name}** aktiv edildi. `/profile` ilə yoxlaya bilərsiniz.", ephemeral=True)
         return callback
 
@@ -421,6 +440,8 @@ class MatchResultView(discord.ui.View):
             earned = random.randint(0, 5)
             new_balance = add_coins(discord_id, earned)
             loser_coins[discord_id] = (earned, new_balance)
+
+        await asyncio.to_thread(backup.export_backup)
 
         self.finished = True
         for child in self.children:
@@ -580,6 +601,8 @@ async def on_ready():
     bot.add_view(RegisterView())
     if not check_giveaways.is_running():
         check_giveaways.start()
+    if not push_backup_task.is_running():
+        push_backup_task.start()
     await bot.tree.sync()
 
 
@@ -631,6 +654,7 @@ async def matchresult(interaction: discord.Interaction, qalib: discord.Member, m
     loser_earned = random.randint(0, 5)
     add_coins(qalib.id, winner_earned)
     add_coins(məğlub.id, loser_earned)
+    await asyncio.to_thread(backup.export_backup)
 
     embed = discord.Embed(title="🏆 Matç nəticəsi qeyd edildi", color=discord.Color.gold())
     embed.add_field(
@@ -859,6 +883,36 @@ async def giveaway_bitir(
 
 @giveaway_bitir.error
 async def giveaway_bitir_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="backup_indi", description="[Admin] Verilənləri dərhal JSON-a yedəkləyir və GitHub-a göndərir")
+@app_commands.checks.has_permissions(administrator=True)
+async def backup_indi(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    await asyncio.to_thread(backup.export_backup)
+
+    github_token = os.environ.get("GITHUB_TOKEN")
+    github_repo = os.environ.get("GITHUB_REPO")
+    if not github_token or not github_repo:
+        await interaction.followup.send(
+            "✅ Lokal JSON backup yaradıldı (/data/backup.json).\n⚠️ GITHUB_TOKEN/GITHUB_REPO təyin olunmadığı üçün GitHub-a göndərilmədi.",
+            ephemeral=True
+        )
+        return
+
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    success, msg = await asyncio.to_thread(
+        backup.push_backup_to_github, repo_dir, github_token, github_repo
+    )
+    status = "✅" if success else "❌"
+    await interaction.followup.send(f"{status} {msg}", ephemeral=True)
+
+
+@backup_indi.error
+async def backup_indi_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
