@@ -23,6 +23,7 @@ from profile_card import generate_profile_card
 from match_card import generate_match_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 from rules_card import generate_rules_card, generate_register_banner
+from market_config import MARKET_ITEMS, get_item_by_id
 import requests
 
 load_dotenv()
@@ -159,6 +160,181 @@ class RegisterView(discord.ui.View):
             )
             return
         await interaction.response.send_modal(RegisterModal())
+
+
+class GoldExchangeModal(discord.ui.Modal, title="Gold Exchange"):
+    amount = discord.ui.TextInput(
+        label="Çevirmək istədiyiniz Coin miqdarı",
+        placeholder="Məsələn: 1000",
+        required=True,
+        max_length=10
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            coin_amount = int(str(self.amount).strip())
+        except ValueError:
+            await interaction.response.send_message("❌ Düzgün ədəd daxil edin.", ephemeral=True)
+            return
+
+        if coin_amount <= 0:
+            await interaction.response.send_message("❌ Miqdar 0-dan böyük olmalıdır.", ephemeral=True)
+            return
+
+        if coin_amount % 1000 != 0:
+            await interaction.response.send_message("❌ Miqdar 1000-in qatı olmalıdır (məs: 1000, 2000, 3000).", ephemeral=True)
+            return
+
+        current_coins = get_coins(interaction.user.id)
+        if current_coins < coin_amount:
+            await interaction.response.send_message(
+                f"❌ Kifayət qədər coin yoxdur. Balansınız: 🪙 {current_coins}",
+                ephemeral=True
+            )
+            return
+
+        gold_amount = (coin_amount // 1000) * 100
+        success = spend_coins(interaction.user.id, coin_amount)
+        if not success:
+            await interaction.response.send_message("❌ Xəta baş verdi, yenidən cəhd edin.", ephemeral=True)
+            return
+
+        new_balance = get_coins(interaction.user.id)
+        await interaction.response.send_message(
+            f"✅ Mübadilə tamamlandı!\n🪙 {coin_amount} Coin → 💰 {gold_amount} Gold\nYeni balansınız: 🪙 {new_balance}\n\nGold-unuz qısa zamanda Standoff 2 hesabınıza göndəriləcək.",
+            ephemeral=True
+        )
+
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="💱 Gold Exchange",
+                description=f"{interaction.user.mention} ({interaction.user.display_name})\n🪙 {coin_amount} Coin → 💰 {gold_amount} Gold",
+                color=discord.Color.gold()
+            )
+            await log_channel.send(embed=log_embed)
+
+
+class MarketItemView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+        for item in MARKET_ITEMS:
+            owned = owns_item(discord_id, item["id"])
+            label = f"{item['name']} — {item['price']} 🪙" if not owned else f"{item['name']} (Sahibsiniz)"
+            style = discord.ButtonStyle.success if not owned else discord.ButtonStyle.secondary
+            button = discord.ui.Button(label=label, style=style, custom_id=f"buy_{item['id']}", disabled=owned)
+            button.callback = self._make_callback(item)
+            self.add_item(button)
+
+    def _make_callback(self, item):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.discord_id:
+                await interaction.response.send_message("❌ Bu market menyusu sizə aid deyil.", ephemeral=True)
+                return
+
+            if owns_item(self.discord_id, item["id"]):
+                await interaction.response.send_message("⚠️ Bu əşyaya artıq sahibsiniz.", ephemeral=True)
+                return
+
+            success = spend_coins(self.discord_id, item["price"])
+            if not success:
+                current = get_coins(self.discord_id)
+                await interaction.response.send_message(
+                    f"❌ Kifayət qədər coin yoxdur. Lazımdır: 🪙 {item['price']}, balansınız: 🪙 {current}",
+                    ephemeral=True
+                )
+                return
+
+            add_to_inventory(self.discord_id, item["id"])
+            await interaction.response.send_message(
+                f"✅ **{item['name']}** alındı! İnventarınıza əlavə olundu.\nAktiv etmək üçün `/profile` açıb inventardan seçin.",
+                ephemeral=True
+            )
+        return callback
+
+
+class InventoryActivateView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+        owned_ids = get_inventory(discord_id)
+        active = get_active_banner(discord_id)
+
+        for item_id in owned_ids:
+            item = get_item_by_id(item_id)
+            if not item:
+                continue
+            is_active = item_id == active
+            label = f"{item['name']} ✅" if is_active else f"Aktiv et: {item['name']}"
+            style = discord.ButtonStyle.secondary if is_active else discord.ButtonStyle.success
+            button = discord.ui.Button(label=label, style=style, disabled=is_active)
+            button.callback = self._make_callback(item_id, item["name"])
+            self.add_item(button)
+
+    def _make_callback(self, item_id, item_name):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.discord_id:
+                await interaction.response.send_message("❌ Bu inventar sizə aid deyil.", ephemeral=True)
+                return
+            set_active_banner(self.discord_id, item_id)
+            await interaction.response.send_message(f"✅ **{item_name}** aktiv edildi. `/profile` ilə yoxlaya bilərsiniz.", ephemeral=True)
+        return callback
+
+
+class ProfileView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu profil sizə aid deyil.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Market", style=discord.ButtonStyle.primary, emoji="🛒", custom_id="profile_market")
+    async def open_market(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        lines = []
+        for item in MARKET_ITEMS:
+            owned = owns_item(self.discord_id, item["id"])
+            status = " ✅ Sahibsiniz" if owned else f" — 🪙 {item['price']}"
+            lines.append(f"**{item['name']}**{status}")
+
+        embed = discord.Embed(
+            title="🛒 Calestify Market",
+            description="\n".join(lines),
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text=f"Balansınız: 🪙 {coins}")
+        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
+
+    @discord.ui.button(label="Gold Exchange", style=discord.ButtonStyle.secondary, emoji="💱", custom_id="profile_exchange")
+    async def open_exchange(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(GoldExchangeModal())
+
+    @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory")
+    async def open_inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
+        owned_ids = get_inventory(self.discord_id)
+        if not owned_ids:
+            await interaction.response.send_message("🎒 İnventarınız boşdur. Market-dən əşya ala bilərsiniz.", ephemeral=True)
+            return
+
+        active = get_active_banner(self.discord_id)
+        embed = discord.Embed(title="🎒 İnventarınız", color=discord.Color.purple())
+        lines = []
+        for item_id in owned_ids:
+            item = get_item_by_id(item_id)
+            if not item:
+                continue
+            marker = " ✅ (Aktiv)" if item_id == active else ""
+            lines.append(f"**{item['name']}**{marker}")
+        embed.description = "\n".join(lines) if lines else "İnventarınız boşdur."
+
+        await interaction.response.send_message(embed=embed, view=InventoryActivateView(self.discord_id), ephemeral=True)
 
 
 class TeamReadyView(discord.ui.View):
@@ -427,9 +603,18 @@ async def profile(interaction: discord.Interaction):
         avatar_bytes = None
 
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
-    await asyncio.to_thread(generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path)
+    banner_full_path = None
+    if active_banner:
+        item = get_item_by_id(active_banner)
+        if item:
+            banner_full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "banners", item["file"])
 
-    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"))
+    await asyncio.to_thread(
+        generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
+        banner_full_path, coins
+    )
+
+    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=ProfileView(discord_id))
 
 
 @bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")

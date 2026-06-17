@@ -87,8 +87,18 @@ def _vertical_gradient(width, height, top_color, bottom_color):
     return base
 
 
-def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, output_path="profile_card.png"):
-    img = _vertical_gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, output_path="profile_card.png", banner_path=None, coins=0):
+    if banner_path and os.path.exists(banner_path):
+        try:
+            banner_img = Image.open(banner_path).convert("RGB")
+            banner_img = ImageOps.fit(banner_img, (WIDTH, HEIGHT), Image.LANCZOS)
+            overlay = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
+            img = Image.blend(banner_img, overlay, 0.45)
+        except Exception:
+            img = _vertical_gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+    else:
+        img = _vertical_gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+
     draw = ImageDraw.Draw(img)
 
     # Xarici çərçivə
@@ -103,6 +113,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
     stat_label_font = _load_font(13, bold=True)
     elo_font = _load_font(42, bold=True)
     elo_label_font = _load_font(14, bold=True)
+    coin_font = _load_font(18, bold=True)
 
     level, level_color = get_level_info(elo)
     matches = wins + losses
@@ -111,6 +122,14 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
     # Üst marka zolağı
     draw.text((30, 24), "CALESTIFY", font=brand_font, fill=GOLD)
     draw.text((30, 42), "FACEIT PROFILE", font=title_font, fill=WHITE)
+
+    # Coin balansı (üst sağ küncdə, kiçik)
+    coin_text = str(coins)
+    bbox = draw.textbbox((0, 0), coin_text, font=coin_font)
+    tw = bbox[2] - bbox[0]
+    coin_circle_d = 16
+    draw.ellipse([(WIDTH - 30 - tw - coin_circle_d - 8, 28), (WIDTH - 30 - tw - 8, 28 + coin_circle_d)], fill=GOLD)
+    draw.text((WIDTH - 30 - tw, 26), coin_text, font=coin_font, fill=GOLD)
 
     # Avatar (dairəvi)
     avatar_size = 140
