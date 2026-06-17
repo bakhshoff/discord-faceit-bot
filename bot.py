@@ -832,6 +832,37 @@ async def giveaway_create_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
+@bot.tree.command(name="giveaway_bitir", description="[Admin] Mövcud bir giveaway mesajını manuel olaraq bitmiş elan edir")
+@app_commands.describe(
+    mukafat="Mükafatın adı (elan mesajında göstərilir)",
+    qalib="Qalib seçilən üzv",
+    elan_kanal="Giveaway mesajının olduğu kanal"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def giveaway_bitir(
+    interaction: discord.Interaction,
+    mukafat: str,
+    qalib: discord.Member,
+    elan_kanal: discord.TextChannel
+):
+    final_embed = discord.Embed(
+        title="🎉 GIVEAWAY BİTDİ 🎉",
+        description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {qalib.mention}\n\nTəbriklər!",
+        color=discord.Color.green()
+    )
+    final_embed.set_footer(text="Calestify Gaming Community")
+    await elan_kanal.send(embed=final_embed)
+    await elan_kanal.send(f"🎉 Təbriklər {qalib.mention}! Sən **{mukafat}** qazandın!")
+
+    await interaction.response.send_message(f"✅ Giveaway manuel olaraq bitirildi. Qalib: {qalib.mention}", ephemeral=True)
+
+
+@giveaway_bitir.error
+async def giveaway_bitir_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
 web_thread = threading.Thread(target=run_web_server, daemon=True)
 web_thread.start()
 
