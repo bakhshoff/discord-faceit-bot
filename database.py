@@ -17,6 +17,22 @@ def init_db():
             losses INTEGER DEFAULT 0
         )
     """)
+    cursor.execute("PRAGMA table_info(players)")
+    existing_columns = [row[1] for row in cursor.fetchall()]
+    if "coins" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN coins INTEGER DEFAULT 0")
+    if "active_banner" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN active_banner TEXT DEFAULT NULL")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            item_id TEXT NOT NULL,
+            acquired_at INTEGER NOT NULL,
+            UNIQUE(discord_id, item_id)
+        )
+    """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS match_counter (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -266,3 +282,90 @@ def mark_giveaway_finished(giveaway_id):
     cursor.execute("UPDATE giveaways SET finished = 1 WHERE id = ?", (giveaway_id,))
     conn.commit()
     conn.close()
+
+
+def add_coins(discord_id, amount):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET coins = coins + ? WHERE discord_id = ?", (amount, discord_id))
+    conn.commit()
+    cursor.execute("SELECT coins FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def get_coins(discord_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT coins FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def spend_coins(discord_id, amount):
+    """Balans kifayətdirsə coin çıxır və True qaytarır, yoxdursa False qaytarır."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT coins FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < amount:
+        conn.close()
+        return False
+    cursor.execute("UPDATE players SET coins = coins - ? WHERE discord_id = ?", (amount, discord_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_inventory(discord_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_id FROM inventory WHERE discord_id = ?", (discord_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def owns_item(discord_id, item_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM inventory WHERE discord_id = ? AND item_id = ?", (discord_id, item_id))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def add_to_inventory(discord_id, item_id):
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO inventory (discord_id, item_id, acquired_at) VALUES (?, ?, ?)",
+            (discord_id, item_id, int(time.time()))
+        )
+        conn.commit()
+        result = True
+    except sqlite3.IntegrityError:
+        result = False
+    conn.close()
+    return result
+
+
+def set_active_banner(discord_id, item_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET active_banner = ? WHERE discord_id = ?", (item_id, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_active_banner(discord_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT active_banner FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None

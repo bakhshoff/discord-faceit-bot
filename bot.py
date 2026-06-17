@@ -13,7 +13,9 @@ from database import (
     is_in_queue, pop_10_and_balance, get_leaderboard,
     update_team_elo, get_next_match_number,
     create_giveaway, get_due_giveaways, mark_giveaway_finished,
-    get_queue_list
+    get_queue_list, add_coins, get_coins, spend_coins,
+    get_inventory, owns_item, add_to_inventory,
+    set_active_banner, get_active_banner
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -232,6 +234,18 @@ class MatchResultView(discord.ui.View):
             await interaction.response.send_message("❌ Xəta: oyunçu məlumatları tapılmadı.", ephemeral=True)
             return
 
+        winner_coins = {}
+        for discord_id in winner_ids:
+            earned = random.randint(5, 10)
+            new_balance = add_coins(discord_id, earned)
+            winner_coins[discord_id] = (earned, new_balance)
+
+        loser_coins = {}
+        for discord_id in loser_ids:
+            earned = random.randint(0, 5)
+            new_balance = add_coins(discord_id, earned)
+            loser_coins[discord_id] = (earned, new_balance)
+
         self.finished = True
         for child in self.children:
             child.disabled = True
@@ -244,13 +258,13 @@ class MatchResultView(discord.ui.View):
         )
         embed.add_field(
             name=f"✅ {winner_label}",
-            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']})"
+            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']}) | 🪙 +{winner_coins[p['discord_id']][0]}"
                               for p, r in zip(winner_team, results["winners"])]),
             inline=False
         )
         embed.add_field(
             name=f"❌ {loser_label}",
-            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']})"
+            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']}) | 🪙 +{loser_coins[p['discord_id']][0]}"
                               for p, r in zip(loser_team, results["losers"])]),
             inline=False
         )
@@ -310,7 +324,7 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
-        discord_id, nick, so2_id, elo, wins, losses = player
+        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner = player
         added = add_to_queue(discord_id, nick, elo)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
@@ -402,7 +416,7 @@ async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    discord_id, nick, so2_id, elo, wins, losses = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner = player
 
     avatar_bytes = None
     try:
@@ -428,15 +442,20 @@ async def matchresult(interaction: discord.Interaction, qalib: discord.Member, m
 
     result = update_elo(qalib.id, məğlub.id)
 
+    winner_earned = random.randint(5, 10)
+    loser_earned = random.randint(0, 5)
+    add_coins(qalib.id, winner_earned)
+    add_coins(məğlub.id, loser_earned)
+
     embed = discord.Embed(title="🏆 Matç nəticəsi qeyd edildi", color=discord.Color.gold())
     embed.add_field(
         name=f"✅ Qalib: {qalib.display_name}",
-        value=f"{result['winner_old_elo']} → **{result['winner_new_elo']}** ELO (+{result['winner_new_elo'] - result['winner_old_elo']})",
+        value=f"{result['winner_old_elo']} → **{result['winner_new_elo']}** ELO (+{result['winner_new_elo'] - result['winner_old_elo']}) | 🪙 +{winner_earned}",
         inline=False
     )
     embed.add_field(
         name=f"❌ Məğlub: {məğlub.display_name}",
-        value=f"{result['loser_old_elo']} → **{result['loser_new_elo']}** ELO ({result['loser_new_elo'] - result['loser_old_elo']})",
+        value=f"{result['loser_old_elo']} → **{result['loser_new_elo']}** ELO ({result['loser_new_elo'] - result['loser_old_elo']}) | 🪙 +{loser_earned}",
         inline=False
     )
     await interaction.response.send_message(embed=embed)
