@@ -20,6 +20,7 @@ from web_server import run_web_server
 from profile_card import generate_profile_card
 from match_card import generate_match_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
+from rules_card import generate_rules_card, generate_register_banner
 import requests
 
 load_dotenv()
@@ -36,6 +37,10 @@ LOG_CHANNEL_ID = 1500790545172267028
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
 LOGO_PATH = "logo.jpg"
+
+GREEN_ACCENT = (95, 208, 122)
+GOLD_ACCENT = (240, 180, 41)
+RED_ACCENT = (214, 69, 61)
 
 # Matchmaking üçün açıq saatlar (Azərbaycan vaxtı, UTC+4)
 QUEUE_OPEN_HOUR = 20   # 20:00
@@ -450,64 +455,51 @@ async def matchresult_error(interaction: discord.Interaction, error):
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_rules(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="📜 Calestify FACEIT Qaydaları",
-        description="Calestify FACEIT sistemi rəqabətli Standoff 2 matçları üçündür. Qeydiyyat, ELO və profil statistikaları bot tərəfindən qeyd olunur. Qaydalara əməl etməyən oyunçular cəza ala bilər.",
-        color=discord.Color.dark_red()
-    )
-    embed.add_field(
-        name="✅ Qeydiyyat qaydası",
-        value="Oynamaq üçün əvvəlcə qeydiyyatdan keçmək lazımdır. Qeydiyyat kanalında **Qeydiyyat** düyməsinə basıb Standoff 2 ID və oyundakı adınızı yazın.",
-        inline=False
-    )
-    embed.add_field(
-        name="🔥 Sıraya qoşulmaq",
-        value="Matchmaking kanalında **5v5** düyməsinə basaraq sıraya qoşula bilərsiniz. Sıradan çıxmaq üçün **Sıradan çıx** düyməsindən istifadə edin. Eyni anda birdən çox sıraya qoşulmaq olmaz.",
-        inline=False
-    )
-    embed.add_field(
-        name="🎮 Matç tapılanda",
-        value="Bot avtomatik komandaları (ELO-ya görə balanslaşdırılmış) və kapitanları elan edir, oyunçuları uyğun səs kanallarına köçürür. Oyunçular vaxtında qoşulmalıdır.",
-        inline=False
-    )
-    embed.add_field(
-        name="📊 ELO sistemi",
-        value="Matç nəticəsi moderator tərəfindən `/matchresult` ilə qeyd olunur. ELO dəyişimi FACEIT-ə bənzər dinamik sistemlə hesablanır — ELO fərqi nə qədər böyükdürsə, dəyişim də ona uyğun azalır/artır. Qalib ELO qazanır, məğlub ELO itirir.",
-        inline=False
-    )
-    embed.add_field(
-        name="❌ Qadağandır",
-        value="Smurf hesabla oynamaq\nBaşqasının hesabı ilə oynamaq\nNəticəni dəyişdirməyə çalışmaq\nKomanda yoldaşlarını bilərəkdən sabotaj etmək\nTəhqir, toxic davranış və mübahisə yaratmaq\nModerator qərarına qarşı spam etmək\nMatç zamanı oyundan səbəbsiz çıxmaq",
-        inline=False
-    )
-    embed.add_field(
-        name="⚠️ Cəza sistemi",
-        value="Qayda pozuntusuna görə moderatorlar aşağıdakı cəzaları tətbiq edə bilər:\nELO silinməsi\nMatç nəticəsinin ləğvi\nMüvəqqəti FACEIT banı\nDaimi FACEIT banı\nServer qaydalarına görə əlavə cəza",
-        inline=False
-    )
-    embed.add_field(
-        name="🔨 Moderator qərarı",
-        value="Son qərar moderatorlara aiddir. Mübahisəli hallarda oyunçuların davranışı nəzərə alınacaq.",
-        inline=False
-    )
-    embed.add_field(
-        name="📌 Vacib qeyd",
-        value="Bu sistem serious və ədalətli oyun üçündür. Qaydaları bilməmək cəzadan azad etmir. Matçə qoşulan hər oyunçu bu qaydaları qəbul etmiş sayılır.",
-        inline=False
-    )
-    embed.set_footer(text="Calestify Gaming Community • FACEIT Rules")
+    await interaction.response.defer(ephemeral=True)
 
-    file = None
-    if os.path.exists(LOGO_PATH):
-        file = discord.File(LOGO_PATH, filename="logo.jpg")
-        embed.set_image(url="attachment://logo.jpg")
+    sections = [
+        {
+            "title": "Qeydiyyat qaydası",
+            "body": "Oynamaq üçün əvvəlcə qeydiyyatdan keçmək lazımdır. Qeydiyyat kanalında Qeydiyyat düyməsinə basıb Standoff 2 ID və oyundakı adınızı yazın.",
+            "accent": GREEN_ACCENT,
+        },
+        {
+            "title": "Sıraya qoşulmaq",
+            "body": "Matchmaking kanalında 5v5 düyməsinə basaraq sıraya qoşula bilərsiniz. Sıradan çıxmaq üçün Sıradan çıx düyməsindən istifadə edin. Eyni anda birdən çox sıraya qoşulmaq olmaz.",
+            "accent": GOLD_ACCENT,
+        },
+        {
+            "title": "Matç tapılanda",
+            "body": "Bot avtomatik komandaları (ELO-ya görə balanslaşdırılmış) və kapitanları elan edir, oyunçuları uyğun səs kanallarına köçürür. Oyunçular vaxtında qoşulmalıdır.",
+            "accent": GOLD_ACCENT,
+        },
+        {
+            "title": "ELO sistemi",
+            "body": "Matç nəticəsi moderator tərəfindən /matchresult ilə qeyd olunur. ELO dəyişimi FACEIT-ə bənzər dinamik sistemlə hesablanır — ELO fərqi nə qədər böyükdürsə, dəyişim də ona uyğun azalır/artır. Qalib ELO qazanır, məğlub ELO itirir.",
+            "accent": GOLD_ACCENT,
+        },
+        {
+            "title": "Qadağandır",
+            "body": "Smurf hesabla oynamaq\nBaşqasının hesabı ilə oynamaq\nNəticəni dəyişdirməyə çalışmaq\nKomanda yoldaşlarını bilərəkdən sabotaj etmək\nTəhqir, toxic davranış və mübahisə yaratmaq\nModerator qərarına qarşı spam etmək\nMatç zamanı oyundan səbəbsiz çıxmaq",
+            "accent": RED_ACCENT,
+        },
+        {
+            "title": "Cəza sistemi",
+            "body": "Qayda pozuntusuna görə moderatorlar aşağıdakı cəzaları tətbiq edə bilər:\nELO silinməsi\nMatç nəticəsinin ləğvi\nMüvəqqəti FACEIT banı\nDaimi FACEIT banı\nServer qaydalarına görə əlavə cəza",
+            "accent": RED_ACCENT,
+        },
+        {
+            "title": "Moderator qərarı və vacib qeyd",
+            "body": "Son qərar moderatorlara aiddir. Mübahisəli hallarda oyunçuların davranışı nəzərə alınacaq. Bu sistem ədalətli oyun üçündür — qaydaları bilməmək cəzadan azad etmir. Matçə qoşulan hər oyunçu bu qaydaları qəbul etmiş sayılır.",
+            "accent": GOLD_ACCENT,
+        },
+    ]
 
-    if file:
-        await interaction.channel.send(embed=embed, file=file)
-    else:
-        await interaction.channel.send(embed=embed)
+    card_path = os.path.join(DATA_DIR or ".", "rules_card.png")
+    await asyncio.to_thread(generate_rules_card, sections, card_path)
 
-    await interaction.response.send_message("✅ Qaydalar mesajı yaradıldı.", ephemeral=True)
+    await interaction.channel.send(file=discord.File(card_path, filename="rules_card.png"))
+    await interaction.followup.send("✅ Qaydalar mesajı yaradıldı.", ephemeral=True)
 
 
 @setup_rules.error
@@ -547,30 +539,15 @@ async def setup_leaderboard_error(interaction: discord.Interaction, error):
 @bot.tree.command(name="setup_register", description="[Admin] Qeydiyyat mesajını bu kanalda yaradır")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_register(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="✅ FACEIT Qeydiyyat",
-        description="FACEIT sistemində oynamaq üçün əvvəlcə qeydiyyatdan keçməlisən.\n\nAşağıdakı **Qeydiyyat** düyməsinə bas və məlumatlarını yaz:\n\n🆔 **Standoff 2 ID**\n🪪 **Faceit adı / oyundakı ad**\n\nQeydiyyatdan sonra `#🎮│faceit-matchmaking` kanalında 5v5 sırasına qoşula bilərsən.",
-        color=discord.Color.dark_red()
-    )
-    embed.add_field(
-        name="📌 Vacib",
-        value="Yazdığın ad screenshot-dakı oyun adı ilə eyni olmalıdır.",
-        inline=False
-    )
-    embed.set_footer(text="Calestify FACEIT Matchmaking")
+    await interaction.response.defer(ephemeral=True)
 
-    file = None
-    if os.path.exists(LOGO_PATH):
-        file = discord.File(LOGO_PATH, filename="logo.jpg")
-        embed.set_image(url="attachment://logo.jpg")
+    banner_path = os.path.join(DATA_DIR or ".", "register_banner.png")
+    await asyncio.to_thread(generate_register_banner, LOGO_PATH, banner_path)
 
     view = RegisterView()
-    if file:
-        await interaction.channel.send(embed=embed, view=view, file=file)
-    else:
-        await interaction.channel.send(embed=embed, view=view)
+    await interaction.channel.send(file=discord.File(banner_path, filename="register_banner.png"), view=view)
 
-    await interaction.response.send_message("✅ Qeydiyyat mesajı yaradıldı.", ephemeral=True)
+    await interaction.followup.send("✅ Qeydiyyat mesajı yaradıldı.", ephemeral=True)
 
 
 @setup_register.error
