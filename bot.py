@@ -18,6 +18,7 @@ from database import (
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
 from profile_card import generate_profile_card
+from match_card import generate_match_card
 import requests
 
 load_dotenv()
@@ -156,6 +157,54 @@ class RegisterView(discord.ui.View):
         await interaction.response.send_modal(RegisterModal())
 
 
+class TeamReadyView(discord.ui.View):
+    def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
+        super().__init__(timeout=None)
+        self.match_number = match_number
+        self.team_a = team_a
+        self.team_b = team_b
+        self.captain_a_id = captain_a_id
+        self.captain_b_id = captain_b_id
+        self.team_a_ready = False
+        self.team_b_ready = False
+
+    async def _set_ready(self, interaction: discord.Interaction, is_team_a: bool, button: discord.ui.Button):
+        expected_captain_id = self.captain_a_id if is_team_a else self.captain_b_id
+        if interaction.user.id != expected_captain_id:
+            await interaction.response.send_message("❌ Bu düyməni yalnız öz komandanızın kapitanı basa bilər.", ephemeral=True)
+            return
+
+        if is_team_a:
+            self.team_a_ready = True
+            button.disabled = True
+            button.label = "Komanda A Hazırdır ✅"
+        else:
+            self.team_b_ready = True
+            button.disabled = True
+            button.label = "Komanda B Hazırdır ✅"
+
+        await interaction.response.edit_message(view=self)
+
+        if self.team_a_ready and self.team_b_ready:
+            log_embed = discord.Embed(
+                title=f"✅ Matç No{self.match_number} — Hər iki komanda hazır",
+                description="Admin/moderator nəticəni aşağıdaki düymələrlə qeyd etməlidir.",
+                color=discord.Color.blurple()
+            )
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                result_view = MatchResultView(self.match_number, self.team_a, self.team_b)
+                await log_channel.send(embed=log_embed, view=result_view)
+
+    @discord.ui.button(label="Komanda A Hazır", style=discord.ButtonStyle.primary, custom_id="ready_a")
+    async def team_a_ready_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._set_ready(interaction, True, button)
+
+    @discord.ui.button(label="Komanda B Hazır", style=discord.ButtonStyle.danger, custom_id="ready_b")
+    async def team_b_ready_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._set_ready(interaction, False, button)
+
+
 class MatchResultView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b):
         super().__init__(timeout=None)
@@ -285,21 +334,21 @@ class MatchmakingView(discord.ui.View):
                 return
             team_a, team_b, captain_a, captain_b = result
             selected_map = random.choice(MAPS)
+            match_number = get_next_match_number()
 
-            embed = discord.Embed(title="🎮 Matç tapıldı! 5v5", color=discord.Color.purple())
-            embed.add_field(name="🗺️ Xəritə", value=f"**{selected_map}**", inline=False)
-            embed.add_field(
-                name="🔵 Komanda A",
-                value="\n".join([f"{'👑 ' if p['discord_id']==captain_a['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_a]),
-                inline=True
+            card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
+            await asyncio.to_thread(
+                generate_match_card, match_number, selected_map, team_a, team_b,
+                captain_a["discord_id"], captain_b["discord_id"], card_path
             )
-            embed.add_field(
-                name="🔴 Komanda B",
-                value="\n".join([f"{'👑 ' if p['discord_id']==captain_b['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_b]),
-                inline=True
-            )
+
             mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
-            await interaction.channel.send(content=mentions, embed=embed)
+            ready_view = TeamReadyView(match_number, team_a, team_b, captain_a["discord_id"], captain_b["discord_id"])
+            await interaction.channel.send(
+                content=mentions,
+                file=discord.File(card_path, filename="match.png"),
+                view=ready_view
+            )
 
             team_a_channel = bot.get_channel(TEAM_A_VOICE_ID)
             team_b_channel = bot.get_channel(TEAM_B_VOICE_ID)
@@ -319,30 +368,6 @@ class MatchmakingView(discord.ui.View):
                         await member.move_to(team_b_channel)
                     except discord.Forbidden:
                         pass
-
-            match_number = get_next_match_number()
-            now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
-            log_embed = discord.Embed(
-                title=f"📋 Matç No{match_number}",
-                description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)\n🗺️ Xəritə: **{selected_map}**",
-                color=discord.Color.blurple()
-            )
-            log_embed.add_field(
-                name="🔵 Komanda A",
-                value="\n".join([f"{'👑 ' if p['discord_id']==captain_a['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_a]),
-                inline=True
-            )
-            log_embed.add_field(
-                name="🔴 Komanda B",
-                value="\n".join([f"{'👑 ' if p['discord_id']==captain_b['discord_id'] else ''}{p['nick']} (ELO: {p['elo']})" for p in team_b]),
-                inline=True
-            )
-            log_embed.set_footer(text="Admin/moderator nəticəni aşağıdaki düymələrlə qeyd etməlidir.")
-
-            log_channel = bot.get_channel(LOG_CHANNEL_ID)
-            if log_channel:
-                result_view = MatchResultView(match_number, team_a, team_b)
-                await log_channel.send(embed=log_embed, view=result_view)
 
             await update_queue_status_message()
 
