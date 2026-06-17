@@ -19,19 +19,17 @@ LINE_COLOR = (60, 60, 70)
 # DejaVu Sans Azərbaycan hərflərini (ə, ç, ş, ğ, ı) düzgün göstərir,
 # Arial isə bunları dəstəkləməyə bilər — ona görə DejaVu prioritetlidir
 FONT_CANDIDATES_REGULAR = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "C:/Windows/Fonts/DejaVuSans.ttf",
-    "DejaVuSans.ttf",
     "arial.ttf",
-    "Arial.ttf",
     "C:/Windows/Fonts/arial.ttf",
 ]
 FONT_CANDIDATES_BOLD = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans-Bold.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "C:/Windows/Fonts/DejaVuSans-Bold.ttf",
-    "DejaVuSans-Bold.ttf",
     "arialbd.ttf",
-    "Arial Bold.ttf",
     "C:/Windows/Fonts/arialbd.ttf",
 ]
 
