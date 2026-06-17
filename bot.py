@@ -53,12 +53,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 def is_queue_open():
-    return True  # TEST: 7/24 açıq. Testdən sonra bu sətri silin.
-    az_time = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
-    hour = az_time.hour
-    if QUEUE_OPEN_HOUR > QUEUE_CLOSE_HOUR:
-        return hour >= QUEUE_OPEN_HOUR or hour < QUEUE_CLOSE_HOUR
-    return QUEUE_OPEN_HOUR <= hour < QUEUE_CLOSE_HOUR
+    return True
 
 
 leaderboard_channel_id = None

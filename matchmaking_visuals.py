@@ -74,7 +74,7 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
     draw.text((58, info_y), "Format: 5v5  ·  10 oyunçu lazımdır", font=value_font, fill=WHITE)
 
     draw.ellipse([(36, info_y + 34), (46, info_y + 44)], fill=GOLD)
-    draw.text((58, info_y + 30), f"İş saatı: {open_hour}:00 - 0{close_hour}:00 (AZ vaxtı)", font=value_font, fill=WHITE)
+    draw.text((58, info_y + 30), "7/24 açıq  ·  istənilən vaxt qoşula bilərsən", font=value_font, fill=WHITE)
 
     draw.ellipse([(36, info_y + 64), (46, info_y + 74)], fill=GOLD)
     draw.text((58, info_y + 60), "ELO-ya görə avtomatik balanslaşdırma və xəritə seçimi", font=value_font, fill=WHITE)
