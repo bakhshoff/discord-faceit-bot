@@ -19,6 +19,7 @@ from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
 from profile_card import generate_profile_card
 from match_card import generate_match_card
+from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 import requests
 
 load_dotenv()
@@ -267,20 +268,7 @@ class MatchResultView(discord.ui.View):
         await self._finish(interaction, self.team_b, self.team_a, "Komanda B", "Komanda A")
 
 
-def build_queue_status_embed():
-    players = get_queue_list()
-    size = len(players)
-    embed = discord.Embed(
-        title=f"📋 Sırada: {size}/10",
-        color=discord.Color.teal()
-    )
-    if size == 0:
-        embed.description = "Hələ heç kim sırada deyil."
-    else:
-        lines = [f"{i+1}. {p['nick']} (ELO: {p['elo']})" for i, p in enumerate(players)]
-        embed.description = "\n".join(lines)
-    embed.set_footer(text="Bu mesaj real vaxtda yenilənir.")
-    return embed
+QUEUE_STATUS_IMAGE_PATH = "queue_status.png"
 
 
 async def update_queue_status_message():
@@ -290,9 +278,12 @@ async def update_queue_status_message():
     channel = bot.get_channel(queue_status_channel_id)
     if channel is None:
         return
+    players = get_queue_list()
+    image_path = os.path.join(DATA_DIR or ".", QUEUE_STATUS_IMAGE_PATH)
+    await asyncio.to_thread(generate_queue_status_card, players, image_path)
     try:
         message = await channel.fetch_message(queue_status_message_id)
-        await message.edit(embed=build_queue_status_embed())
+        await message.edit(attachments=[discord.File(image_path, filename="queue_status.png")])
     except discord.NotFound:
         pass
 
@@ -591,45 +582,22 @@ async def setup_register_error(interaction: discord.Interaction, error):
 @bot.tree.command(name="setup", description="[Admin] Matchmaking mesajını bu kanalda yaradır")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🎮 FACEIT Matchmaking",
-        description="Aşağıdakı butonlardan istifadə et.\n\n🔥 **5v5** — 10 oyunçu lazımdır\n\nSay tamamlananda bot avtomatik komandaları yaradacaq, ELO-ya görə balanslaşdıracaq və matç elanını göndərəcək.",
-        color=discord.Color.dark_red()
-    )
-    embed.add_field(
-        name="✅ Qeydiyyat",
-        value="Qeydiyyatdan keçmək üçün `#faceit-qeydiyyat` kanalına keç.",
-        inline=False
-    )
-    embed.add_field(
-        name="🌙 İş saatı",
-        value=f"Matchmaking yalnız gecə işləyir.\n🇦🇿 Azərbaycan vaxtı: **{QUEUE_OPEN_HOUR}:00 - 0{QUEUE_CLOSE_HOUR}:00**",
-        inline=False
-    )
-    embed.add_field(
-        name="📌 Qeyd",
-        value="Oynamaq üçün uyğun butona bas. Sıradan çıxmaq üçün **Sıradan çıx** butonundan istifadə et.",
-        inline=False
-    )
-    embed.set_footer(text="Calestify FACEIT Matchmaking")
+    await interaction.response.defer(ephemeral=True)
 
-    file = None
-    if os.path.exists(LOGO_PATH):
-        file = discord.File(LOGO_PATH, filename="logo.jpg")
-        embed.set_image(url="attachment://logo.jpg")
+    banner_path = os.path.join(DATA_DIR or ".", "matchmaking_banner.png")
+    await asyncio.to_thread(generate_matchmaking_banner, QUEUE_OPEN_HOUR, QUEUE_CLOSE_HOUR, LOGO_PATH, banner_path)
 
     view = MatchmakingView()
-    if file:
-        await interaction.channel.send(embed=embed, view=view, file=file)
-    else:
-        await interaction.channel.send(embed=embed, view=view)
+    await interaction.channel.send(file=discord.File(banner_path, filename="matchmaking_banner.png"), view=view)
 
     global queue_status_channel_id, queue_status_message_id
-    status_message = await interaction.channel.send(embed=build_queue_status_embed())
+    status_image_path = os.path.join(DATA_DIR or ".", QUEUE_STATUS_IMAGE_PATH)
+    await asyncio.to_thread(generate_queue_status_card, [], status_image_path)
+    status_message = await interaction.channel.send(file=discord.File(status_image_path, filename="queue_status.png"))
     queue_status_channel_id = interaction.channel.id
     queue_status_message_id = status_message.id
 
-    await interaction.response.send_message("✅ Matchmaking mesajı yaradıldı.", ephemeral=True)
+    await interaction.followup.send("✅ Matchmaking mesajı yaradıldı.", ephemeral=True)
 
 
 @setup.error
