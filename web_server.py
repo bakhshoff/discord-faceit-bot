@@ -34,6 +34,19 @@ def get_players():
     return players
 
 
+def get_total_matches():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(*) FROM match_history")
+        row = cursor.fetchone()
+        result = row[0] if row else 0
+    except sqlite3.OperationalError:
+        result = 0
+    conn.close()
+    return result
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -41,7 +54,10 @@ def index():
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
-    return jsonify(get_players())
+    return jsonify({
+        "players": get_players(),
+        "total_matches": get_total_matches()
+    })
 
 
 def run_web_server():

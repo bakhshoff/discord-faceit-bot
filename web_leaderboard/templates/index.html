@@ -1,418 +1,387 @@
 <!DOCTYPE html>
 <html lang="az">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calestify FACEIT Leaderboard</title>
-    <style>
-        :root {
-            --bg: #0b0a0d;
-            --bg-panel: #131116;
-            --bg-row-alt: #17141a;
-            --border: #2a2630;
-            --gold: #f0b429;
-            --gold-soft: #f0b42933;
-            --red: #d6453d;
-            --text: #f4f1ea;
-            --text-dim: #8d8794;
-            --green: #5fd07a;
-            --font-display: 'Bebas Neue', 'Oswald', Impact, sans-serif;
-            --font-body: 'Inter', -apple-system, sans-serif;
-            --font-mono: 'JetBrains Mono', 'Consolas', monospace;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calestify FACEIT Leaderboard</title>
+<style>
+  :root {
+    --bg: #0b0a0d;
+    --bg-panel: #131116;
+    --bg-row-alt: #17141a;
+    --border: #2a2630;
+    --gold: #f0b429;
+    --gold-soft: #f0b42933;
+    --red: #d6453d;
+    --text: #f4f1ea;
+    --text-dim: #8d8794;
+    --green: #5fd07a;
+    --font-display: 'Bebas Neue', 'Oswald', Impact, sans-serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        body {
-            background: var(--bg);
-            background-image:
-                radial-gradient(ellipse 80% 50% at 50% -10%, var(--gold-soft), transparent),
-                repeating-linear-gradient(0deg, transparent, transparent 39px, #ffffff05 39px, #ffffff05 40px);
-            color: var(--text);
-            font-family: var(--font-body);
-            min-height: 100vh;
-            padding: 0 0 80px;
-        }
+  body {
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, var(--gold-soft), transparent),
+      repeating-linear-gradient(0deg, transparent, transparent 39px, #ffffff05 39px, #ffffff05 40px);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
 
-        @font-face {
-            font-family: 'Bebas Neue';
-            src: local('Bebas Neue');
-        }
+  @font-face {
+    font-family: 'Bebas Neue';
+    src: local('Bebas Neue');
+  }
 
-        header {
-            padding: 56px 24px 32px;
-            text-align: center;
-            border-bottom: 1px solid var(--border);
-            position: relative;
-            overflow: hidden;
-        }
+  header {
+    padding: 56px 24px 32px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
 
-        header::before {
-            content: "";
-            position: absolute;
-            top: -50%;
-            left: 50%;
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, var(--gold-soft), transparent 70%);
-            transform: translateX(-50%);
-            pointer-events: none;
-        }
+  header::before {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: 50%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, var(--gold-soft), transparent 70%);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
 
-        .eyebrow {
-            font-family: var(--font-mono);
-            font-size: 12px;
-            letter-spacing: 4px;
-            color: var(--gold);
-            text-transform: uppercase;
-            margin-bottom: 12px;
-        }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 4px;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
 
-        h1 {
-            font-family: var(--font-display);
-            font-weight: 700;
-            font-size: clamp(40px, 8vw, 72px);
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            line-height: 1;
-            background: linear-gradient(180deg, #fff 0%, var(--gold) 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-        }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(40px, 8vw, 72px);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    line-height: 1;
+    background: linear-gradient(180deg, #fff 0%, var(--gold) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 
-        .subtitle {
-            margin-top: 12px;
-            color: var(--text-dim);
-            font-size: 15px;
-        }
+  .subtitle {
+    margin-top: 12px;
+    color: var(--text-dim);
+    font-size: 15px;
+  }
 
-        .container {
-            max-width: 980px;
-            margin: 0 auto;
-            padding: 40px 20px 0;
-        }
+  .container {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 40px 20px 0;
+  }
 
-        .controls {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
 
-        .search-box {
-            flex: 1;
-            min-width: 200px;
-            position: relative;
-        }
+  .search-box {
+    flex: 1;
+    min-width: 200px;
+    position: relative;
+  }
 
-        .search-box input {
-            width: 100%;
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px 16px 12px 40px;
-            color: var(--text);
-            font-family: var(--font-body);
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
+  .search-box input {
+    width: 100%;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px 12px 40px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
 
-        .search-box input:focus {
-            border-color: var(--gold);
-        }
+  .search-box input:focus {
+    border-color: var(--gold);
+  }
 
-        .search-box::before {
-            content: "⌕";
-            position: absolute;
-            left: 14px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-dim);
-            font-size: 16px;
-        }
+  .search-box::before {
+    content: "⌕";
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-dim);
+    font-size: 16px;
+  }
 
-        .sort-select {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px 16px;
-            color: var(--text);
-            font-family: var(--font-body);
-            font-size: 14px;
-            cursor: pointer;
-            outline: none;
-        }
+  .sort-select {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    cursor: pointer;
+    outline: none;
+  }
 
-        .stats-bar {
-            display: flex;
-            gap: 16px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
-        }
+  .stats-bar {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
 
-        .stat-chip {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 12px 18px;
-            flex: 1;
-            min-width: 120px;
-        }
+  .stat-chip {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    flex: 1;
+    min-width: 120px;
+  }
 
-        .stat-chip .label {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
+  .stat-chip .label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
 
-        .stat-chip .value {
-            font-family: var(--font-display);
-            font-size: 26px;
-            color: var(--gold);
-            margin-top: 2px;
-        }
+  .stat-chip .value {
+    font-family: var(--font-display);
+    font-size: 26px;
+    color: var(--gold);
+    margin-top: 2px;
+  }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            background: var(--bg-panel);
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-panel);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
 
-        thead th {
-            text-align: left;
-            padding: 14px 16px;
-            font-family: var(--font-mono);
-            font-size: 11px;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            color: var(--gold);
-            border-bottom: 1px solid var(--border);
-            cursor: pointer;
-            user-select: none;
-            white-space: nowrap;
-        }
+  thead th {
+    text-align: left;
+    padding: 14px 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--gold);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
 
-        thead th:hover {
-            color: #fff;
-        }
+  thead th:hover { color: #fff; }
 
-        thead th.sorted::after {
-            content: " ▾";
-            color: var(--gold);
-        }
+  thead th.sorted::after {
+    content: " ▾";
+    color: var(--gold);
+  }
 
-        tbody tr {
-            border-bottom: 1px solid var(--border);
-            transition: background 0.15s;
-        }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
 
-        tbody tr:last-child {
-            border-bottom: none;
-        }
+  tbody tr:last-child { border-bottom: none; }
 
-        tbody tr:nth-child(even) {
-            background: var(--bg-row-alt);
-        }
+  tbody tr:nth-child(even) { background: var(--bg-row-alt); }
 
-        tbody tr:hover {
-            background: var(--gold-soft);
-        }
+  tbody tr:hover { background: var(--gold-soft); }
 
-        td {
-            padding: 14px 16px;
-            font-size: 14px;
-            white-space: nowrap;
-        }
+  td {
+    padding: 14px 16px;
+    font-size: 14px;
+    white-space: nowrap;
+  }
 
-        .rank-cell {
-            font-family: var(--font-mono);
-            color: var(--text-dim);
-            font-weight: 600;
-        }
+  .rank-cell {
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    font-weight: 600;
+  }
 
-        .rank-1 .rank-cell {
-            color: var(--gold);
-        }
+  .rank-1 .rank-cell { color: var(--gold); }
+  .rank-2 .rank-cell { color: #c8c8c8; }
+  .rank-3 .rank-cell { color: #cd7f32; }
 
-        .rank-2 .rank-cell {
-            color: #c8c8c8;
-        }
+  .player-cell {
+    font-weight: 600;
+    color: var(--text);
+  }
 
-        .rank-3 .rank-cell {
-            color: #cd7f32;
-        }
+  .id-cell {
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    font-size: 13px;
+  }
 
-        .player-cell {
-            font-weight: 600;
-            color: var(--text);
-        }
+  .elo-cell {
+    font-family: var(--font-mono);
+    color: var(--green);
+    font-weight: 700;
+    font-size: 15px;
+  }
 
-        .id-cell {
-            font-family: var(--font-mono);
-            color: var(--text-dim);
-            font-size: 13px;
-        }
+  .wr-cell {
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+  }
 
-        .elo-cell {
-            font-family: var(--font-mono);
-            color: var(--green);
-            font-weight: 700;
-            font-size: 15px;
-        }
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
 
-        .wr-cell {
-            font-family: var(--font-mono);
-            color: var(--text-dim);
-        }
+  footer {
+    text-align: center;
+    margin-top: 40px;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-family: var(--font-mono);
+  }
 
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-dim);
-        }
+  .refresh-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
 
-        footer {
-            text-align: center;
-            margin-top: 40px;
-            color: var(--text-dim);
-            font-size: 12px;
-            font-family: var(--font-mono);
-        }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
 
-        .refresh-dot {
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--green);
-            margin-right: 6px;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.3;
-            }
-        }
-
-        @media (max-width: 600px) {
-            .id-cell {
-                display: none;
-            }
-
-            h1 {
-                font-size: 36px;
-            }
-        }
-    </style>
+  @media (max-width: 600px) {
+    .id-cell { display: none; }
+    h1 { font-size: 36px; }
+  }
+</style>
 </head>
-
 <body>
 
-    <header>
-        <div class="eyebrow">Standoff 2 · Competitive</div>
-        <h1>Calestify Leaderboard</h1>
-        <p class="subtitle">FACEIT-style reytinq sistemi — ELO-ya görə canlı sıralama</p>
-    </header>
+<header>
+  <div class="eyebrow">Standoff 2 · Competitive</div>
+  <h1>Calestify Leaderboard</h1>
+  <p class="subtitle">FACEIT-style reytinq sistemi — ELO-ya görə canlı sıralama</p>
+</header>
 
-    <div class="container">
+<div class="container">
 
-        <div class="stats-bar" id="statsBar"></div>
+  <div class="stats-bar" id="statsBar"></div>
 
-        <div class="controls">
-            <div class="search-box">
-                <input type="text" id="searchInput" placeholder="Oyunçu adı və ya ID ilə axtar...">
-            </div>
-            <select class="sort-select" id="sortSelect">
-                <option value="elo">ELO-ya görə</option>
-                <option value="wins">Qalibə görə</option>
-                <option value="win_rate">Win Rate-ə görə</option>
-                <option value="matches">Matç sayına görə</option>
-            </select>
-        </div>
-
-        <table id="leaderboardTable">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Player</th>
-                    <th>SO2 ID</th>
-                    <th>ELO</th>
-                    <th>M</th>
-                    <th>W</th>
-                    <th>L</th>
-                    <th>WR%</th>
-                </tr>
-            </thead>
-            <tbody id="tableBody"></tbody>
-        </table>
-
-        <div id="emptyState" class="empty-state" style="display:none;">
-            Hələ qeydiyyatdan keçən oyunçu yoxdur.
-        </div>
-
-        <footer>
-            <span class="refresh-dot"></span>Avtomatik yenilənir — 30 saniyədə bir &middot; Calestify Gaming Community
-        </footer>
+  <div class="controls">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Oyunçu adı və ya ID ilə axtar...">
     </div>
+    <select class="sort-select" id="sortSelect">
+      <option value="elo">ELO-ya görə</option>
+      <option value="wins">Qalibə görə</option>
+      <option value="win_rate">Win Rate-ə görə</option>
+      <option value="matches">Matç sayına görə</option>
+    </select>
+  </div>
 
-    <script>
-        let allPlayers = [];
-        let currentSort = 'elo';
-        let currentSearch = '';
+  <table id="leaderboardTable">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Player</th>
+        <th>SO2 ID</th>
+        <th>ELO</th>
+        <th>M</th>
+        <th>W</th>
+        <th>L</th>
+        <th>WR%</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
 
-        async function fetchData() {
-            try {
-                const res = await fetch('/api/leaderboard');
-                allPlayers = await res.json();
-                render();
-            } catch (e) {
-                console.error('Leaderboard fetch failed', e);
-            }
-        }
+  <div id="emptyState" class="empty-state" style="display:none;">
+    Hələ qeydiyyatdan keçən oyunçu yoxdur.
+  </div>
 
-        function render() {
-            let filtered = allPlayers.filter(p =>
-                p.nick.toLowerCase().includes(currentSearch.toLowerCase()) ||
-                String(p.so2_id).includes(currentSearch)
-            );
+  <footer>
+    <span class="refresh-dot"></span>Avtomatik yenilənir — 30 saniyədə bir &middot; Calestify Gaming Community
+  </footer>
+</div>
 
-            filtered.sort((a, b) => b[currentSort] - a[currentSort]);
+<script>
+let allPlayers = [];
+let totalMatchesFromServer = 0;
+let currentSort = 'elo';
+let currentSearch = '';
 
-            const tbody = document.getElementById('tableBody');
-            const emptyState = document.getElementById('emptyState');
-            const table = document.getElementById('leaderboardTable');
+async function fetchData() {
+  try {
+    const res = await fetch('/api/leaderboard');
+    const data = await res.json();
+    allPlayers = data.players;
+    totalMatchesFromServer = data.total_matches;
+    render();
+  } catch (e) {
+    console.error('Leaderboard fetch failed', e);
+  }
+}
 
-            if (filtered.length === 0) {
-                table.style.display = 'none';
-                emptyState.style.display = 'block';
-                return;
-            }
-            table.style.display = 'table';
-            emptyState.style.display = 'none';
+function render() {
+  let filtered = allPlayers.filter(p =>
+    p.nick.toLowerCase().includes(currentSearch.toLowerCase()) ||
+    String(p.so2_id).includes(currentSearch)
+  );
 
-            tbody.innerHTML = filtered.map((p, idx) => {
-                const rank = idx + 1;
-                const rankClass = rank <= 3 ? `rank-${rank}` : '';
-                return `
+  filtered.sort((a, b) => b[currentSort] - a[currentSort]);
+
+  const tbody = document.getElementById('tableBody');
+  const emptyState = document.getElementById('emptyState');
+  const table = document.getElementById('leaderboardTable');
+
+  if (filtered.length === 0) {
+    table.style.display = 'none';
+    emptyState.style.display = 'block';
+    return;
+  }
+  table.style.display = 'table';
+  emptyState.style.display = 'none';
+
+  tbody.innerHTML = filtered.map((p, idx) => {
+    const rank = idx + 1;
+    const rankClass = rank <= 3 ? `rank-${rank}` : '';
+    return `
       <tr class="${rankClass}">
         <td class="rank-cell">#${rank}</td>
         <td class="player-cell">${escapeHtml(p.nick)}</td>
@@ -424,45 +393,44 @@
         <td class="wr-cell">${p.win_rate}%</td>
       </tr>
     `;
-            }).join('');
+  }).join('');
 
-            renderStats(filtered);
-        }
+  renderStats(filtered);
+}
 
-        function renderStats(players) {
-            const totalPlayers = allPlayers.length;
-            const totalMatches = allPlayers.reduce((sum, p) => sum + p.matches, 0) / 2;
-            const topElo = allPlayers.length ? Math.max(...allPlayers.map(p => p.elo)) : 0;
-            const avgElo = allPlayers.length ? Math.round(allPlayers.reduce((s, p) => s + p.elo, 0) / allPlayers.length) : 0;
+function renderStats(players) {
+  const totalPlayers = allPlayers.length;
+  const totalMatches = totalMatchesFromServer;
+  const topElo = allPlayers.length ? Math.max(...allPlayers.map(p => p.elo)) : 0;
+  const avgElo = allPlayers.length ? Math.round(allPlayers.reduce((s, p) => s + p.elo, 0) / allPlayers.length) : 0;
 
-            document.getElementById('statsBar').innerHTML = `
+  document.getElementById('statsBar').innerHTML = `
     <div class="stat-chip"><div class="label">Oyunçular</div><div class="value">${totalPlayers}</div></div>
     <div class="stat-chip"><div class="label">Matçlar</div><div class="value">${Math.round(totalMatches)}</div></div>
     <div class="stat-chip"><div class="label">Ən Yüksək ELO</div><div class="value">${topElo}</div></div>
     <div class="stat-chip"><div class="label">Orta ELO</div><div class="value">${avgElo}</div></div>
   `;
-        }
+}
 
-        function escapeHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            currentSearch = e.target.value;
-            render();
-        });
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  currentSearch = e.target.value;
+  render();
+});
 
-        document.getElementById('sortSelect').addEventListener('change', (e) => {
-            currentSort = e.target.value;
-            render();
-        });
+document.getElementById('sortSelect').addEventListener('change', (e) => {
+  currentSort = e.target.value;
+  render();
+});
 
-        fetchData();
-        setInterval(fetchData, 30000);
-    </script>
+fetchData();
+setInterval(fetchData, 30000);
+</script>
 
 </body>
-
 </html>

@@ -15,7 +15,9 @@ from database import (
     create_giveaway, get_due_giveaways, mark_giveaway_finished,
     get_queue_list, add_coins, get_coins, spend_coins,
     get_inventory, owns_item, add_to_inventory,
-    set_active_banner, get_active_banner
+    set_active_banner, get_active_banner,
+    record_match_history, get_player_match_history, get_total_match_count,
+    admin_set_player_field
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -355,8 +357,30 @@ class ProfileView(discord.ui.View):
 
         await interaction.response.send_message(embed=embed, view=InventoryActivateView(self.discord_id), ephemeral=True)
 
+    @discord.ui.button(label="Matç Tarixçəsi", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="profile_history")
+    async def open_history(self, interaction: discord.Interaction, button: discord.ui.Button):
+        history = get_player_match_history(self.discord_id, limit=10)
+        if not history:
+            await interaction.response.send_message("📜 Hələ heç bir matçınız yoxdur.", ephemeral=True)
+            return
 
-class TeamReadyView(discord.ui.View):
+        lines = []
+        for h in history:
+            result_icon = "✅" if h["won"] else "❌"
+            change = h["elo_change"]
+            change_str = f"+{change}" if change >= 0 else str(change)
+            type_label = "5v5" if h["match_type"] == "5v5" else "1v1"
+            match_no = f" (No{h['match_number']})" if h["match_number"] else ""
+            played_dt = datetime.datetime.utcfromtimestamp(h["played_at"]) + datetime.timedelta(hours=4)
+            date_str = played_dt.strftime("%d.%m.%Y")
+            lines.append(f"{result_icon} **{type_label}**{match_no} — {h['elo_before']} → {h['elo_after']} ({change_str})  ·  {date_str}")
+
+        embed = discord.Embed(
+            title="📜 Son Matçlar",
+            description="\n".join(lines),
+            color=discord.Color.blurple()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
         super().__init__(timeout=None)
         self.match_number = match_number
@@ -442,6 +466,17 @@ class MatchResultView(discord.ui.View):
             loser_coins[discord_id] = (earned, new_balance)
 
         await asyncio.to_thread(backup.export_backup)
+
+        await asyncio.to_thread(
+            record_match_history,
+            "5v5",
+            winner_ids, loser_ids,
+            [r["old_elo"] for r in results["winners"]],
+            [r["new_elo"] for r in results["winners"]],
+            [r["old_elo"] for r in results["losers"]],
+            [r["new_elo"] for r in results["losers"]],
+            self.match_number
+        )
 
         self.finished = True
         for child in self.children:
@@ -655,6 +690,14 @@ async def matchresult(interaction: discord.Interaction, qalib: discord.Member, m
     add_coins(qalib.id, winner_earned)
     add_coins(məğlub.id, loser_earned)
     await asyncio.to_thread(backup.export_backup)
+
+    await asyncio.to_thread(
+        record_match_history,
+        "1v1",
+        [qalib.id], [məğlub.id],
+        [result["winner_old_elo"]], [result["winner_new_elo"]],
+        [result["loser_old_elo"]], [result["loser_new_elo"]]
+    )
 
     embed = discord.Embed(title="🏆 Matç nəticəsi qeyd edildi", color=discord.Color.gold())
     embed.add_field(
@@ -913,6 +956,119 @@ async def backup_indi(interaction: discord.Interaction):
 
 @backup_indi.error
 async def backup_indi_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+class AdminEditModal(discord.ui.Modal):
+    def __init__(self, discord_id, field, current_value, title_text):
+        super().__init__(title=title_text)
+        self.discord_id = discord_id
+        self.field = field
+        self.value_input = discord.ui.TextInput(
+            label="Yeni dəyər",
+            default=str(current_value),
+            required=True,
+            max_length=50
+        )
+        self.add_item(self.value_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        raw_value = str(self.value_input.value).strip()
+
+        if self.field in ("elo", "coins", "wins", "losses"):
+            try:
+                value = int(raw_value)
+            except ValueError:
+                await interaction.response.send_message("❌ Bu sahə üçün rəqəm daxil edin.", ephemeral=True)
+                return
+            if value < 0:
+                await interaction.response.send_message("❌ Mənfi dəyər ola bilməz.", ephemeral=True)
+                return
+        else:
+            value = raw_value
+
+        success = admin_set_player_field(self.discord_id, self.field, value)
+        if not success:
+            await interaction.response.send_message("❌ Xəta baş verdi.", ephemeral=True)
+            return
+
+        await asyncio.to_thread(backup.export_backup)
+
+        player = get_player(self.discord_id)
+        await interaction.response.send_message(
+            f"✅ Yeniləndi.\n**Yeni məlumatlar:** Nick: {player[1]} | ID: {player[2]} | ELO: {player[3]} | Wins: {player[4]} | Losses: {player[5]} | Coins: {player[6]}",
+            ephemeral=True
+        )
+
+
+class AdminPanelView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="Nick dəyiş", style=discord.ButtonStyle.secondary, row=0)
+    async def edit_nick(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "so2_nick", player[1], "Nick dəyiş"))
+
+    @discord.ui.button(label="Standoff 2 ID dəyiş", style=discord.ButtonStyle.secondary, row=0)
+    async def edit_so2_id(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "so2_id", player[2], "Standoff 2 ID dəyiş"))
+
+    @discord.ui.button(label="ELO dəyiş", style=discord.ButtonStyle.primary, row=1)
+    async def edit_elo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "elo", player[3], "ELO dəyiş"))
+
+    @discord.ui.button(label="Coin dəyiş", style=discord.ButtonStyle.primary, row=1)
+    async def edit_coins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "coins", player[6], "Coin dəyiş"))
+
+    @discord.ui.button(label="Wins dəyiş", style=discord.ButtonStyle.secondary, row=2)
+    async def edit_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "wins", player[4], "Wins dəyiş"))
+
+    @discord.ui.button(label="Losses dəyiş", style=discord.ButtonStyle.secondary, row=2)
+    async def edit_losses(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "losses", player[5], "Losses dəyiş"))
+
+
+@bot.tree.command(name="admin_panel", description="[Admin] Oyunçunun datalarını manuel idarə et")
+@app_commands.describe(uzv="Datalarını dəyişmək istədiyiniz Discord üzvü")
+@app_commands.checks.has_permissions(administrator=True)
+async def admin_panel(interaction: discord.Interaction, uzv: discord.Member):
+    player = get_player(uzv.id)
+    if not player:
+        await interaction.response.send_message("❌ Bu üzv qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner = player
+    matches = wins + losses
+    win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
+
+    embed = discord.Embed(
+        title=f"🛠️ Admin Panel — {uzv.display_name}",
+        color=discord.Color.orange()
+    )
+    embed.add_field(name="Nick", value=nick, inline=True)
+    embed.add_field(name="Standoff 2 ID", value=so2_id, inline=True)
+    embed.add_field(name="ELO", value=str(elo), inline=True)
+    embed.add_field(name="Wins", value=str(wins), inline=True)
+    embed.add_field(name="Losses", value=str(losses), inline=True)
+    embed.add_field(name="Win Rate", value=f"{win_rate}%", inline=True)
+    embed.add_field(name="Coins", value=str(coins), inline=True)
+    embed.set_footer(text=f"Discord ID: {discord_id}")
+
+    await interaction.response.send_message(embed=embed, view=AdminPanelView(uzv.id), ephemeral=True)
+
+
+@admin_panel.error
+async def admin_panel_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 

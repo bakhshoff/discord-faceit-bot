@@ -51,6 +51,22 @@ def init_db():
             finished INTEGER DEFAULT 0
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS match_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_type TEXT NOT NULL,
+            played_at INTEGER NOT NULL,
+            match_number INTEGER,
+            winner_ids TEXT NOT NULL,
+            loser_ids TEXT NOT NULL,
+            winner_elo_before TEXT,
+            winner_elo_after TEXT,
+            loser_elo_before TEXT,
+            loser_elo_after TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -369,3 +385,98 @@ def get_active_banner(discord_id):
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else None
+
+
+def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, winner_elo_after,
+                          loser_elo_before, loser_elo_after, match_number=None):
+    """
+    match_type: "1v1" veya "5v5"
+    winner_ids, loser_ids: discord_id siyahısı (1v1 üçün tək elementli)
+    winner_elo_before/after, loser_elo_before/after: hər oyunçunun ELO-su, ids ilə eyni sırada
+    """
+    import json as _json
+    import time as _time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT INTO match_history
+           (match_type, played_at, match_number, winner_ids, loser_ids,
+            winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (match_type, int(_time.time()), match_number,
+         _json.dumps(winner_ids), _json.dumps(loser_ids),
+         _json.dumps(winner_elo_before), _json.dumps(winner_elo_after),
+         _json.dumps(loser_elo_before), _json.dumps(loser_elo_after))
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_player_match_history(discord_id, limit=10):
+    """Verilmiş oyunçunun iştirak etdiyi son matçları qaytarır (ən yenidən köhnəyə)."""
+    import json as _json
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM match_history ORDER BY played_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for row in rows:
+        (mid, match_type, played_at, match_number, winner_ids_json, loser_ids_json,
+         w_before_json, w_after_json, l_before_json, l_after_json) = row
+        winner_ids = _json.loads(winner_ids_json)
+        loser_ids = _json.loads(loser_ids_json)
+
+        if discord_id in winner_ids:
+            idx = winner_ids.index(discord_id)
+            elo_before = _json.loads(w_before_json)[idx]
+            elo_after = _json.loads(w_after_json)[idx]
+            won = True
+        elif discord_id in loser_ids:
+            idx = loser_ids.index(discord_id)
+            elo_before = _json.loads(l_before_json)[idx]
+            elo_after = _json.loads(l_after_json)[idx]
+            won = False
+        else:
+            continue
+
+        results.append({
+            "match_type": match_type,
+            "played_at": played_at,
+            "match_number": match_number,
+            "won": won,
+            "elo_before": elo_before,
+            "elo_after": elo_after,
+            "elo_change": elo_after - elo_before,
+        })
+
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def get_total_match_count():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM match_history")
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def admin_set_player_field(discord_id, field, value):
+    """
+    Admin panel üçün: bir oyunçunun tək bir sahəsini dəyişir.
+    field: 'so2_nick', 'so2_id', 'elo', 'coins', 'wins', 'losses'
+    """
+    allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "wins", "losses"}
+    if field not in allowed_fields:
+        return False
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE players SET {field} = ? WHERE discord_id = ?", (value, discord_id))
+    conn.commit()
+    conn.close()
+    return True
