@@ -305,7 +305,7 @@ class InventoryActivateView(discord.ui.View):
         return callback
 
 
-class ProfileView(discord.ui.View):
+class PlayerProfileView(discord.ui.View):
     def __init__(self, discord_id):
         super().__init__(timeout=180)
         self.discord_id = discord_id
@@ -672,7 +672,7 @@ async def profile(interaction: discord.Interaction):
         banner_full_path, coins
     )
 
-    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=ProfileView(discord_id))
+    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=PlayerProfileView(discord_id))
 
 
 @bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")
