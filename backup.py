@@ -2,7 +2,6 @@ import sqlite3
 import json
 import os
 import time
-import subprocess
 
 import database
 
@@ -106,41 +105,49 @@ def restore_from_backup(backup_path=None):
 
 def push_backup_to_github(repo_dir, github_token, github_repo, branch="main"):
     """
-    backup.json faylını repo qovluğuna kopyalayıb GitHub-a push edir.
-    repo_dir: yerli git repo-nun olduğu qovluq (Railway-də bu, kodun özüdür: /app)
+    backup.json-u GitHub-un Contents API-si ilə birbaşa repo-ya yazır.
+    Heç bir yerli git alətinə ehtiyac yoxdur (Railway konteynerində git mövcud deyil).
+    repo_dir: istifadə olunmur, geriyə uyğunluq üçün saxlanılıb.
     github_token: Personal Access Token
     github_repo: "username/repo-name" formatında
     """
     if not os.path.exists(BACKUP_PATH):
         return False, "Backup faylı mövcud deyil."
 
-    dest_path = os.path.join(repo_dir, "backup.json")
     try:
-        with open(BACKUP_PATH, "r", encoding="utf-8") as src:
-            content = src.read()
-        with open(dest_path, "w", encoding="utf-8") as dst:
-            dst.write(content)
+        import base64
+        import requests
 
-        remote_url = f"https://{github_token}@github.com/{github_repo}.git"
+        with open(BACKUP_PATH, "rb") as f:
+            content_bytes = f.read()
+        encoded_content = base64.b64encode(content_bytes).decode("utf-8")
 
-        subprocess.run(["git", "config", "user.email", "bot@calestify.local"], cwd=repo_dir, check=False)
-        subprocess.run(["git", "config", "user.name", "Calestify Bot"], cwd=repo_dir, check=False)
-        subprocess.run(["git", "add", "backup.json"], cwd=repo_dir, check=True)
+        api_url = f"https://api.github.com/repos/{github_repo}/contents/backup.json"
+        headers = {
+            "Authorization": f"Bearer {github_token}",
+            "Accept": "application/vnd.github+json",
+        }
 
-        commit_result = subprocess.run(
-            ["git", "commit", "-m", f"Auto backup {int(time.time())}"],
-            cwd=repo_dir, capture_output=True, text=True
-        )
-        if commit_result.returncode != 0 and "nothing to commit" in commit_result.stdout + commit_result.stderr:
-            return True, "Dəyişiklik yoxdur, push edilmədi."
+        get_resp = requests.get(api_url, headers=headers, params={"ref": branch})
+        sha = None
+        if get_resp.status_code == 200:
+            sha = get_resp.json().get("sha")
+        elif get_resp.status_code != 404:
+            return False, f"GitHub-dan oxuma xətası: {get_resp.status_code} {get_resp.text[:200]}"
 
-        push_result = subprocess.run(
-            ["git", "push", remote_url, branch],
-            cwd=repo_dir, capture_output=True, text=True
-        )
-        if push_result.returncode != 0:
-            return False, f"Push xətası: {push_result.stderr}"
+        payload = {
+            "message": f"Auto backup {int(time.time())}",
+            "content": encoded_content,
+            "branch": branch,
+        }
+        if sha:
+            payload["sha"] = sha
 
-        return True, "Backup GitHub-a göndərildi."
+        put_resp = requests.put(api_url, headers=headers, json=payload)
+        if put_resp.status_code in (200, 201):
+            return True, "Backup GitHub-a göndərildi."
+        else:
+            return False, f"Push xətası: {put_resp.status_code} {put_resp.text[:200]}"
+
     except Exception as e:
         return False, f"Xəta: {e}"
