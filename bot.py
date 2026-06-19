@@ -80,7 +80,7 @@ async def refresh_leaderboard():
     if channel is None:
         return
     rows = get_leaderboard(20)
-    generate_leaderboard_image(rows, LEADERBOARD_IMAGE_PATH)
+    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH)
     try:
         message = await channel.fetch_message(leaderboard_message_id)
         await message.edit(attachments=[discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")])
@@ -782,7 +782,7 @@ async def setup_leaderboard(interaction: discord.Interaction):
     global leaderboard_channel_id, leaderboard_message_id
 
     rows = get_leaderboard(20)
-    generate_leaderboard_image(rows, LEADERBOARD_IMAGE_PATH)
+    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH)
 
     message = await interaction.channel.send(
         content="🏆 **Calestify FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir.",
