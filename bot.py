@@ -257,19 +257,79 @@ class InventoryActivateView(discord.ui.View):
 
 # ==================== STANDOFF MARKET (SKIN) ====================
 
+class SkinDetailView(discord.ui.View):
+    """Bir skinin şəklini göstərir və altında Al düyməsi verir."""
+    def __init__(self, discord_id, skin_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.skin_id = skin_id
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu market menyusu sizə aid deyil.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="🛒 Al", style=discord.ButtonStyle.success)
+    async def buy_skin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        current_skin = get_skin_by_id(self.skin_id)
+        if not current_skin or not current_skin["active"]:
+            await interaction.response.send_message("⚠️ Bu skin artıq mağazada yoxdur.", ephemeral=True)
+            return
+
+        success = spend_coins(self.discord_id, current_skin["price"])
+        if not success:
+            current = get_coins(self.discord_id)
+            await interaction.response.send_message(
+                f"❌ Kifayət qədər coin yoxdur. Lazımdır: 🪙 {current_skin['price']}, balansınız: 🪙 {current}",
+                ephemeral=True
+            )
+            return
+
+        add_skin_to_inventory(self.discord_id, current_skin["id"], current_skin["name"],
+                              current_skin["price"], current_skin["image_url"])
+        new_balance = get_coins(self.discord_id)
+        add_coin_log(self.discord_id, -current_skin["price"],
+                     f"Skin alışı: {current_skin['name']}", "spend", new_balance)
+        await asyncio.to_thread(backup.export_backup)
+
+        button.disabled = True
+        button.label = "✅ Alındı"
+        embed = discord.Embed(
+            title="✅ Skin alındı!",
+            description=f"**{current_skin['name']}** envantarınıza əlavə olundu.\n🪙 Qalan balans: {new_balance}\n\nSkin oyunda rəhbərlik tərəfindən təhvil veriləcək.",
+            color=discord.Color.green()
+        )
+        if current_skin["image_url"]:
+            embed.set_image(url=current_skin["image_url"])
+        await interaction.response.edit_message(embed=embed, view=self)
+
+        # Log kanalına bildiriş (rəhbərlik üçün)
+        log_channel = bot.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="🛍️ Skin alışı",
+                description=f"{interaction.user.mention} ({interaction.user.display_name})\nSkin: **{current_skin['name']}**\n🪙 {current_skin['price']} coin",
+                color=discord.Color.blue()
+            )
+            if current_skin["image_url"]:
+                log_embed.set_thumbnail(url=current_skin["image_url"])
+            await log_channel.send(embed=log_embed)
+
+
 class SkinBuyView(discord.ui.View):
-    """Mağazadakı skinlər üçün alış düymələri."""
+    """Mağazadakı skinlər üçün 'Bax' düymələri — hər skinin şəklini göstərir."""
     def __init__(self, discord_id):
         super().__init__(timeout=120)
         self.discord_id = discord_id
 
         skins = get_active_skins()
-        # Discord bir view-da maksimum 25 düymə (5 sıra x 5) saxlaya bilər
+        # Discord bir view-da maksimum 25 düymə saxlaya bilər
         for skin in skins[:25]:
-            label = f"{skin['name']} — {skin['price']} 🪙"
+            label = f"👁 {skin['name']} — {skin['price']} 🪙"
             if len(label) > 80:
                 label = label[:77] + "..."
-            button = discord.ui.Button(label=label, style=discord.ButtonStyle.success, custom_id=f"buyskin_{skin['id']}")
+            button = discord.ui.Button(label=label, style=discord.ButtonStyle.primary, custom_id=f"viewskin_{skin['id']}")
             button.callback = self._make_callback(skin)
             self.add_item(button)
 
@@ -279,56 +339,28 @@ class SkinBuyView(discord.ui.View):
                 await interaction.response.send_message("❌ Bu market menyusu sizə aid deyil.", ephemeral=True)
                 return
 
-            # Skin hələ də mövcuddur və aktivdir?
             current_skin = get_skin_by_id(skin["id"])
             if not current_skin or not current_skin["active"]:
                 await interaction.response.send_message("⚠️ Bu skin artıq mağazada yoxdur.", ephemeral=True)
                 return
 
-            success = spend_coins(self.discord_id, current_skin["price"])
-            if not success:
-                current = get_coins(self.discord_id)
-                await interaction.response.send_message(
-                    f"❌ Kifayət qədər coin yoxdur. Lazımdır: 🪙 {current_skin['price']}, balansınız: 🪙 {current}",
-                    ephemeral=True
-                )
-                return
-
-            add_skin_to_inventory(self.discord_id, current_skin["id"], current_skin["name"],
-                                  current_skin["price"], current_skin["image_url"])
-            new_balance = get_coins(self.discord_id)
-            add_coin_log(self.discord_id, -current_skin["price"],
-                         f"Skin alışı: {current_skin['name']}", "spend", new_balance)
-            await asyncio.to_thread(backup.export_backup)
-
+            coins = get_coins(self.discord_id)
             embed = discord.Embed(
-                title="✅ Skin alındı!",
-                description=f"**{current_skin['name']}** envantarınıza əlavə olundu.\n🪙 Qalan balans: {new_balance}\n\nSkin oyunda rəhbərlik tərəfindən təhvil veriləcək.",
-                color=discord.Color.green()
+                title=f"🔫 {current_skin['name']}",
+                description=f"💰 Qiymət: 🪙 {current_skin['price']}\n👛 Balansınız: 🪙 {coins}",
+                color=discord.Color.blue()
             )
             if current_skin["image_url"]:
-                embed.set_thumbnail(url=current_skin["image_url"])
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+                embed.set_image(url=current_skin["image_url"])
+            else:
+                embed.description += "\n\n_(Bu skin üçün şəkil əlavə olunmayıb)_"
 
-            # Log kanalına bildiriş (rəhbərlik üçün)
-            log_channel = bot.get_channel(LOG_CHANNEL_ID)
-            if log_channel:
-                log_embed = discord.Embed(
-                    title="🛍️ Skin alışı",
-                    description=f"{interaction.user.mention} ({interaction.user.display_name})\nSkin: **{current_skin['name']}**\n🪙 {current_skin['price']} coin",
-                    color=discord.Color.blue()
-                )
-                if current_skin["image_url"]:
-                    log_embed.set_thumbnail(url=current_skin["image_url"])
-                await log_channel.send(embed=log_embed)
+            await interaction.response.send_message(
+                embed=embed,
+                view=SkinDetailView(self.discord_id, current_skin["id"]),
+                ephemeral=True
+            )
         return callback
-
-
-class StandoffMarketView(discord.ui.View):
-    """Skinlər çox olduqda səhifələmə üçün naviqasiya (sadə versiya: ilk 25 skin alış view-u)."""
-    def __init__(self, discord_id):
-        super().__init__(timeout=120)
-        self.discord_id = discord_id
 
 
 # ==================== COIN LOGLARI (filtrli) ====================
