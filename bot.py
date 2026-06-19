@@ -643,7 +643,6 @@ async def on_ready():
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
 async def profile(interaction: discord.Interaction):
-    print('>>> PROFILE FUNKSIYASI ISLEYIR - TEST 99999 <<<')
     player = get_player(interaction.user.id)
     if not player:
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
