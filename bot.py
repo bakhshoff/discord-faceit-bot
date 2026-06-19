@@ -381,6 +381,7 @@ class PlayerProfileView(discord.ui.View):
             color=discord.Color.blurple()
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
         super().__init__(timeout=None)
         self.match_number = match_number
