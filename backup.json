@@ -1,5 +1,5 @@
 {
-  "exported_at": 1781781029,
+  "exported_at": 1781874021,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -58,8 +58,8 @@
       "elo": 968,
       "wins": 0,
       "losses": 2,
-      "coins": 7,
-      "active_banner": null
+      "coins": 250,
+      "active_banner": "banner_red"
     },
     {
       "discord_id": 1060637021565112360,
@@ -222,7 +222,26 @@
       "active_banner": null
     }
   ],
-  "inventory": [],
+  "inventory": [
+    {
+      "id": 1,
+      "discord_id": 964144436374294609,
+      "item_id": "banner_gold",
+      "acquired_at": 1781873926
+    },
+    {
+      "id": 2,
+      "discord_id": 964144436374294609,
+      "item_id": "banner_red",
+      "acquired_at": 1781873932
+    },
+    {
+      "id": 3,
+      "discord_id": 964144436374294609,
+      "item_id": "banner_purple",
+      "acquired_at": 1781873935
+    }
+  ],
   "giveaways": [
     {
       "id": 1,
@@ -240,7 +259,7 @@
       "winner_id": 1516791739137003552,
       "channel_id": 1487597967241252976,
       "message_id": 1516885179157975080,
-      "finished": 0
+      "finished": 1
     }
   ],
   "match_counter": [
