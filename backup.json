@@ -1,5 +1,5 @@
 {
-  "exported_at": 1781874021,
+  "exported_at": 1781891971,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -220,6 +220,16 @@
       "losses": 1,
       "coins": 9,
       "active_banner": null
+    },
+    {
+      "discord_id": 1516886654604804168,
+      "so2_nick": "DROXY",
+      "so2_id": "202164795",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null
     }
   ],
   "inventory": [
@@ -259,6 +269,15 @@
       "winner_id": 1516791739137003552,
       "channel_id": 1487597967241252976,
       "message_id": 1516885179157975080,
+      "finished": 1
+    },
+    {
+      "id": 3,
+      "mukafat": "500 Gold",
+      "end_unix": 1781885792,
+      "winner_id": 1516791739137003552,
+      "channel_id": 1517459829268938792,
+      "message_id": 1517518450988290220,
       "finished": 1
     }
   ],
