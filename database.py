@@ -67,6 +67,41 @@ def init_db():
         )
     """)
 
+    # ===== STANDOFF MARKET / SKIN cədvəlləri =====
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS skins (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            price INTEGER NOT NULL,
+            image_url TEXT,
+            active INTEGER DEFAULT 1,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS skin_inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            skin_id INTEGER NOT NULL,
+            skin_name TEXT NOT NULL,
+            price_paid INTEGER NOT NULL,
+            image_url TEXT,
+            acquired_at INTEGER NOT NULL,
+            delivered INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS coin_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            change INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            log_type TEXT NOT NULL,
+            balance_after INTEGER,
+            created_at INTEGER NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -480,3 +515,160 @@ def admin_set_player_field(discord_id, field, value):
     conn.commit()
     conn.close()
     return True
+
+
+# ==================== STANDOFF MARKET / SKIN SISTEMI ====================
+
+def add_skin(name, price, image_url=None):
+    """Mağazaya yeni skin əlavə edir. Yaradılan skin id-sini qaytarır."""
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO skins (name, price, image_url, active, created_at) VALUES (?, ?, ?, 1, ?)",
+        (name, price, image_url, int(time.time()))
+    )
+    conn.commit()
+    skin_id = cursor.lastrowid
+    conn.close()
+    return skin_id
+
+
+def get_active_skins():
+    """Mağazada satışda olan (active=1) skinləri qaytarır."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, price, image_url FROM skins WHERE active = 1 ORDER BY price ASC, id ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "price": r[2], "image_url": r[3]} for r in rows]
+
+
+def get_skin_by_id(skin_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, price, image_url, active FROM skins WHERE id = ?", (skin_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "name": row[1], "price": row[2], "image_url": row[3], "active": row[4]}
+
+
+def remove_skin(skin_id):
+    """Skini mağazadan götürür (active=0). Tarixçə üçün silmir, deaktiv edir."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE skins SET active = 0 WHERE id = ?", (skin_id,))
+    conn.commit()
+    affected = cursor.rowcount
+    conn.close()
+    return affected > 0
+
+
+def add_skin_to_inventory(discord_id, skin_id, skin_name, price_paid, image_url=None):
+    """Alınan skini oyunçunun skin envanterinə əlavə edir (hər alış ayrı sətir)."""
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """INSERT INTO skin_inventory (discord_id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered)
+           VALUES (?, ?, ?, ?, ?, ?, 0)""",
+        (discord_id, skin_id, skin_name, price_paid, image_url, int(time.time()))
+    )
+    conn.commit()
+    inv_id = cursor.lastrowid
+    conn.close()
+    return inv_id
+
+
+def get_skin_inventory(discord_id, only_undelivered=False):
+    """Oyunçunun skin envanterini qaytarır. only_undelivered=True olsa yalnız təhvil verilməyənləri."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if only_undelivered:
+        cursor.execute(
+            "SELECT id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered FROM skin_inventory WHERE discord_id = ? AND delivered = 0 ORDER BY acquired_at DESC",
+            (discord_id,)
+        )
+    else:
+        cursor.execute(
+            "SELECT id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered FROM skin_inventory WHERE discord_id = ? ORDER BY acquired_at DESC",
+            (discord_id,)
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "skin_id": r[1], "skin_name": r[2], "price_paid": r[3],
+         "image_url": r[4], "acquired_at": r[5], "delivered": r[6]}
+        for r in rows
+    ]
+
+
+def get_skin_inventory_entry(inv_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, discord_id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered FROM skin_inventory WHERE id = ?",
+        (inv_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "discord_id": row[1], "skin_id": row[2], "skin_name": row[3],
+            "price_paid": row[4], "image_url": row[5], "acquired_at": row[6], "delivered": row[7]}
+
+
+def remove_skin_from_inventory(inv_id):
+    """Admin manuel olaraq oyunçunun envanterindən bir skini silir (oyunda təhvil verildikdə)."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM skin_inventory WHERE id = ?", (inv_id,))
+    conn.commit()
+    affected = cursor.rowcount
+    conn.close()
+    return affected > 0
+
+
+def add_coin_log(discord_id, change, reason, log_type, balance_after=None):
+    """
+    Coin hərəkətini loga yazır.
+    change: müsbət (qazanma) və ya mənfi (xərcləmə) say
+    reason: izah mətni (məs: "Skin alışı: AK-47 Redline")
+    log_type: "earn" və ya "spend"
+    """
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO coin_logs (discord_id, change, reason, log_type, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (discord_id, change, reason, log_type, balance_after, int(time.time()))
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_coin_logs(discord_id, log_type=None, limit=15):
+    """
+    Oyunçunun coin loglarını qaytarır (ən yenidən köhnəyə).
+    log_type: None (hamısı), "earn" (qazanma), "spend" (xərcləmə)
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if log_type in ("earn", "spend"):
+        cursor.execute(
+            "SELECT change, reason, log_type, balance_after, created_at FROM coin_logs WHERE discord_id = ? AND log_type = ? ORDER BY created_at DESC LIMIT ?",
+            (discord_id, log_type, limit)
+        )
+    else:
+        cursor.execute(
+            "SELECT change, reason, log_type, balance_after, created_at FROM coin_logs WHERE discord_id = ? ORDER BY created_at DESC LIMIT ?",
+            (discord_id, limit)
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"change": r[0], "reason": r[1], "log_type": r[2], "balance_after": r[3], "created_at": r[4]}
+        for r in rows
+    ]

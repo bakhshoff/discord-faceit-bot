@@ -17,7 +17,10 @@ from database import (
     get_inventory, owns_item, add_to_inventory,
     set_active_banner, get_active_banner,
     record_match_history, get_player_match_history, get_total_match_count,
-    admin_set_player_field
+    admin_set_player_field,
+    add_skin, get_active_skins, get_skin_by_id, remove_skin,
+    add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
+    remove_skin_from_inventory, add_coin_log, get_coin_logs
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -180,60 +183,6 @@ class RegisterView(discord.ui.View):
         await interaction.response.send_modal(RegisterModal())
 
 
-class GoldExchangeModal(discord.ui.Modal, title="Gold Exchange"):
-    amount = discord.ui.TextInput(
-        label="Çevirmək istədiyiniz Coin miqdarı",
-        placeholder="Məsələn: 1000",
-        required=True,
-        max_length=10
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            coin_amount = int(str(self.amount).strip())
-        except ValueError:
-            await interaction.response.send_message("❌ Düzgün ədəd daxil edin.", ephemeral=True)
-            return
-
-        if coin_amount <= 0:
-            await interaction.response.send_message("❌ Miqdar 0-dan böyük olmalıdır.", ephemeral=True)
-            return
-
-        if coin_amount % 1000 != 0:
-            await interaction.response.send_message("❌ Miqdar 1000-in qatı olmalıdır (məs: 1000, 2000, 3000).", ephemeral=True)
-            return
-
-        current_coins = get_coins(interaction.user.id)
-        if current_coins < coin_amount:
-            await interaction.response.send_message(
-                f"❌ Kifayət qədər coin yoxdur. Balansınız: 🪙 {current_coins}",
-                ephemeral=True
-            )
-            return
-
-        gold_amount = (coin_amount // 1000) * 100
-        success = spend_coins(interaction.user.id, coin_amount)
-        if not success:
-            await interaction.response.send_message("❌ Xəta baş verdi, yenidən cəhd edin.", ephemeral=True)
-            return
-
-        new_balance = get_coins(interaction.user.id)
-        await asyncio.to_thread(backup.export_backup)
-        await interaction.response.send_message(
-            f"✅ Mübadilə tamamlandı!\n🪙 {coin_amount} Coin → 💰 {gold_amount} Gold\nYeni balansınız: 🪙 {new_balance}\n\nGold-unuz qısa zamanda Standoff 2 hesabınıza göndəriləcək.",
-            ephemeral=True
-        )
-
-        log_channel = bot.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            log_embed = discord.Embed(
-                title="💱 Gold Exchange",
-                description=f"{interaction.user.mention} ({interaction.user.display_name})\n🪙 {coin_amount} Coin → 💰 {gold_amount} Gold",
-                color=discord.Color.gold()
-            )
-            await log_channel.send(embed=log_embed)
-
-
 class MarketItemView(discord.ui.View):
     def __init__(self, discord_id):
         super().__init__(timeout=120)
@@ -267,6 +216,8 @@ class MarketItemView(discord.ui.View):
                 return
 
             add_to_inventory(self.discord_id, item["id"])
+            new_balance = get_coins(self.discord_id)
+            add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_balance)
             await asyncio.to_thread(backup.export_backup)
             await interaction.response.send_message(
                 f"✅ **{item['name']}** alındı! İnventarınıza əlavə olundu.\nAktiv etmək üçün `/profile` açıb inventardan seçin.",
@@ -304,6 +255,134 @@ class InventoryActivateView(discord.ui.View):
             await interaction.response.send_message(f"✅ **{item_name}** aktiv edildi. `/profile` ilə yoxlaya bilərsiniz.", ephemeral=True)
         return callback
 
+# ==================== STANDOFF MARKET (SKIN) ====================
+
+class SkinBuyView(discord.ui.View):
+    """Mağazadakı skinlər üçün alış düymələri."""
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+        skins = get_active_skins()
+        # Discord bir view-da maksimum 25 düymə (5 sıra x 5) saxlaya bilər
+        for skin in skins[:25]:
+            label = f"{skin['name']} — {skin['price']} 🪙"
+            if len(label) > 80:
+                label = label[:77] + "..."
+            button = discord.ui.Button(label=label, style=discord.ButtonStyle.success, custom_id=f"buyskin_{skin['id']}")
+            button.callback = self._make_callback(skin)
+            self.add_item(button)
+
+    def _make_callback(self, skin):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.discord_id:
+                await interaction.response.send_message("❌ Bu market menyusu sizə aid deyil.", ephemeral=True)
+                return
+
+            # Skin hələ də mövcuddur və aktivdir?
+            current_skin = get_skin_by_id(skin["id"])
+            if not current_skin or not current_skin["active"]:
+                await interaction.response.send_message("⚠️ Bu skin artıq mağazada yoxdur.", ephemeral=True)
+                return
+
+            success = spend_coins(self.discord_id, current_skin["price"])
+            if not success:
+                current = get_coins(self.discord_id)
+                await interaction.response.send_message(
+                    f"❌ Kifayət qədər coin yoxdur. Lazımdır: 🪙 {current_skin['price']}, balansınız: 🪙 {current}",
+                    ephemeral=True
+                )
+                return
+
+            add_skin_to_inventory(self.discord_id, current_skin["id"], current_skin["name"],
+                                  current_skin["price"], current_skin["image_url"])
+            new_balance = get_coins(self.discord_id)
+            add_coin_log(self.discord_id, -current_skin["price"],
+                         f"Skin alışı: {current_skin['name']}", "spend", new_balance)
+            await asyncio.to_thread(backup.export_backup)
+
+            embed = discord.Embed(
+                title="✅ Skin alındı!",
+                description=f"**{current_skin['name']}** envantarınıza əlavə olundu.\n🪙 Qalan balans: {new_balance}\n\nSkin oyunda rəhbərlik tərəfindən təhvil veriləcək.",
+                color=discord.Color.green()
+            )
+            if current_skin["image_url"]:
+                embed.set_thumbnail(url=current_skin["image_url"])
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+            # Log kanalına bildiriş (rəhbərlik üçün)
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="🛍️ Skin alışı",
+                    description=f"{interaction.user.mention} ({interaction.user.display_name})\nSkin: **{current_skin['name']}**\n🪙 {current_skin['price']} coin",
+                    color=discord.Color.blue()
+                )
+                if current_skin["image_url"]:
+                    log_embed.set_thumbnail(url=current_skin["image_url"])
+                await log_channel.send(embed=log_embed)
+        return callback
+
+
+class StandoffMarketView(discord.ui.View):
+    """Skinlər çox olduqda səhifələmə üçün naviqasiya (sadə versiya: ilk 25 skin alış view-u)."""
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+
+# ==================== COIN LOGLARI (filtrli) ====================
+
+class CoinLogsView(discord.ui.View):
+    """Profildə coin loglarını filtrlə göstərir: Hamısı / Qazanma / Xərcləmə."""
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu loglar sizə aid deyil.", ephemeral=True)
+            return False
+        return True
+
+    def _build_embed(self, log_type):
+        logs = get_coin_logs(self.discord_id, log_type=log_type, limit=15)
+        if log_type == "earn":
+            title = "🪙 Coin Logları — Qazanma"
+        elif log_type == "spend":
+            title = "🪙 Coin Logları — Xərcləmə"
+        else:
+            title = "🪙 Coin Logları — Hamısı"
+
+        if not logs:
+            embed = discord.Embed(title=title, description="Hələ heç bir qeyd yoxdur.", color=discord.Color.gold())
+            return embed
+
+        lines = []
+        for log in logs:
+            change = log["change"]
+            sign = "+" if change >= 0 else ""
+            icon = "🟢" if log["log_type"] == "earn" else "🔴"
+            dt = datetime.datetime.utcfromtimestamp(log["created_at"]) + datetime.timedelta(hours=4)
+            date_str = dt.strftime("%d.%m %H:%M")
+            lines.append(f"{icon} **{sign}{change}** 🪙 — {log['reason']}  ·  {date_str}")
+
+        embed = discord.Embed(title=title, description="\n".join(lines), color=discord.Color.gold())
+        embed.set_footer(text=f"Cari balans: 🪙 {get_coins(self.discord_id)}")
+        return embed
+
+    @discord.ui.button(label="Hamısı", style=discord.ButtonStyle.primary, emoji="📋")
+    async def show_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self._build_embed(None), view=self)
+
+    @discord.ui.button(label="Qazanma", style=discord.ButtonStyle.success, emoji="🟢")
+    async def show_earn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self._build_embed("earn"), view=self)
+
+    @discord.ui.button(label="Xərcləmə", style=discord.ButtonStyle.danger, emoji="🔴")
+    async def show_spend(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self._build_embed("spend"), view=self)
+
 
 class PlayerProfileView(discord.ui.View):
     def __init__(self, discord_id):
@@ -316,7 +395,7 @@ class PlayerProfileView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Market", style=discord.ButtonStyle.primary, emoji="🛒", custom_id="profile_market")
+    @discord.ui.button(label="Market", style=discord.ButtonStyle.primary, emoji="🛒", custom_id="profile_market", row=0)
     async def open_market(self, interaction: discord.Interaction, button: discord.ui.Button):
         coins = get_coins(self.discord_id)
         lines = []
@@ -333,31 +412,70 @@ class PlayerProfileView(discord.ui.View):
         embed.set_footer(text=f"Balansınız: 🪙 {coins}")
         await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
 
-    @discord.ui.button(label="Gold Exchange", style=discord.ButtonStyle.secondary, emoji="💱", custom_id="profile_exchange")
-    async def open_exchange(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(GoldExchangeModal())
+    @discord.ui.button(label="Standoff Market", style=discord.ButtonStyle.success, emoji="🔫", custom_id="profile_skinmarket", row=0)
+    async def open_skin_market(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        skins = get_active_skins()
+        if not skins:
+            await interaction.response.send_message("🔫 Hələ mağazada skin yoxdur. Tezliklə əlavə olunacaq.", ephemeral=True)
+            return
 
-    @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory")
+        lines = []
+        for skin in skins[:25]:
+            lines.append(f"**{skin['name']}** — 🪙 {skin['price']}")
+
+        embed = discord.Embed(
+            title="🔫 Standoff 2 Skin Market",
+            description="\n".join(lines),
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text=f"Balansınız: 🪙 {coins}  ·  Skin alınca envantara düşür, oyunda rəhbərlik təhvil verir.")
+        await interaction.response.send_message(embed=embed, view=SkinBuyView(self.discord_id), ephemeral=True)
+
+    @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory", row=1)
     async def open_inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
         owned_ids = get_inventory(self.discord_id)
-        if not owned_ids:
-            await interaction.response.send_message("🎒 İnventarınız boşdur. Market-dən əşya ala bilərsiniz.", ephemeral=True)
+        skin_inv = get_skin_inventory(self.discord_id)
+
+        if not owned_ids and not skin_inv:
+            await interaction.response.send_message("🎒 İnventarınız boşdur. Market-dən əşya və ya skin ala bilərsiniz.", ephemeral=True)
             return
 
         active = get_active_banner(self.discord_id)
         embed = discord.Embed(title="🎒 İnventarınız", color=discord.Color.purple())
-        lines = []
+
+        # FACEIT market itemləri (bannerlər və s.)
+        item_lines = []
         for item_id in owned_ids:
             item = get_item_by_id(item_id)
             if not item:
                 continue
             marker = " ✅ (Aktiv)" if item_id == active else ""
-            lines.append(f"**{item['name']}**{marker}")
-        embed.description = "\n".join(lines) if lines else "İnventarınız boşdur."
+            item_lines.append(f"**{item['name']}**{marker}")
+        if item_lines:
+            embed.add_field(name="🎴 Market əşyaları", value="\n".join(item_lines), inline=False)
 
-        await interaction.response.send_message(embed=embed, view=InventoryActivateView(self.discord_id), ephemeral=True)
+        # Standoff skinləri
+        if skin_inv:
+            skin_lines = []
+            for s in skin_inv[:20]:
+                skin_lines.append(f"🔫 **{s['skin_name']}** — 🪙 {s['price_paid']}")
+            embed.add_field(name="🔫 Standoff skinləri", value="\n".join(skin_lines), inline=False)
 
-    @discord.ui.button(label="Matç Tarixçəsi", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="profile_history")
+        if not item_lines and not skin_inv:
+            embed.description = "İnventarınız boşdur."
+
+        # Banner aktivləşdirmə düymələri yalnız market itemləri varsa
+        view = InventoryActivateView(self.discord_id) if owned_ids else None
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Loglar", style=discord.ButtonStyle.secondary, emoji="🪙", custom_id="profile_logs", row=1)
+    async def open_logs(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = CoinLogsView(self.discord_id)
+        embed = view._build_embed(None)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Matç Tarixçəsi", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="profile_history", row=2)
     async def open_history(self, interaction: discord.Interaction, button: discord.ui.Button):
         history = get_player_match_history(self.discord_id, limit=10)
         if not history:
@@ -381,6 +499,8 @@ class PlayerProfileView(discord.ui.View):
             color=discord.Color.blurple()
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
         super().__init__(timeout=None)
@@ -458,12 +578,14 @@ class MatchResultView(discord.ui.View):
         for discord_id in winner_ids:
             earned = random.randint(5, 10)
             new_balance = add_coins(discord_id, earned)
+            add_coin_log(discord_id, earned, f"Matç No{self.match_number} qələbə", "earn", new_balance)
             winner_coins[discord_id] = (earned, new_balance)
 
         loser_coins = {}
         for discord_id in loser_ids:
             earned = random.randint(0, 5)
             new_balance = add_coins(discord_id, earned)
+            add_coin_log(discord_id, earned, f"Matç No{self.match_number} iştirak", "earn", new_balance)
             loser_coins[discord_id] = (earned, new_balance)
 
         await asyncio.to_thread(backup.export_backup)
@@ -688,8 +810,10 @@ async def matchresult(interaction: discord.Interaction, qalib: discord.Member, m
 
     winner_earned = random.randint(5, 10)
     loser_earned = random.randint(0, 5)
-    add_coins(qalib.id, winner_earned)
-    add_coins(məğlub.id, loser_earned)
+    w_balance = add_coins(qalib.id, winner_earned)
+    l_balance = add_coins(məğlub.id, loser_earned)
+    add_coin_log(qalib.id, winner_earned, "1v1 matç qələbə", "earn", w_balance)
+    add_coin_log(məğlub.id, loser_earned, "1v1 matç iştirak", "earn", l_balance)
     await asyncio.to_thread(backup.export_backup)
 
     await asyncio.to_thread(
@@ -989,10 +1113,22 @@ class AdminEditModal(discord.ui.Modal):
         else:
             value = raw_value
 
+        # Coin dəyişikliyini loga yaz (admin tənzimləməsi)
+        old_coins = None
+        if self.field == "coins":
+            p = get_player(self.discord_id)
+            old_coins = p[6] if p else None
+
         success = admin_set_player_field(self.discord_id, self.field, value)
         if not success:
             await interaction.response.send_message("❌ Xəta baş verdi.", ephemeral=True)
             return
+
+        if self.field == "coins" and old_coins is not None:
+            diff = value - old_coins
+            if diff != 0:
+                log_type = "earn" if diff > 0 else "spend"
+                add_coin_log(self.discord_id, diff, "Admin tənzimləməsi", log_type, value)
 
         await asyncio.to_thread(backup.export_backup)
 
@@ -1001,6 +1137,97 @@ class AdminEditModal(discord.ui.Modal):
             f"✅ Yeniləndi.\n**Yeni məlumatlar:** Nick: {player[1]} | ID: {player[2]} | ELO: {player[3]} | Wins: {player[4]} | Losses: {player[5]} | Coins: {player[6]}",
             ephemeral=True
         )
+
+
+class AddSkinModal(discord.ui.Modal, title="Yeni Skin Əlavə Et"):
+    skin_name = discord.ui.TextInput(
+        label="Skin adı",
+        placeholder="Məsələn: AK-47 | Redline",
+        required=True,
+        max_length=80
+    )
+    skin_price = discord.ui.TextInput(
+        label="Qiymət (coin)",
+        placeholder="Məsələn: 500",
+        required=True,
+        max_length=10
+    )
+    skin_image = discord.ui.TextInput(
+        label="Şəkil URL (istəyə bağlı)",
+        placeholder="https://...",
+        required=False,
+        max_length=300
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            price = int(str(self.skin_price).strip())
+        except ValueError:
+            await interaction.response.send_message("❌ Qiymət rəqəm olmalıdır.", ephemeral=True)
+            return
+        if price <= 0:
+            await interaction.response.send_message("❌ Qiymət 0-dan böyük olmalıdır.", ephemeral=True)
+            return
+
+        image_url = str(self.skin_image).strip() or None
+        skin_id = add_skin(str(self.skin_name).strip(), price, image_url)
+        await asyncio.to_thread(backup.export_backup)
+
+        embed = discord.Embed(
+            title="✅ Skin əlavə edildi",
+            description=f"**{self.skin_name}**\n🪙 {price} coin\nID: {skin_id}",
+            color=discord.Color.green()
+        )
+        if image_url:
+            embed.set_thumbnail(url=image_url)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class SkinDeleteView(discord.ui.View):
+    """Bir oyunçunun skin envanterindən manuel silmə (oyunda təhvil verildikdə)."""
+    def __init__(self, target_discord_id, admin_id):
+        super().__init__(timeout=180)
+        self.target_discord_id = target_discord_id
+        self.admin_id = admin_id
+
+        skin_inv = get_skin_inventory(target_discord_id)
+        for s in skin_inv[:25]:
+            label = f"Sil: {s['skin_name']}"
+            if len(label) > 80:
+                label = label[:77] + "..."
+            button = discord.ui.Button(label=label, style=discord.ButtonStyle.danger, custom_id=f"delskin_{s['id']}")
+            button.callback = self._make_callback(s)
+            self.add_item(button)
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Bu yalnız adminlər üçündür.", ephemeral=True)
+            return False
+        return True
+
+    def _make_callback(self, skin_entry):
+        async def callback(interaction: discord.Interaction):
+            entry = get_skin_inventory_entry(skin_entry["id"])
+            if not entry:
+                await interaction.response.send_message("⚠️ Bu skin artıq envanterdə yoxdur.", ephemeral=True)
+                return
+            remove_skin_from_inventory(skin_entry["id"])
+            await asyncio.to_thread(backup.export_backup)
+            await interaction.response.send_message(
+                f"✅ **{skin_entry['skin_name']}** oyunçunun envanterindən silindi (oyunda təhvil verildi).",
+                ephemeral=True
+            )
+
+            # Log kanalına bildiriş
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="📦 Skin təhvil verildi",
+                    description=f"<@{self.target_discord_id}> oyunçusunun envanterindən **{skin_entry['skin_name']}** silindi.\nAdmin: {interaction.user.mention}",
+                    color=discord.Color.orange()
+                )
+                await log_channel.send(embed=log_embed)
+        return callback
 
 
 class AdminPanelView(discord.ui.View):
@@ -1038,6 +1265,24 @@ class AdminPanelView(discord.ui.View):
         player = get_player(self.discord_id)
         await interaction.response.send_modal(AdminEditModal(self.discord_id, "losses", player[5], "Losses dəyiş"))
 
+    @discord.ui.button(label="🔫 Skin envanteri / Sil", style=discord.ButtonStyle.danger, row=3)
+    async def manage_skins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        skin_inv = get_skin_inventory(self.discord_id)
+        if not skin_inv:
+            await interaction.response.send_message("🎒 Bu oyunçunun skin envanteri boşdur.", ephemeral=True)
+            return
+        lines = []
+        for s in skin_inv[:25]:
+            dt = datetime.datetime.utcfromtimestamp(s["acquired_at"]) + datetime.timedelta(hours=4)
+            lines.append(f"🔫 **{s['skin_name']}** — 🪙 {s['price_paid']}  ·  {dt.strftime('%d.%m %H:%M')}")
+        embed = discord.Embed(
+            title="🔫 Oyunçunun Skin Envanteri",
+            description="\n".join(lines),
+            color=discord.Color.orange()
+        )
+        embed.set_footer(text="Oyunda təhvil verdikdən sonra aşağıdakı düymə ilə silin.")
+        await interaction.response.send_message(embed=embed, view=SkinDeleteView(self.discord_id, interaction.user.id), ephemeral=True)
+
 
 @bot.tree.command(name="admin_panel", description="[Admin] Oyunçunun datalarını manuel idarə et")
 @app_commands.describe(uzv="Datalarını dəyişmək istədiyiniz Discord üzvü")
@@ -1070,6 +1315,55 @@ async def admin_panel(interaction: discord.Interaction, uzv: discord.Member):
 
 @admin_panel.error
 async def admin_panel_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="skin_elave", description="[Admin] Standoff markete yeni skin əlavə edir")
+@app_commands.checks.has_permissions(administrator=True)
+async def skin_elave(interaction: discord.Interaction):
+    await interaction.response.send_modal(AddSkinModal())
+
+
+@skin_elave.error
+async def skin_elave_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="skin_sil", description="[Admin] Standoff marketdən skini götürür (deaktiv edir)")
+@app_commands.describe(skin_id="Götürüləcək skinin ID-si")
+@app_commands.checks.has_permissions(administrator=True)
+async def skin_sil(interaction: discord.Interaction, skin_id: int):
+    skin = get_skin_by_id(skin_id)
+    if not skin:
+        await interaction.response.send_message("❌ Bu ID ilə skin tapılmadı.", ephemeral=True)
+        return
+    remove_skin(skin_id)
+    await asyncio.to_thread(backup.export_backup)
+    await interaction.response.send_message(f"✅ **{skin['name']}** marketdən götürüldü (artıq satışda deyil).", ephemeral=True)
+
+
+@skin_sil.error
+async def skin_sil_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="skin_siyahi", description="[Admin] Marketdəki bütün skinləri ID-ləri ilə göstərir")
+@app_commands.checks.has_permissions(administrator=True)
+async def skin_siyahi(interaction: discord.Interaction):
+    skins = get_active_skins()
+    if not skins:
+        await interaction.response.send_message("Mağazada heç bir skin yoxdur.", ephemeral=True)
+        return
+    lines = [f"ID **{s['id']}** — {s['name']} — 🪙 {s['price']}" for s in skins]
+    embed = discord.Embed(title="🔫 Marketdəki Skinlər", description="\n".join(lines), color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@skin_siyahi.error
+async def skin_siyahi_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 

@@ -15,7 +15,8 @@ def export_backup():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    tables = ["players", "inventory", "giveaways", "match_counter"]
+    tables = ["players", "inventory", "giveaways", "match_counter",
+              "match_history", "skins", "skin_inventory", "coin_logs"]
     data = {"exported_at": int(time.time())}
 
     for table in tables:
@@ -90,6 +91,52 @@ def restore_from_backup(backup_path=None):
                 cursor.execute(
                     "INSERT INTO match_counter (id, last_number) VALUES (?, ?)",
                     (row.get("id"), row.get("last_number", 0))
+                )
+
+        if "match_history" in data:
+            cursor.execute("DELETE FROM match_history")
+            for row in data["match_history"]:
+                cursor.execute(
+                    """INSERT INTO match_history
+                       (id, match_type, played_at, match_number, winner_ids, loser_ids,
+                        winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (row.get("id"), row.get("match_type"), row.get("played_at"), row.get("match_number"),
+                     row.get("winner_ids"), row.get("loser_ids"),
+                     row.get("winner_elo_before"), row.get("winner_elo_after"),
+                     row.get("loser_elo_before"), row.get("loser_elo_after"))
+                )
+
+        if "skins" in data:
+            cursor.execute("DELETE FROM skins")
+            for row in data["skins"]:
+                cursor.execute(
+                    """INSERT INTO skins (id, name, price, image_url, active, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (row.get("id"), row.get("name"), row.get("price"), row.get("image_url"),
+                     row.get("active", 1), row.get("created_at"))
+                )
+
+        if "skin_inventory" in data:
+            cursor.execute("DELETE FROM skin_inventory")
+            for row in data["skin_inventory"]:
+                cursor.execute(
+                    """INSERT INTO skin_inventory
+                       (id, discord_id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (row.get("id"), row.get("discord_id"), row.get("skin_id"), row.get("skin_name"),
+                     row.get("price_paid"), row.get("image_url"), row.get("acquired_at"), row.get("delivered", 0))
+                )
+
+        if "coin_logs" in data:
+            cursor.execute("DELETE FROM coin_logs")
+            for row in data["coin_logs"]:
+                cursor.execute(
+                    """INSERT INTO coin_logs
+                       (id, discord_id, change, reason, log_type, balance_after, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (row.get("id"), row.get("discord_id"), row.get("change"), row.get("reason"),
+                     row.get("log_type"), row.get("balance_after"), row.get("created_at"))
                 )
 
         conn.commit()
