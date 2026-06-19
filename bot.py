@@ -1,4 +1,3 @@
-print('>>> VERSION TEST 12345 - bu s?tir görünürs? kod yenil?nib <<<')
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
