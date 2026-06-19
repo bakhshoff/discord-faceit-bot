@@ -1,5 +1,5 @@
 {
-  "exported_at": 1781891971,
+  "exported_at": 1781903459,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -286,5 +286,18 @@
       "id": 1,
       "last_number": 2
     }
-  ]
+  ],
+  "match_history": [],
+  "skins": [
+    {
+      "id": 1,
+      "name": "G22 \"Haunt\"",
+      "price": 500,
+      "image_url": "https://static.wikia.nocookie.net/standoff-2/images/9/94/G22_Haunt.jpg/revision/latest?cb=20240723205013",
+      "active": 1,
+      "created_at": 1781903459
+    }
+  ],
+  "skin_inventory": [],
+  "coin_logs": []
 }
