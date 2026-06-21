@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782065192,
+  "exported_at": 1782066652,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -25,10 +25,10 @@
       "discord_id": 807514987043749919,
       "so2_nick": "S2mLee100Lesh",
       "so2_id": "162993521",
-      "elo": 984,
-      "wins": 0,
+      "elo": 1000,
+      "wins": 1,
       "losses": 1,
-      "coins": 0,
+      "coins": 9,
       "active_banner": null
     },
     {
@@ -65,10 +65,10 @@
       "discord_id": 964144436374294609,
       "so2_nick": "Zenith",
       "so2_id": "103233482",
-      "elo": 984,
-      "wins": 1,
+      "elo": 1000,
+      "wins": 2,
       "losses": 2,
-      "coins": 255,
+      "coins": 264,
       "active_banner": "banner_gold"
     },
     {
@@ -95,10 +95,10 @@
       "discord_id": 1066686022500495420,
       "so2_nick": "Xyro",
       "so2_id": "144159784",
-      "elo": 1000,
+      "elo": 984,
       "wins": 1,
-      "losses": 1,
-      "coins": 11,
+      "losses": 2,
+      "coins": 15,
       "active_banner": null
     },
     {
@@ -115,20 +115,20 @@
       "discord_id": 1134288537546674238,
       "so2_nick": "Steel",
       "so2_id": "211299702",
-      "elo": 984,
+      "elo": 968,
       "wins": 0,
-      "losses": 1,
-      "coins": 2,
+      "losses": 2,
+      "coins": 4,
       "active_banner": null
     },
     {
       "discord_id": 1160629731910221955,
       "so2_nick": "Фага1337",
       "so2_id": "49031119",
-      "elo": 1016,
-      "wins": 1,
+      "elo": 1032,
+      "wins": 2,
       "losses": 0,
-      "coins": 5,
+      "coins": 13,
       "active_banner": null
     },
     {
@@ -155,30 +155,30 @@
       "discord_id": 1263121818244616195,
       "so2_nick": "NyxZero",
       "so2_id": "206022397",
-      "elo": 1016,
+      "elo": 1000,
       "wins": 2,
-      "losses": 1,
-      "coins": 16,
+      "losses": 2,
+      "coins": 17,
       "active_banner": null
     },
     {
       "discord_id": 1385557493874294855,
       "so2_nick": "LORD AİZEN",
       "so2_id": "239786369",
-      "elo": 968,
+      "elo": 952,
       "wins": 0,
-      "losses": 2,
-      "coins": 3,
+      "losses": 3,
+      "coins": 7,
       "active_banner": null
     },
     {
       "discord_id": 1390263674601472041,
       "so2_nick": "Lawliet",
       "so2_id": "202164795",
-      "elo": 968,
-      "wins": 0,
+      "elo": 984,
+      "wins": 1,
       "losses": 2,
-      "coins": 3,
+      "coins": 10,
       "active_banner": null
     },
     {
@@ -205,10 +205,10 @@
       "discord_id": 1475723969012437175,
       "so2_nick": "Caki",
       "so2_id": "281052158",
-      "elo": 1000,
+      "elo": 984,
       "wins": 0,
-      "losses": 0,
-      "coins": 0,
+      "losses": 1,
+      "coins": 5,
       "active_banner": null
     },
     {
@@ -265,10 +265,10 @@
       "discord_id": 1513910231212621890,
       "so2_nick": "PHOENİX",
       "so2_id": "200882046",
-      "elo": 1016,
-      "wins": 2,
+      "elo": 1032,
+      "wins": 3,
       "losses": 1,
-      "coins": 19,
+      "coins": 28,
       "active_banner": null
     },
     {
@@ -452,6 +452,96 @@
       "log_type": "earn",
       "balance_after": 0,
       "created_at": 1782064566
+    },
+    {
+      "id": 11,
+      "discord_id": 1160629731910221955,
+      "change": 8,
+      "reason": "Matç No4 qələbə",
+      "log_type": "earn",
+      "balance_after": 13,
+      "created_at": 1782066652
+    },
+    {
+      "id": 12,
+      "discord_id": 964144436374294609,
+      "change": 9,
+      "reason": "Matç No4 qələbə",
+      "log_type": "earn",
+      "balance_after": 264,
+      "created_at": 1782066652
+    },
+    {
+      "id": 13,
+      "discord_id": 1390263674601472041,
+      "change": 7,
+      "reason": "Matç No4 qələbə",
+      "log_type": "earn",
+      "balance_after": 10,
+      "created_at": 1782066652
+    },
+    {
+      "id": 14,
+      "discord_id": 1513910231212621890,
+      "change": 9,
+      "reason": "Matç No4 qələbə",
+      "log_type": "earn",
+      "balance_after": 28,
+      "created_at": 1782066652
+    },
+    {
+      "id": 15,
+      "discord_id": 807514987043749919,
+      "change": 9,
+      "reason": "Matç No4 qələbə",
+      "log_type": "earn",
+      "balance_after": 9,
+      "created_at": 1782066652
+    },
+    {
+      "id": 16,
+      "discord_id": 1134288537546674238,
+      "change": 2,
+      "reason": "Matç No4 iştirak",
+      "log_type": "earn",
+      "balance_after": 4,
+      "created_at": 1782066652
+    },
+    {
+      "id": 17,
+      "discord_id": 1263121818244616195,
+      "change": 1,
+      "reason": "Matç No4 iştirak",
+      "log_type": "earn",
+      "balance_after": 17,
+      "created_at": 1782066652
+    },
+    {
+      "id": 18,
+      "discord_id": 1475723969012437175,
+      "change": 5,
+      "reason": "Matç No4 iştirak",
+      "log_type": "earn",
+      "balance_after": 5,
+      "created_at": 1782066652
+    },
+    {
+      "id": 19,
+      "discord_id": 1385557493874294855,
+      "change": 4,
+      "reason": "Matç No4 iştirak",
+      "log_type": "earn",
+      "balance_after": 7,
+      "created_at": 1782066652
+    },
+    {
+      "id": 20,
+      "discord_id": 1066686022500495420,
+      "change": 4,
+      "reason": "Matç No4 iştirak",
+      "log_type": "earn",
+      "balance_after": 15,
+      "created_at": 1782066652
     }
   ]
 }
