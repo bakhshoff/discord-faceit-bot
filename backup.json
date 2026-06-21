@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782060156,
+  "exported_at": 1782062779,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -70,6 +70,16 @@
       "losses": 2,
       "coins": 250,
       "active_banner": "banner_gold"
+    },
+    {
+      "discord_id": 1001110996657651772,
+      "so2_nick": "KnowMe",
+      "so2_id": "263045816",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null
     },
     {
       "discord_id": 1060637021565112360,
