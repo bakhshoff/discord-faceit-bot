@@ -1,5 +1,5 @@
 {
-  "exported_at": 1781905626,
+  "exported_at": 1782060088,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -19,6 +19,16 @@
       "wins": 0,
       "losses": 1,
       "coins": 3,
+      "active_banner": null
+    },
+    {
+      "discord_id": 807514987043749919,
+      "so2_nick": "S2mLee100Lesh",
+      "so2_id": "162993521",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
       "active_banner": null
     },
     {
