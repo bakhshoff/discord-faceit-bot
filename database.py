@@ -23,6 +23,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN coins INTEGER DEFAULT 0")
     if "active_banner" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN active_banner TEXT DEFAULT NULL")
+    if "active_frame" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN active_frame TEXT DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
@@ -417,6 +419,23 @@ def get_active_banner(discord_id):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT active_banner FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def set_active_frame(discord_id, item_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET active_frame = ? WHERE discord_id = ?", (item_id, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_active_frame(discord_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT active_frame FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
     conn.close()
     return row[0] if row else None

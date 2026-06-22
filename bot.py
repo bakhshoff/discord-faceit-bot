@@ -16,6 +16,7 @@ from database import (
     get_queue_list, add_coins, get_coins, spend_coins,
     get_inventory, owns_item, add_to_inventory,
     set_active_banner, get_active_banner,
+    set_active_frame, get_active_frame,
     record_match_history, get_player_match_history, get_total_match_count,
     admin_set_player_field,
     add_skin, get_active_skins, get_skin_by_id, remove_skin,
@@ -232,25 +233,32 @@ class InventoryActivateView(discord.ui.View):
         self.discord_id = discord_id
 
         owned_ids = get_inventory(discord_id)
-        active = get_active_banner(discord_id)
+        active_banner = get_active_banner(discord_id)
+        active_frame = get_active_frame(discord_id)
 
         for item_id in owned_ids:
             item = get_item_by_id(item_id)
             if not item:
                 continue
-            is_active = item_id == active
+            if item.get("type") == "avatar_frame":
+                is_active = item_id == active_frame
+            else:
+                is_active = item_id == active_banner
             label = f"{item['name']} ✅" if is_active else f"Aktiv et: {item['name']}"
             style = discord.ButtonStyle.secondary if is_active else discord.ButtonStyle.success
             button = discord.ui.Button(label=label, style=style, disabled=is_active)
-            button.callback = self._make_callback(item_id, item["name"])
+            button.callback = self._make_callback(item_id, item["name"], item.get("type"))
             self.add_item(button)
 
-    def _make_callback(self, item_id, item_name):
+    def _make_callback(self, item_id, item_name, item_type):
         async def callback(interaction: discord.Interaction):
             if interaction.user.id != self.discord_id:
                 await interaction.response.send_message("❌ Bu inventar sizə aid deyil.", ephemeral=True)
                 return
-            set_active_banner(self.discord_id, item_id)
+            if item_type == "avatar_frame":
+                set_active_frame(self.discord_id, item_id)
+            else:
+                set_active_banner(self.discord_id, item_id)
             await asyncio.to_thread(backup.export_backup)
             await interaction.response.send_message(f"✅ **{item_name}** aktiv edildi. `/profile` ilə yoxlaya bilərsiniz.", ephemeral=True)
         return callback
@@ -711,7 +719,7 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
-        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner = player
+        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
         added = add_to_queue(discord_id, nick, elo)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
@@ -805,7 +813,7 @@ async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
 
     avatar_bytes = None
     try:
@@ -822,9 +830,15 @@ async def profile(interaction: discord.Interaction):
         if item:
             banner_full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "banners", item["file"])
 
+    frame_full_path = None
+    if active_frame:
+        fitem = get_item_by_id(active_frame)
+        if fitem:
+            frame_full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frames", fitem["file"])
+
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
-        banner_full_path, coins
+        banner_full_path, coins, frame_full_path
     )
 
     await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=PlayerProfileView(discord_id))
@@ -1325,7 +1339,7 @@ async def admin_panel(interaction: discord.Interaction, uzv: discord.Member):
         await interaction.response.send_message("❌ Bu üzv qeydiyyatdan keçməyib.", ephemeral=True)
         return
 
-    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
     matches = wins + losses
     win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
 

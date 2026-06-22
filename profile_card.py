@@ -87,7 +87,7 @@ def _vertical_gradient(width, height, top_color, bottom_color):
     return base
 
 
-def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, output_path="profile_card.png", banner_path=None, coins=0):
+def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, output_path="profile_card.png", banner_path=None, coins=0, frame_path=None):
     if banner_path and os.path.exists(banner_path):
         try:
             banner_img = Image.open(banner_path).convert("RGB")
@@ -99,6 +99,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
     else:
         img = _vertical_gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
 
+    img = img.convert("RGBA")
     draw = ImageDraw.Draw(img)
 
     # Xarici çərçivə
@@ -149,13 +150,24 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
             fill=PANEL, outline=BORDER, width=2
         )
 
-    # Avatar ətrafında level rəngli halqa
-    ring_pad = 6
-    draw.ellipse(
-        [(avatar_x - ring_pad, avatar_y - ring_pad),
-         (avatar_x + avatar_size + ring_pad, avatar_y + avatar_size + ring_pad)],
-        outline=level_color, width=4
-    )
+    # Avatar cercivesi (frame) VE YA level rengli halqa
+    frame_drawn = False
+    if frame_path and os.path.exists(frame_path):
+        try:
+            frame_img = Image.open(frame_path).convert("RGBA")
+            fx = avatar_x + avatar_size // 2 - frame_img.width // 2
+            fy = avatar_y + avatar_size // 2 - frame_img.height // 2
+            img.alpha_composite(frame_img, (fx, fy))
+            frame_drawn = True
+        except Exception:
+            frame_drawn = False
+    if not frame_drawn:
+        ring_pad = 6
+        draw.ellipse(
+            [(avatar_x - ring_pad, avatar_y - ring_pad),
+             (avatar_x + avatar_size + ring_pad, avatar_y + avatar_size + ring_pad)],
+            outline=level_color, width=4
+        )
 
     # Level nişanı (avatarın aşağı sağ küncündə)
     badge_size = 44
@@ -205,5 +217,6 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
     # Alt footer
     draw.text((30, HEIGHT - 32), "Calestify Gaming Community", font=stat_label_font, fill=GRAY)
 
+    img = img.convert("RGB")
     img.save(output_path)
     return output_path

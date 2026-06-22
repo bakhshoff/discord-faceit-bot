@@ -1,34 +1,23 @@
-# Market məhsulları konfiqurasiyası.
-# Yeni banner/avatar əlavə etmək üçün bu siyahıya yeni sətir əlavə edin.
+# Market mehsullari konfiqurasiyasi.
+# Yeni banner/avatar elave etmek ucun bu siyahiya yeni setir elave edin.
 #
-# id: unikal identifikator (hərflər, rəqəmlər, alt xətt - boşluq olmasın)
-# name: istifadəçiyə görünən ad
-# type: "banner" və ya "avatar_frame"
-# price: qiymət (coin)
-# file: şəkil faylının adı (bannerlər üçün banners/ qovluğunda, çərçivələr üçün frames/ qovluğunda olmalıdır)
+# id: unikal identifikator
+# name: istifadeciye gorunen ad
+# type: "banner" ve ya "avatar_frame"
+# price: qiymet (coin)
+# file: sekil faylinin adi
 
 MARKET_ITEMS = [
-    {
-        "id": "banner_gold",
-        "name": "Qızılı Banner",
-        "type": "banner",
-        "price": 200,
-        "file": "banner_gold.png",
-    },
-    {
-        "id": "banner_red",
-        "name": "Qırmızı Alov Banner",
-        "type": "banner",
-        "price": 200,
-        "file": "banner_red.png",
-    },
-    {
-        "id": "banner_purple",
-        "name": "Bənövşəyi Elite Banner",
-        "type": "banner",
-        "price": 350,
-        "file": "banner_purple.png",
-    },
+    {"id": "banner_gold", "name": "Qizili Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
+    {"id": "banner_red", "name": "Qirmizi Alov Banner", "type": "banner", "price": 200, "file": "banner_red.png"},
+    {"id": "banner_purple", "name": "Benovseyi Elite Banner", "type": "banner", "price": 350, "file": "banner_purple.png"},
+    {"id": "banner_cyber_blue", "name": "Cyber Blue Banner", "type": "banner", "price": 400, "file": "banner_cyber_blue.png"},
+    {"id": "banner_toxic_green", "name": "Toxic Green Banner", "type": "banner", "price": 400, "file": "banner_toxic_green.png"},
+    {"id": "frame_cyan", "name": "Neon Mavi Cercive", "type": "avatar_frame", "price": 300, "file": "frame_cyan.png"},
+    {"id": "frame_pink", "name": "Neon Cehrayi Cercive", "type": "avatar_frame", "price": 300, "file": "frame_pink.png"},
+    {"id": "frame_green", "name": "Neon Yasil Cercive", "type": "avatar_frame", "price": 300, "file": "frame_green.png"},
+    {"id": "frame_purple", "name": "Neon Benovseyi Cercive", "type": "avatar_frame", "price": 450, "file": "frame_purple.png"},
+    {"id": "frame_gold", "name": "Neon Qizili Cercive", "type": "avatar_frame", "price": 500, "file": "frame_gold.png"},
 ]
 
 
