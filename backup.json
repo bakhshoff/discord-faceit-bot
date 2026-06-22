@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782083406,
+  "exported_at": 1782148104,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -9,7 +9,8 @@
       "wins": 2,
       "losses": 0,
       "coins": 14,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 768065493219147776,
@@ -19,7 +20,8 @@
       "wins": 0,
       "losses": 1,
       "coins": 3,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 807514987043749919,
@@ -29,7 +31,8 @@
       "wins": 1,
       "losses": 1,
       "coins": 9,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 855719280086876161,
@@ -39,7 +42,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 941938431632769075,
@@ -49,7 +53,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 949736839110078566,
@@ -59,7 +64,8 @@
       "wins": 1,
       "losses": 0,
       "coins": 9,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 955488430794637322,
@@ -69,7 +75,8 @@
       "wins": 1,
       "losses": 0,
       "coins": 9,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 964144436374294609,
@@ -79,7 +86,8 @@
       "wins": 2,
       "losses": 2,
       "coins": 264,
-      "active_banner": "banner_gold"
+      "active_banner": "banner_gold",
+      "active_frame": null
     },
     {
       "discord_id": 1001110996657651772,
@@ -89,7 +97,8 @@
       "wins": 1,
       "losses": 0,
       "coins": 6,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1060637021565112360,
@@ -99,7 +108,8 @@
       "wins": 2,
       "losses": 0,
       "coins": 17,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1066686022500495420,
@@ -109,7 +119,8 @@
       "wins": 1,
       "losses": 2,
       "coins": 15,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1084363119737970759,
@@ -119,7 +130,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1134288537546674238,
@@ -129,7 +141,8 @@
       "wins": 0,
       "losses": 2,
       "coins": 4,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1160629731910221955,
@@ -139,7 +152,8 @@
       "wins": 2,
       "losses": 0,
       "coins": 13,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1208089903544672278,
@@ -149,7 +163,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1228418531951906838,
@@ -159,7 +174,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1263121818244616195,
@@ -169,7 +185,8 @@
       "wins": 2,
       "losses": 2,
       "coins": 17,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1326856754511745156,
@@ -179,7 +196,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1385557493874294855,
@@ -189,7 +207,8 @@
       "wins": 0,
       "losses": 3,
       "coins": 7,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1390263674601472041,
@@ -199,7 +218,30 @@
       "wins": 1,
       "losses": 2,
       "coins": 10,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
+    },
+    {
+      "discord_id": 1429511300391764060,
+      "so2_nick": "Hidra",
+      "so2_id": "201509341",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null
+    },
+    {
+      "discord_id": 1440042813285863447,
+      "so2_nick": "donk",
+      "so2_id": "81616363",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1454870119690928230,
@@ -209,7 +251,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1464500933961453794,
@@ -219,7 +262,8 @@
       "wins": 0,
       "losses": 1,
       "coins": 1,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1475723969012437175,
@@ -229,7 +273,8 @@
       "wins": 0,
       "losses": 1,
       "coins": 5,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1478002530284736687,
@@ -239,7 +284,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1486111441122627865,
@@ -249,7 +295,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1487018850095464461,
@@ -259,7 +306,8 @@
       "wins": 1,
       "losses": 1,
       "coins": 5,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1505799748215636089,
@@ -269,7 +317,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1508771584352190505,
@@ -279,7 +328,8 @@
       "wins": 0,
       "losses": 1,
       "coins": 2,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1513910231212621890,
@@ -289,7 +339,8 @@
       "wins": 3,
       "losses": 1,
       "coins": 28,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1516886654604804168,
@@ -299,7 +350,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     },
     {
       "discord_id": 1518324691117281404,
@@ -309,7 +361,8 @@
       "wins": 0,
       "losses": 0,
       "coins": 0,
-      "active_banner": null
+      "active_banner": null,
+      "active_frame": null
     }
   ],
   "inventory": [
@@ -367,7 +420,7 @@
       "winner_id": 807514987043749919,
       "channel_id": 1517459829268938792,
       "message_id": 1518327657513750582,
-      "finished": 0
+      "finished": 1
     },
     {
       "id": 5,
@@ -376,7 +429,7 @@
       "winner_id": 807514987043749919,
       "channel_id": 1517459829268938792,
       "message_id": 1518327694935330848,
-      "finished": 0
+      "finished": 1
     }
   ],
   "match_counter": [
