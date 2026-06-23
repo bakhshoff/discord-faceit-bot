@@ -25,6 +25,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN active_banner TEXT DEFAULT NULL")
     if "active_frame" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN active_frame TEXT DEFAULT NULL")
+    if "zm_balance" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN zm_balance INTEGER DEFAULT 0")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
@@ -103,6 +105,15 @@ def init_db():
             created_at INTEGER NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS active_boosts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            boost_type TEXT NOT NULL,
+            multiplier REAL NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    """)
 
     conn.commit()
     conn.close()
@@ -179,7 +190,7 @@ def update_team_elo(winner_ids, loser_ids):
     results = {"winners": [], "losers": []}
 
     for discord_id, nick, elo, wins, losses in winners:
-        new_elo = elo + elo_change_winner
+        new_elo = elo + apply_elo_modifiers(discord_id, elo_change_winner)
         cursor.execute(
             "UPDATE players SET elo = ?, wins = ? WHERE discord_id = ?",
             (new_elo, wins + 1, discord_id)
@@ -187,7 +198,7 @@ def update_team_elo(winner_ids, loser_ids):
         results["winners"].append({"discord_id": discord_id, "nick": nick, "old_elo": elo, "new_elo": new_elo})
 
     for discord_id, nick, elo, wins, losses in losers:
-        new_elo = elo + elo_change_loser
+        new_elo = elo + apply_elo_modifiers(discord_id, elo_change_loser)
         cursor.execute(
             "UPDATE players SET elo = ?, losses = ? WHERE discord_id = ?",
             (new_elo, losses + 1, discord_id)
@@ -219,8 +230,12 @@ def update_elo(winner_id, loser_id):
     expected_winner = 1 / (1 + 10 ** ((loser_elo - winner_elo) / 400))
     expected_loser = 1 / (1 + 10 ** ((winner_elo - loser_elo) / 400))
 
-    new_winner_elo = round(winner_elo + K * (1 - expected_winner))
-    new_loser_elo = round(loser_elo + K * (0 - expected_loser))
+    elo_change_w = round(K * (1 - expected_winner))
+    elo_change_l = round(K * (0 - expected_loser))
+    elo_change_w = apply_elo_modifiers(winner_id, elo_change_w)
+    elo_change_l = apply_elo_modifiers(loser_id, elo_change_l)
+    new_winner_elo = winner_elo + elo_change_w
+    new_loser_elo = loser_elo + elo_change_l
 
     cursor.execute(
         "UPDATE players SET elo = ?, wins = ? WHERE discord_id = ?",
@@ -525,7 +540,7 @@ def admin_set_player_field(discord_id, field, value):
     Admin panel üçün: bir oyunçunun tək bir sahəsini dəyişir.
     field: 'so2_nick', 'so2_id', 'elo', 'coins', 'wins', 'losses'
     """
-    allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "wins", "losses"}
+    allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "zm_balance", "wins", "losses"}
     if field not in allowed_fields:
         return False
     conn = sqlite3.connect(DB_PATH)
@@ -691,3 +706,94 @@ def get_coin_logs(discord_id, log_type=None, limit=15):
         {"change": r[0], "reason": r[1], "log_type": r[2], "balance_after": r[3], "created_at": r[4]}
         for r in rows
     ]
+
+
+def get_zm_balance(discord_id):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def add_zm(discord_id, amount):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET zm_balance = zm_balance + ? WHERE discord_id = ?", (amount, discord_id))
+    conn.commit()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def spend_zm(discord_id, amount):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < amount:
+        conn.close()
+        return False
+    cursor.execute("UPDATE players SET zm_balance = zm_balance - ? WHERE discord_id = ?", (amount, discord_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def apply_elo_modifiers(discord_id, elo_change):
+    if elo_change > 0:
+        for bt in ("boost_100", "boost_50"):
+            b = get_active_boost(discord_id, bt)
+            if b:
+                return round(elo_change * b["multiplier"])
+    elif elo_change < 0:
+        if get_active_boost(discord_id, "protection"):
+            return 0
+    return elo_change
+
+
+def add_boost(discord_id, boost_type, multiplier, duration_seconds):
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now = int(time.time())
+    cursor.execute("SELECT id, expires_at FROM active_boosts WHERE discord_id = ? AND boost_type = ?", (discord_id, boost_type))
+    existing = cursor.fetchone()
+    if existing:
+        new_expires = max(existing[1], now) + duration_seconds
+        cursor.execute("UPDATE active_boosts SET expires_at = ?, multiplier = ? WHERE id = ?", (new_expires, multiplier, existing[0]))
+    else:
+        cursor.execute("INSERT INTO active_boosts (discord_id, boost_type, multiplier, expires_at) VALUES (?, ?, ?, ?)",
+                      (discord_id, boost_type, multiplier, now + duration_seconds))
+    conn.commit()
+    conn.close()
+
+
+def get_active_boost(discord_id, boost_type):
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, multiplier, expires_at FROM active_boosts WHERE discord_id = ? AND boost_type = ? AND expires_at > ?",
+        (discord_id, boost_type, int(time.time()))
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "multiplier": row[1], "expires_at": row[2]}
+
+
+def get_all_active_boosts(discord_id):
+    import time
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT boost_type, multiplier, expires_at FROM active_boosts WHERE discord_id = ? AND expires_at > ? ORDER BY boost_type",
+        (discord_id, int(time.time()))
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"boost_type": r[0], "multiplier": r[1], "expires_at": r[2]} for r in rows]

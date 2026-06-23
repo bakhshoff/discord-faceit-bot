@@ -87,7 +87,7 @@ def _vertical_gradient(width, height, top_color, bottom_color):
     return base
 
 
-def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, output_path="profile_card.png", banner_path=None, coins=0, frame_path=None):
+def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, output_path="profile_card.png", banner_path=None, coins=0, frame_path=None, zm_balance=0):
     if banner_path and os.path.exists(banner_path):
         try:
             banner_img = Image.open(banner_path).convert("RGB")
@@ -131,6 +131,10 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
     coin_circle_d = 16
     draw.ellipse([(WIDTH - 30 - tw - coin_circle_d - 8, 28), (WIDTH - 30 - tw - 8, 28 + coin_circle_d)], fill=GOLD)
     draw.text((WIDTH - 30 - tw, 26), coin_text, font=coin_font, fill=GOLD)
+    zm_text = str(zm_balance) + " AZN"
+    bbox_zm = draw.textbbox((0, 0), zm_text, font=coin_font)
+    tw_zm = bbox_zm[2] - bbox_zm[0]
+    draw.text((WIDTH - 30 - tw_zm, 46), zm_text, font=coin_font, fill=(80, 200, 120))
 
     # Avatar (dairəvi)
     avatar_size = 140

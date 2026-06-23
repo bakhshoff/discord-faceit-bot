@@ -16,7 +16,7 @@ def export_backup():
     cursor = conn.cursor()
 
     tables = ["players", "inventory", "giveaways", "match_counter",
-              "match_history", "skins", "skin_inventory", "coin_logs"]
+              "match_history", "skins", "skin_inventory", "coin_logs", "active_boosts"]
     data = {"exported_at": int(time.time())}
 
     for table in tables:
@@ -59,11 +59,12 @@ def restore_from_backup(backup_path=None):
             for row in data["players"]:
                 cursor.execute(
                     """INSERT INTO players
-                       (discord_id, so2_nick, so2_id, elo, wins, losses, coins, active_banner)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (discord_id, so2_nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (row.get("discord_id"), row.get("so2_nick"), row.get("so2_id"),
                      row.get("elo", 1000), row.get("wins", 0), row.get("losses", 0),
-                     row.get("coins", 0), row.get("active_banner"))
+                     row.get("coins", 0), row.get("active_banner"), row.get("active_frame"),
+                     row.get("zm_balance", 0))
                 )
 
         if "inventory" in data:
@@ -137,6 +138,17 @@ def restore_from_backup(backup_path=None):
                        VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (row.get("id"), row.get("discord_id"), row.get("change"), row.get("reason"),
                      row.get("log_type"), row.get("balance_after"), row.get("created_at"))
+                )
+
+        if "active_boosts" in data:
+            cursor.execute("DELETE FROM active_boosts")
+            for row in data["active_boosts"]:
+                cursor.execute(
+                    """INSERT INTO active_boosts
+                       (id, discord_id, boost_type, multiplier, expires_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (row.get("id"), row.get("discord_id"), row.get("boost_type"),
+                     row.get("multiplier"), row.get("expires_at"))
                 )
 
         conn.commit()

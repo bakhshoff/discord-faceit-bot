@@ -21,7 +21,8 @@ from database import (
     admin_set_player_field,
     add_skin, get_active_skins, get_skin_by_id, remove_skin,
     add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
-    remove_skin_from_inventory, add_coin_log, get_coin_logs
+    remove_skin_from_inventory, add_coin_log, get_coin_logs,
+    get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -55,6 +56,15 @@ RED_ACCENT = (214, 69, 61)
 # Matchmaking üçün açıq saatlar (Azərbaycan vaxtı, UTC+4)
 QUEUE_OPEN_HOUR = 20   # 20:00
 QUEUE_CLOSE_HOUR = 2   # 02:00
+
+ZM_MARKET_ITEMS = [
+    {"id": "boost_50_1d", "name": "1 Günlük 50% ELO Boost", "boost_type": "boost_50", "multiplier": 1.5, "duration": 86400, "price_azn": 2},
+    {"id": "boost_100_1d", "name": "1 Günlük 100% ELO Boost", "boost_type": "boost_100", "multiplier": 2.0, "duration": 86400, "price_azn": 4},
+    {"id": "boost_50_1w", "name": "1 Həftəlik 50% ELO Boost", "boost_type": "boost_50", "multiplier": 1.5, "duration": 604800, "price_azn": 10},
+    {"id": "boost_100_1w", "name": "1 Həftəlik 100% ELO Boost", "boost_type": "boost_100", "multiplier": 2.0, "duration": 604800, "price_azn": 22},
+    {"id": "prot_1d", "name": "1 Günlük ELO Qoruma", "boost_type": "protection", "multiplier": 0.0, "duration": 86400, "price_azn": 5},
+    {"id": "prot_1w", "name": "1 Həftəlik ELO Qoruma", "boost_type": "protection", "multiplier": 0.0, "duration": 604800, "price_azn": 30},
+]
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -247,7 +257,7 @@ class MarketItemView(discord.ui.View):
             if not player:
                 await interaction.followup.send("❌ Profiliniz tapılmadı.", ephemeral=True)
                 return
-            discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
+            discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
             avatar_bytes = None
             try:
                 avatar_url = interaction.user.display_avatar.replace(size=256).url
@@ -273,7 +283,7 @@ class MarketItemView(discord.ui.View):
             preview_path = os.path.join(DATA_DIR or ".", f"preview_{discord_id}_{item['id']}.png")
             await asyncio.to_thread(
                 generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, preview_path,
-                preview_banner_path, coins, preview_frame_path
+                preview_banner_path, coins, preview_frame_path, zm_balance
             )
             type_label = "Çərçivə" if item.get("type") == "avatar_frame" else "Banner"
             embed = discord.Embed(
@@ -442,6 +452,75 @@ class SkinBuyView(discord.ui.View):
 
 # ==================== COIN LOGLARI (filtrli) ====================
 
+class ZMMarketView(discord.ui.View):
+    def __init__(self, discord_id, zm_balance):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.zm_balance = zm_balance
+        for item in ZM_MARKET_ITEMS:
+            emoji = "🛡" if item["boost_type"] == "protection" else "🚀"
+            label = f"{emoji} {item['name']} — {item['price_azn']} AZN"
+            if len(label) > 80:
+                label = label[:77] + "..."
+            btn = discord.ui.Button(label=label, style=discord.ButtonStyle.success, custom_id=f"zm_{item['id']}")
+            btn.callback = self._make_callback(item)
+            self.add_item(btn)
+        self.add_item(discord.ui.Button(
+            label="💰 ZM Al (WhatsApp)",
+            style=discord.ButtonStyle.link,
+            url="https://wa.me/994507037045"
+        ))
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu menyu sizə aid deyil.", ephemeral=True)
+            return False
+        return True
+
+    def _make_callback(self, item):
+        async def callback(interaction: discord.Interaction):
+            zm = get_zm_balance(self.discord_id)
+            if zm < item["price_azn"]:
+                await interaction.response.send_message(
+                    f"❌ Kifayət qədər AZN yoxdur.\n"
+                    f"Lazımdır: {item['price_azn']} AZN | Balansınız: {zm} AZN\n"
+                    f"💰 ZM almaq üçün WhatsApp düyməsinə basın.",
+                    ephemeral=True
+                )
+                return
+            success = spend_zm(self.discord_id, item["price_azn"])
+            if not success:
+                await interaction.response.send_message("❌ Xəta baş verdi.", ephemeral=True)
+                return
+            add_boost(self.discord_id, item["boost_type"], item["multiplier"], item["duration"])
+            await asyncio.to_thread(backup.export_backup)
+            expires_dt = datetime.datetime.utcnow() + datetime.timedelta(seconds=item["duration"])
+            expires_az = expires_dt + datetime.timedelta(hours=4)
+            new_zm = get_zm_balance(self.discord_id)
+            if item["boost_type"] == "protection":
+                effect = "🛡 ELO itirməyəcəksiniz (müddət ərzindəki bütün matçlarda)"
+            elif item["boost_type"] == "boost_50":
+                effect = "🚀 ELO qazancınız x1.5 olacaq"
+            else:
+                effect = "⚡ ELO qazancınız x2 olacaq"
+            await interaction.response.send_message(
+                f"✅ **{item['name']}** aktivləşdirildi!\n"
+                f"{effect}\n"
+                f"⏰ Bitmə vaxtı: {expires_az.strftime('%d.%m.%Y %H:%M')} (AZ)\n"
+                f"💼 Qalan AZN balansınız: {new_zm} AZN",
+                ephemeral=True
+            )
+            log_channel = bot.get_channel(LOG_CHANNEL_ID)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="⚡ ZM Market Alışı",
+                    description=f"{interaction.user.mention}\n**{item['name']}**\n{item['price_azn']} AZN",
+                    color=discord.Color.purple()
+                )
+                await log_channel.send(embed=log_embed)
+        return callback
+
+
 class CoinLogsView(discord.ui.View):
     """Profildə coin loglarını filtrlə göstərir: Hamısı / Qazanma / Xərcləmə."""
     def __init__(self, discord_id):
@@ -540,6 +619,24 @@ class PlayerProfileView(discord.ui.View):
         )
         embed.set_footer(text=f"Balansınız: 🪙 {coins}  ·  Skin alınca envantara düşür, oyunda rəhbərlik təhvil verir.")
         await interaction.response.send_message(embed=embed, view=SkinBuyView(self.discord_id), ephemeral=True)
+
+    @discord.ui.button(label="ZM Market", style=discord.ButtonStyle.danger, emoji="⚡", custom_id="profile_zmmarket", row=1)
+    async def open_zm_market(self, interaction: discord.Interaction, button: discord.ui.Button):
+        zm_balance = get_zm_balance(self.discord_id)
+        boosts = get_all_active_boosts(self.discord_id)
+        lines = [f"**{item['name']}** — {item['price_azn']} AZN" for item in ZM_MARKET_ITEMS]
+        embed = discord.Embed(title="⚡ ZM Market", description="\n".join(lines), color=discord.Color.purple())
+        embed.add_field(name="💼 Balansınız", value=f"{zm_balance} AZN", inline=True)
+        if boosts:
+            bls = []
+            for b in boosts:
+                tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
+                h, mn = tl // 3600, (tl % 3600) // 60
+                bn = "🛡 ELO Qoruma" if b["boost_type"]=="protection" else ("🚀 50% Boost" if b["boost_type"]=="boost_50" else "⚡ 100% Boost")
+                bls.append(f"{bn} — {h}s {mn}dəq qalıb")
+            embed.add_field(name="⚡ Aktiv güclənmələr", value="\n".join(bls), inline=False)
+        embed.set_footer(text="ZM almaq üçün WhatsApp düyməsinə basın.")
+        await interaction.response.send_message(embed=embed, view=ZMMarketView(self.discord_id, zm_balance), ephemeral=True)
 
     @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory", row=1)
     async def open_inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -788,7 +885,7 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
-        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
+        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
         added = add_to_queue(discord_id, nick, elo)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
@@ -882,7 +979,7 @@ async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
 
     avatar_bytes = None
     try:
@@ -907,10 +1004,26 @@ async def profile(interaction: discord.Interaction):
 
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
-        banner_full_path, coins, frame_full_path
+        banner_full_path, coins, frame_full_path, zm_balance
     )
 
-    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=PlayerProfileView(discord_id))
+    boosts = get_all_active_boosts(discord_id)
+    if boosts:
+        boost_embed = discord.Embed(title="⚡ Aktiv Güclənmələr", color=discord.Color.orange())
+        for b in boosts:
+            tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
+            h, mn = tl // 3600, (tl % 3600) // 60
+            if b["boost_type"] == "protection":
+                bn = "🛡 ELO Qoruma"
+            elif b["boost_type"] == "boost_50":
+                bn = "🚀 50% ELO Boost"
+            else:
+                bn = "⚡ 100% ELO Boost"
+            edt = datetime.datetime.utcfromtimestamp(b["expires_at"]) + datetime.timedelta(hours=4)
+            boost_embed.add_field(name=bn, value=f"{h} saat {mn} dəq qalıb\n⏰ {edt.strftime('%d.%m.%Y %H:%M')}", inline=True)
+        await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), embed=boost_embed, view=PlayerProfileView(discord_id))
+    else:
+        await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=PlayerProfileView(discord_id))
 
 
 @bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")
@@ -1216,7 +1329,7 @@ class AdminEditModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         raw_value = str(self.value_input.value).strip()
 
-        if self.field in ("elo", "coins", "wins", "losses"):
+        if self.field in ("elo", "coins", "zm_balance", "wins", "losses"):
             try:
                 value = int(raw_value)
             except ValueError:
@@ -1370,6 +1483,11 @@ class AdminPanelView(discord.ui.View):
         player = get_player(self.discord_id)
         await interaction.response.send_modal(AdminEditModal(self.discord_id, "coins", player[6], "Coin dəyiş"))
 
+    @discord.ui.button(label="ZM (AZN) dəyiş", style=discord.ButtonStyle.primary, row=1)
+    async def edit_zm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "zm_balance", player[9], "ZM (AZN) dəyiş"))
+
     @discord.ui.button(label="Wins dəyiş", style=discord.ButtonStyle.secondary, row=2)
     async def edit_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = get_player(self.discord_id)
@@ -1408,7 +1526,7 @@ async def admin_panel(interaction: discord.Interaction, uzv: discord.Member):
         await interaction.response.send_message("❌ Bu üzv qeydiyyatdan keçməyib.", ephemeral=True)
         return
 
-    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
     matches = wins + losses
     win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
 
@@ -1423,6 +1541,7 @@ async def admin_panel(interaction: discord.Interaction, uzv: discord.Member):
     embed.add_field(name="Losses", value=str(losses), inline=True)
     embed.add_field(name="Win Rate", value=f"{win_rate}%", inline=True)
     embed.add_field(name="Coins", value=str(coins), inline=True)
+    embed.add_field(name="ZM (AZN)", value=str(zm_balance), inline=True)
     embed.set_footer(text=f"Discord ID: {discord_id}")
 
     await interaction.response.send_message(embed=embed, view=AdminPanelView(uzv.id), ephemeral=True)
