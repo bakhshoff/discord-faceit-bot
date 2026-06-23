@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782218327,
+  "exported_at": 1782237759,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -25,7 +25,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null
+      "ai_memory": "ilk mesaj, ləhcə müəyyən deyil"
     },
     {
       "discord_id": 807514987043749919,
@@ -103,7 +103,7 @@
       "active_banner": "banner_red",
       "active_frame": null,
       "zm_balance": 0.5,
-      "ai_memory": "gizli məlumat, 1032 ELO, 4 qələbə, 2 məğlubiyyət, gizli bilgidir, ədəbi, müəyyən məlumatlar vermək istəmir, humoru yaxşı, yetim deyil, robot"
+      "ai_memory": "gizli məlumat, 1032 ELO, 4 qələbə, 2 məğlubiyyət, gizli bilgidir, ədəbi, müəyyən məlumatlar vermək istəmir, humoru yaxşı, yetim deyil, robot, sevdigi-soz=gijdıllağ, humor=yaxşı, sevdiyi_soz=gijdıllağ, humor=yaxşı, sevdiyi_soz=gijdıllağ, humor=yaxşı, yetim_deyil=robot, sevdiyi_soz=gijdıllağ, humor=yaxşı, yetim_deyil=robot"
     },
     {
       "discord_id": 1001110996657651772,
@@ -148,6 +148,19 @@
       "discord_id": 1084363119737970759,
       "so2_nick": "NMRxSkylery77",
       "so2_id": "226871256",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null
+    },
+    {
+      "discord_id": 1102666334157938728,
+      "so2_nick": "the Nook",
+      "so2_id": "217198668",
       "elo": 1000,
       "wins": 0,
       "losses": 0,
@@ -207,7 +220,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Standoff 2 oyununda yeni başlayan, 0 qələbə və 0 məğlubiyyət"
+      "ai_memory": "Standoff 2 oyununda yeni başlayan, 0 qələbə və 0 məğlubiyyət, məşğul olmadığını bildirib, futbol komandaları haqqında danışır, maraqları:futbol, komanda dəstəyi:Neftçi/Qarabağ"
     },
     {
       "discord_id": 1263121818244616195,
@@ -233,7 +246,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "adı=VXO~MAQA, sevdiyi silah=bıçaq, oyun stili=agresif"
+      "ai_memory": "adı=VXO~MAQA, sevdiyi silah=bıçaq, oyun stili=agresif, bomba atandan ehtiyatlı olmalı, strategiyanı dəyişməli, bomba atanı görməmə, bomba partlayışından ehtiyatlı olmaq lazımdır"
     },
     {
       "discord_id": 1385557493874294855,
@@ -246,7 +259,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null
+      "ai_memory": "LORD AİZEN, azərbaycanca danışır, ədəbiyyatla maraqlanır, könüllü işlə məşğul ola bilər, könüllü işlə maraqlanır, ədəbiyyatla maraqlanır, 1v1 turnirlərində iştirak etmək istəyir, könüllü işlə maraqlanır, ədəbiyyatla maraqlanır, 1v1 turnirlərində iştirak etmək istəyir, self-konfident, rəqabətsevər, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi 1v1 turnirlərində qalib gəlmək, adı LORD AİZEN, yaşı yoxdur, bacarıqları yoxdur, sevdiyi silah yoxdur, oyun stili yoxdur, LORD AİZEN, 1v1 turnirlərində iştirak etmək istəyir, könüllü işlə maraqlanır, ədəbiyyatla maraqlanır, self-konfident, rəqabətsevər, adı LORD AİZEN, yaşı yoxdur, bacarıqları yoxdur, ELO=984, Wins=2, Losses=3, Win Rate=40.0%, Coins=26, nömrə yoxdur, LORD AİZEN, narahat olmağı sevmir, rahatlığını əsas götürmək istəyir"
     },
     {
       "discord_id": 1390263674601472041,
@@ -259,7 +272,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Lawliet, ELO=952, Wins=1, Losses=4, Win Rate=20.0%, Coins=14, WiFi problemləri var, Sevdiyi mövqe=Doblo sağ ön fariq, WiFi problemləri var, ən sevimli silah yoxdur, Doblo sağ ön fariq, 5v5 turnirləri, WiFi problemləri, maşın axdarır, maşın axdarır, 5 manat, WiFi problemləri həll olunur, asqimsan, xiyar problemi yoxdur, WiFi problemləri var, 5 manat, maşın axdarır"
+      "ai_memory": ", 14 coin, əyləncəli, peşəkarlıqdan danışır, əyləncəli, Doblo sağ ön fariq, WiFi problemləri, 5v5 turnirləri, maşın axdarır, 5 manat, əyləncəli görsellər paylaşırdı, WiFi problemləri var, 5v5 turnirləri, Doblo sağ ön fariqı mövqeyində oynamaqdan maraqlıdır, əyləncəli görselləri paylaşırdı, WiFi problemləri var, 5v5 turnirləri, Doblo sağ ön fariqı mövqeyində oynamaqdan maraqlıdır, WiFi problemləri, 5v5 turnirləri, Doblo sağ ön fariqı mövqeyində oynamaq istəyi, Sevdiyi mövqe=Doblo sağ ön fariq, WiFi problemləri var, 5v5 turnirləri, maşın axdarır, asqimsan, Lawliet adı, 952 ELO, 1 qələbə, 4 məğlubiyyət, 20.0% qələbə faizi, 14 coin, sevdiyi mövqe=Doblo sağ ön fariq, 5v5 turnirləri, WiFi problemləri, komanda ilə əməkdaşlıq, Sevdiyi mövqe=Doblo sağ ön fariq, WiFi problemləri, 5v5 turnirləri, sevdiyi mövqe=Doblo sağ ön fariq, 5v5 turnirləri, WiFi problemləri var, əyləncəli görsellər paylaşırdı, Sevdiyi mövqe=Doblo sağ ön fariq, WiFi problemləri, 5v5 turnirləri, komanda ilə əməkdaşlıq, ELO=952"
     },
     {
       "discord_id": 1429511300391764060,
@@ -298,7 +311,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null
+      "ai_memory": "sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı wànś xxx, yaşı yoxdur, bacarıqları yoxdur, sevdiyi silah=Zenith, sevdiyi silah=Zenith"
     },
     {
       "discord_id": 1454870119690928230,
@@ -350,7 +363,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null
+      "ai_memory": "emosiyal, maraqlı, sevilən adam yoxdur, gizli məqsədi var, sevdiyi silah=Zenth, oyun stili=naməlum, məqsədi=naməlum"
     },
     {
       "discord_id": 1486111441122627865,
@@ -526,7 +539,7 @@
       "winner_id": 1390263674601472041,
       "channel_id": 1517459829268938792,
       "message_id": 1518956385625444363,
-      "finished": 0
+      "finished": 1
     },
     {
       "id": 8,
@@ -535,7 +548,7 @@
       "winner_id": 1228418531951906838,
       "channel_id": 1517459829268938792,
       "message_id": 1518956485025988608,
-      "finished": 0
+      "finished": 1
     },
     {
       "id": 9,
@@ -544,7 +557,7 @@
       "winner_id": 700371111853948968,
       "channel_id": 1517459829268938792,
       "message_id": 1518956621768822886,
-      "finished": 0
+      "finished": 1
     }
   ],
   "match_counter": [
