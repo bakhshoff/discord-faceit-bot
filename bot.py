@@ -184,16 +184,53 @@ class RegisterView(discord.ui.View):
         await interaction.response.send_modal(RegisterModal())
 
 
+class MarketItemDetailView(discord.ui.View):
+    def __init__(self, discord_id, item):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.item = item
+
+    async def interaction_check(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu market menyusu sizə aid deyil.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="🛒 Al", style=discord.ButtonStyle.success)
+    async def buy_item(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if owns_item(self.discord_id, self.item["id"]):
+            await interaction.response.send_message("⚠️ Bu əşyaya artıq sahibsiniz.", ephemeral=True)
+            return
+        success = spend_coins(self.discord_id, self.item["price"])
+        if not success:
+            current = get_coins(self.discord_id)
+            await interaction.response.send_message(
+                f"❌ Kifayət qədər coin yoxdur. Lazımdır: 🪙 {self.item['price']}, balansınız: 🪙 {current}",
+                ephemeral=True
+            )
+            return
+        add_to_inventory(self.discord_id, self.item["id"])
+        new_balance = get_coins(self.discord_id)
+        add_coin_log(self.discord_id, -self.item["price"], f"Market alışı: {self.item['name']}", "spend", new_balance)
+        await asyncio.to_thread(backup.export_backup)
+        button.disabled = True
+        button.label = "✅ Alındı"
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(
+            f"✅ **{self.item['name']}** alındı! İnventarınıza əlavə olundu.\nAktiv etmək üçün `/profile` açıb inventardan seçin.",
+            ephemeral=True
+        )
+
+
 class MarketItemView(discord.ui.View):
     def __init__(self, discord_id):
         super().__init__(timeout=120)
         self.discord_id = discord_id
-
         for item in MARKET_ITEMS:
             owned = owns_item(discord_id, item["id"])
-            label = f"{item['name']} — {item['price']} 🪙" if not owned else f"{item['name']} (Sahibsiniz)"
-            style = discord.ButtonStyle.success if not owned else discord.ButtonStyle.secondary
-            button = discord.ui.Button(label=label, style=style, custom_id=f"buy_{item['id']}", disabled=owned)
+            label = f"👁 {item['name']} — {item['price']} 🪙" if not owned else f"{item['name']} (Sahibsiniz)"
+            style = discord.ButtonStyle.primary if not owned else discord.ButtonStyle.secondary
+            button = discord.ui.Button(label=label, style=style, custom_id=f"view_{item['id']}", disabled=owned)
             button.callback = self._make_callback(item)
             self.add_item(button)
 
@@ -202,26 +239,58 @@ class MarketItemView(discord.ui.View):
             if interaction.user.id != self.discord_id:
                 await interaction.response.send_message("❌ Bu market menyusu sizə aid deyil.", ephemeral=True)
                 return
-
             if owns_item(self.discord_id, item["id"]):
                 await interaction.response.send_message("⚠️ Bu əşyaya artıq sahibsiniz.", ephemeral=True)
                 return
-
-            success = spend_coins(self.discord_id, item["price"])
-            if not success:
-                current = get_coins(self.discord_id)
-                await interaction.response.send_message(
-                    f"❌ Kifayət qədər coin yoxdur. Lazımdır: 🪙 {item['price']}, balansınız: 🪙 {current}",
-                    ephemeral=True
-                )
+            await interaction.response.defer(ephemeral=True)
+            player = get_player(self.discord_id)
+            if not player:
+                await interaction.followup.send("❌ Profiliniz tapılmadı.", ephemeral=True)
                 return
-
-            add_to_inventory(self.discord_id, item["id"])
-            new_balance = get_coins(self.discord_id)
-            add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_balance)
-            await asyncio.to_thread(backup.export_backup)
-            await interaction.response.send_message(
-                f"✅ **{item['name']}** alındı! İnventarınıza əlavə olundu.\nAktiv etmək üçün `/profile` açıb inventardan seçin.",
+            discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame = player
+            avatar_bytes = None
+            try:
+                avatar_url = interaction.user.display_avatar.replace(size=256).url
+                resp = await asyncio.to_thread(requests.get, avatar_url, timeout=10)
+                avatar_bytes = resp.content
+            except Exception:
+                avatar_bytes = None
+            preview_banner_path = None
+            preview_frame_path = None
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            if item.get("type") == "avatar_frame":
+                preview_frame_path = os.path.join(base_dir, "frames", item["file"])
+                if active_banner:
+                    bitem = get_item_by_id(active_banner)
+                    if bitem:
+                        preview_banner_path = os.path.join(base_dir, "banners", bitem["file"])
+            else:
+                preview_banner_path = os.path.join(base_dir, "banners", item["file"])
+                if active_frame:
+                    fitem = get_item_by_id(active_frame)
+                    if fitem:
+                        preview_frame_path = os.path.join(base_dir, "frames", fitem["file"])
+            preview_path = os.path.join(DATA_DIR or ".", f"preview_{discord_id}_{item['id']}.png")
+            await asyncio.to_thread(
+                generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, preview_path,
+                preview_banner_path, coins, preview_frame_path
+            )
+            type_label = "Çərçivə" if item.get("type") == "avatar_frame" else "Banner"
+            embed = discord.Embed(
+                title=f"🛍 {item['name']}",
+                description=(
+                    f"📦 Növ: {type_label}\n"
+                    f"💰 Qiymət: 🪙 {item['price']}\n"
+                    f"👛 Balansınız: 🪙 {coins}\n\n"
+                    f"⬇️ Aşağıda bu əşya ilə profilinizin önizləməsi:"
+                ),
+                color=discord.Color.gold()
+            )
+            embed.set_image(url="attachment://preview.png")
+            await interaction.followup.send(
+                embed=embed,
+                file=discord.File(preview_path, filename="preview.png"),
+                view=MarketItemDetailView(self.discord_id, item),
                 ephemeral=True
             )
         return callback
