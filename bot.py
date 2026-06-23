@@ -27,6 +27,7 @@ from database import (
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
 from profile_card import generate_profile_card
+from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card
 from match_card import generate_match_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 from rules_card import generate_rules_card, generate_register_banner
@@ -522,7 +523,6 @@ class ZMMarketView(discord.ui.View):
 
 
 class CoinLogsView(discord.ui.View):
-    """Profildə coin loglarını filtrlə göstərir: Hamısı / Qazanma / Xərcləmə."""
     def __init__(self, discord_id):
         super().__init__(timeout=120)
         self.discord_id = discord_id
@@ -533,43 +533,27 @@ class CoinLogsView(discord.ui.View):
             return False
         return True
 
-    def _build_embed(self, log_type):
+    async def _refresh(self, interaction: discord.Interaction, log_type):
         logs = get_coin_logs(self.discord_id, log_type=log_type, limit=15)
-        if log_type == "earn":
-            title = "🪙 Coin Logları — Qazanma"
-        elif log_type == "spend":
-            title = "🪙 Coin Logları — Xərcləmə"
-        else:
-            title = "🪙 Coin Logları — Hamısı"
-
-        if not logs:
-            embed = discord.Embed(title=title, description="Hələ heç bir qeyd yoxdur.", color=discord.Color.gold())
-            return embed
-
-        lines = []
-        for log in logs:
-            change = log["change"]
-            sign = "+" if change >= 0 else ""
-            icon = "🟢" if log["log_type"] == "earn" else "🔴"
-            dt = datetime.datetime.utcfromtimestamp(log["created_at"]) + datetime.timedelta(hours=4)
-            date_str = dt.strftime("%d.%m %H:%M")
-            lines.append(f"{icon} **{sign}{change}** 🪙 — {log['reason']}  ·  {date_str}")
-
-        embed = discord.Embed(title=title, description="\n".join(lines), color=discord.Color.gold())
-        embed.set_footer(text=f"Cari balans: 🪙 {get_coins(self.discord_id)}")
-        return embed
+        balance = get_coins(self.discord_id)
+        path = os.path.join(DATA_DIR or ".", f"logs_{self.discord_id}.png")
+        await asyncio.to_thread(generate_coin_logs_card, logs, balance, log_type, path)
+        await interaction.response.edit_message(
+            attachments=[discord.File(path, filename="logs.png")],
+            view=self
+        )
 
     @discord.ui.button(label="Hamısı", style=discord.ButtonStyle.primary, emoji="📋")
     async def show_all(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=self._build_embed(None), view=self)
+        await self._refresh(interaction, None)
 
     @discord.ui.button(label="Qazanma", style=discord.ButtonStyle.success, emoji="🟢")
     async def show_earn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=self._build_embed("earn"), view=self)
+        await self._refresh(interaction, "earn")
 
     @discord.ui.button(label="Xərcləmə", style=discord.ButtonStyle.danger, emoji="🔴")
     async def show_spend(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=self._build_embed("spend"), view=self)
+        await self._refresh(interaction, "spend")
 
 
 class PlayerProfileView(discord.ui.View):
@@ -640,72 +624,33 @@ class PlayerProfileView(discord.ui.View):
 
     @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory", row=1)
     async def open_inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         owned_ids = get_inventory(self.discord_id)
         skin_inv = get_skin_inventory(self.discord_id)
-
-        if not owned_ids and not skin_inv:
-            await interaction.response.send_message("🎒 İnventarınız boşdur. Market-dən əşya və ya skin ala bilərsiniz.", ephemeral=True)
-            return
-
         active = get_active_banner(self.discord_id)
-        embed = discord.Embed(title="🎒 İnventarınız", color=discord.Color.purple())
-
-        # FACEIT market itemləri (bannerlər və s.)
-        item_lines = []
-        for item_id in owned_ids:
-            item = get_item_by_id(item_id)
-            if not item:
-                continue
-            marker = " ✅ (Aktiv)" if item_id == active else ""
-            item_lines.append(f"**{item['name']}**{marker}")
-        if item_lines:
-            embed.add_field(name="🎴 Market əşyaları", value="\n".join(item_lines), inline=False)
-
-        # Standoff skinləri
-        if skin_inv:
-            skin_lines = []
-            for s in skin_inv[:20]:
-                skin_lines.append(f"🔫 **{s['skin_name']}** — 🪙 {s['price_paid']}")
-            embed.add_field(name="🔫 Standoff skinləri", value="\n".join(skin_lines), inline=False)
-
-        if not item_lines and not skin_inv:
-            embed.description = "İnventarınız boşdur."
-
-        # Banner aktivləşdirmə düymələri yalnız market itemləri varsa
+        active_f = get_active_frame(self.discord_id)
+        path = os.path.join(DATA_DIR or ".", f"inventory_{self.discord_id}.png")
+        await asyncio.to_thread(generate_inventory_card, owned_ids, active, active_f, skin_inv, get_item_by_id, path)
         view = InventoryActivateView(self.discord_id) if owned_ids else None
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(file=discord.File(path, filename="inventory.png"), view=view, ephemeral=True)
 
     @discord.ui.button(label="Loglar", style=discord.ButtonStyle.secondary, emoji="🪙", custom_id="profile_logs", row=1)
     async def open_logs(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        logs = get_coin_logs(self.discord_id, limit=15)
+        balance = get_coins(self.discord_id)
+        path = os.path.join(DATA_DIR or ".", f"logs_{self.discord_id}.png")
+        await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, path)
         view = CoinLogsView(self.discord_id)
-        embed = view._build_embed(None)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.followup.send(file=discord.File(path, filename="logs.png"), view=view, ephemeral=True)
 
     @discord.ui.button(label="Matç Tarixçəsi", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="profile_history", row=2)
     async def open_history(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
         history = get_player_match_history(self.discord_id, limit=10)
-        if not history:
-            await interaction.response.send_message("📜 Hələ heç bir matçınız yoxdur.", ephemeral=True)
-            return
-
-        lines = []
-        for h in history:
-            result_icon = "✅" if h["won"] else "❌"
-            change = h["elo_change"]
-            change_str = f"+{change}" if change >= 0 else str(change)
-            type_label = "5v5" if h["match_type"] == "5v5" else "1v1"
-            match_no = f" (No{h['match_number']})" if h["match_number"] else ""
-            played_dt = datetime.datetime.utcfromtimestamp(h["played_at"]) + datetime.timedelta(hours=4)
-            date_str = played_dt.strftime("%d.%m.%Y")
-            lines.append(f"{result_icon} **{type_label}**{match_no} — {h['elo_before']} → {h['elo_after']} ({change_str})  ·  {date_str}")
-
-        embed = discord.Embed(
-            title="📜 Son Matçlar",
-            description="\n".join(lines),
-            color=discord.Color.blurple()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
+        path = os.path.join(DATA_DIR or ".", f"history_{self.discord_id}.png")
+        await asyncio.to_thread(generate_match_history_card, history, path)
+        await interaction.followup.send(file=discord.File(path, filename="history.png"), ephemeral=True)
 
 class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
