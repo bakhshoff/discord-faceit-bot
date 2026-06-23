@@ -95,7 +95,15 @@ async def refresh_leaderboard():
     if channel is None:
         return
     rows = get_leaderboard(20)
-    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH)
+    _base = os.path.dirname(os.path.abspath(__file__))
+    _bdir = os.path.join(_base, "banners")
+    _bfiles = {}
+    for _r in rows:
+        _bid = _r[5] if len(_r) > 5 else None
+        if _bid:
+            _it = get_item_by_id(_bid)
+            if _it: _bfiles[_bid] = _it["file"]
+    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH, _bdir, _bfiles)
     try:
         message = await channel.fetch_message(leaderboard_message_id)
         await message.edit(attachments=[discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")])
@@ -1079,7 +1087,15 @@ async def setup_leaderboard(interaction: discord.Interaction):
     global leaderboard_channel_id, leaderboard_message_id
 
     rows = get_leaderboard(20)
-    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH)
+    _base = os.path.dirname(os.path.abspath(__file__))
+    _bdir = os.path.join(_base, "banners")
+    _bfiles = {}
+    for _r in rows:
+        _bid = _r[5] if len(_r) > 5 else None
+        if _bid:
+            _it = get_item_by_id(_bid)
+            if _it: _bfiles[_bid] = _it["file"]
+    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH, _bdir, _bfiles)
 
     message = await interaction.channel.send(
         content="🏆 **Calestify FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir.",
