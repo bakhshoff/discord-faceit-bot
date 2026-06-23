@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782215847,
+  "exported_at": 1782216609,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -92,10 +92,10 @@
       "elo": 1032,
       "wins": 4,
       "losses": 2,
-      "coins": 279,
+      "coins": 29,
       "active_banner": "banner_red",
       "active_frame": null,
-      "zm_balance": 0
+      "zm_balance": 0.5
     },
     {
       "discord_id": 1001110996657651772,
@@ -901,6 +901,15 @@
       "log_type": "earn",
       "balance_after": 14,
       "created_at": 1782152393
+    },
+    {
+      "id": 41,
+      "discord_id": 964144436374294609,
+      "change": -250,
+      "reason": "Exchange: 250 coin → 0.5 AZN",
+      "log_type": "spend",
+      "balance_after": 29,
+      "created_at": 1782216609
     }
   ],
   "active_boosts": []
