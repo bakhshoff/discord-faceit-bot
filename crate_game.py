@@ -1,9 +1,13 @@
 from PIL import Image, ImageDraw, ImageFont
 import os
+import io
 import random
-import math
+import requests
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+CACHE_DIR = os.path.join(os.environ.get("DATA_DIR", BASE_DIR), "skin_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+
 FONT_CANDIDATES_BOLD = [
     os.path.join(BASE_DIR, "fonts", "DejaVuSans-Bold.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -20,186 +24,301 @@ def _font(size, bold=False):
         try:
             return ImageFont.truetype(path, size)
         except (OSError, IOError):
-            continue
+            pass
     return ImageFont.load_default()
 
-# ── Rarity sistemi ────────────────────────────────────────────────────────────
+# ── Rarity sistemi ─────────────────────────────────────────────────────────────
 RARITIES = {
-    "common":    {"label": "ADI",      "color": (148, 148, 148), "bg": (38, 38, 42),   "glow": (180, 180, 180), "weight": 45, "stars": 1},
-    "uncommon":  {"label": "UNCOMMON", "color": (82, 122, 255),  "bg": (20, 28, 70),   "glow": (100, 140, 255), "weight": 25, "stars": 2},
-    "rare":      {"label": "NADİR",    "color": (148, 80, 255),  "bg": (40, 18, 80),   "glow": (180, 100, 255), "weight": 16, "stars": 3},
-    "epic":      {"label": "EPİK",     "color": (220, 60, 180),  "bg": (70, 15, 60),   "glow": (255, 80, 200),  "weight": 10, "stars": 4},
-    "legendary": {"label": "ƏFSANƏVI", "color": (255, 200, 0),   "bg": (65, 48, 0),    "glow": (255, 220, 60),  "weight": 4,  "stars": 5},
+    "common":    {"label": "ADİ",      "color": (148, 148, 148), "bg": (32, 32, 36),  "glow": (190, 190, 190), "weight": 40, "stars": 1},
+    "uncommon":  {"label": "UNCOMMON", "color": (70, 110, 255),  "bg": (18, 26, 70),  "glow": (100, 140, 255), "weight": 25, "stars": 2},
+    "rare":      {"label": "NADİR",    "color": (148, 80, 255),  "bg": (35, 15, 75),  "glow": (180, 100, 255), "weight": 18, "stars": 3},
+    "epic":      {"label": "EPİK",     "color": (210, 50, 170),  "bg": (65, 12, 55),  "glow": (255, 80, 200),  "weight": 12, "stars": 4},
+    "legendary": {"label": "ƏFSANƏVI", "color": (255, 195, 0),   "bg": (60, 45, 0),   "glow": (255, 225, 60),  "weight": 5,  "stars": 5},
 }
 
+# ── Real Standoff 2 skinləri (Fandom Wiki CDN) ────────────────────────────────
 CRATE_ITEMS = [
-    # Legendary
-    {"name": "AK-47",        "skin": "Redline",        "rarity": "legendary"},
-    {"name": "AWP",          "skin": "Dragon Lore",    "rarity": "legendary"},
-    {"name": "M4A1-S",       "skin": "Hyper Beast",    "rarity": "legendary"},
-    # Epic
-    {"name": "Desert Eagle", "skin": "Blaze",          "rarity": "epic"},
-    {"name": "USP-S",        "skin": "Kill Confirmed", "rarity": "epic"},
-    {"name": "Glock-18",     "skin": "Fade",           "rarity": "epic"},
-    {"name": "M4A4",         "skin": "Howl",           "rarity": "epic"},
-    # Rare
-    {"name": "AK-47",        "skin": "Vulcan",         "rarity": "rare"},
-    {"name": "AWP",          "skin": "Asiimov",        "rarity": "rare"},
-    {"name": "P90",          "skin": "Death by Kitty", "rarity": "rare"},
-    {"name": "MAC-10",       "skin": "Neon Rider",     "rarity": "rare"},
-    {"name": "MP5-SD",       "skin": "Phosphor",       "rarity": "rare"},
-    # Uncommon
-    {"name": "FAMAS",        "skin": "Meltdown",       "rarity": "uncommon"},
-    {"name": "Galil AR",     "skin": "Chatterbox",     "rarity": "uncommon"},
-    {"name": "Nova",         "skin": "Bloomstick",     "rarity": "uncommon"},
-    {"name": "MP7",          "skin": "Skulls",         "rarity": "uncommon"},
-    {"name": "SG 553",       "skin": "Integrale",      "rarity": "uncommon"},
-    # Common
-    {"name": "P250",         "skin": "Sand Dune",      "rarity": "common"},
-    {"name": "Tec-9",        "skin": "Isaac",          "rarity": "common"},
-    {"name": "Five-SeveN",   "skin": "Kami",           "rarity": "common"},
-    {"name": "UMP-45",       "skin": "Urban DDPAT",    "rarity": "common"},
-    {"name": "PP-Bizon",     "skin": "High Roller",    "rarity": "common"},
-    {"name": "SSG 08",       "skin": "Slashed",        "rarity": "common"},
-    {"name": "MP9",          "skin": "Setting Sun",    "rarity": "common"},
+    # ── LEGENDARY ──────────────────────────────────────────────────────────────
+    {"weapon": "AKR",          "skin": "Scylla",
+     "rarity": "legendary",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/2/25/AKR_Scylla.jpg/revision/latest?cb=20240721162157"},
+    {"weapon": "AWM",          "skin": "Poseidon",
+     "rarity": "legendary",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/6/6d/AWM_Poseidon.jpg/revision/latest?cb=20240721161407"},
+    {"weapon": "Karambit",     "skin": "DragonGlass",
+     "rarity": "legendary",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/3/34/Karambit_DragonGlass.PNG/revision/latest?cb=20180918203118"},
+    {"weapon": "Karambit",     "skin": "Ancient",
+     "rarity": "legendary",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/3/35/Karambit_Ancient.png/revision/latest?cb=20181211210757"},
+    {"weapon": "AWM",          "skin": "Daemon",
+     "rarity": "legendary",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/d/dc/AWM_Daemon.png/revision/latest?cb=20181211210724"},
+
+    # ── EPIC ───────────────────────────────────────────────────────────────────
+    {"weapon": "AKR12",        "skin": "Carving",
+     "rarity": "epic",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/c/ca/AKR12_Carving.jpg/revision/latest?cb=20240721161225"},
+    {"weapon": "AKR12",        "skin": "Railgun",
+     "rarity": "epic",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/0/08/AKR12_Railgun.PNG/revision/latest?cb=20180813195154"},
+    {"weapon": "AWM",          "skin": "Phoenix",
+     "rarity": "epic",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/5/5b/AWM_Phoenix.PNG/revision/latest?cb=20180812172938"},
+    {"weapon": "Desert Eagle", "skin": "RedDragon",
+     "rarity": "epic",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/6/6a/Desert_Eagle_RedDragon.PNG/revision/latest?cb=20180918193529"},
+    {"weapon": "Karambit",     "skin": "Acid",
+     "rarity": "epic",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/9/96/Karambit_Acid.png/revision/latest?cb=20181211210733"},
+    {"weapon": "M4",           "skin": "Pro",
+     "rarity": "epic",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/9/94/M4_Pro.PNG/revision/latest?cb=20180918193909"},
+
+    # ── RARE ───────────────────────────────────────────────────────────────────
+    {"weapon": "AKR",          "skin": "Tiger",
+     "rarity": "rare",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/0/09/AKR_Tiger.PNG/revision/latest?cb=20180918173337"},
+    {"weapon": "AWM",          "skin": "Gear",
+     "rarity": "rare",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/d/da/AWM_Gear.PNG/revision/latest?cb=20180918201124"},
+    {"weapon": "Desert Eagle", "skin": "Predator",
+     "rarity": "rare",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/6/61/Desert_Eagle_Predator.PNG/revision/latest?cb=20180812173759"},
+    {"weapon": "Desert Eagle", "skin": "Winner",
+     "rarity": "rare",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/e/ef/Desert_Eagle_Winner.PNG/revision/latest?cb=20180918190233"},
+    {"weapon": "P90",          "skin": "Fissure",
+     "rarity": "rare",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/b/bc/P90_Fissure.PNG/revision/latest?cb=20180827162752"},
+    {"weapon": "SM1014",       "skin": "Necromancer",
+     "rarity": "rare",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/3/39/SM1014_Necromancer.PNG/revision/latest?cb=20180918201643"},
+
+    # ── UNCOMMON ───────────────────────────────────────────────────────────────
+    {"weapon": "AKR",          "skin": "Sport",
+     "rarity": "uncommon",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/0/0f/AKR_Sport.PNG/revision/latest?cb=20180918200158"},
+    {"weapon": "AWM",          "skin": "Scratch",
+     "rarity": "uncommon",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/9/9b/AWM_Scratch.PNG/revision/latest?cb=20180918194254"},
+    {"weapon": "FAMAS",        "skin": "Fury",
+     "rarity": "uncommon",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/e/e0/FAMAS_Fury.PNG/revision/latest?cb=20180918202209"},
+    {"weapon": "UMP45",        "skin": "Shark",
+     "rarity": "uncommon",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/f/f3/UMP45_Shark.PNG/revision/latest?cb=20180918192900"},
+    {"weapon": "UMP45",        "skin": "Winged",
+     "rarity": "uncommon",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/e/e9/UMP45_Winged.PNG/revision/latest?cb=20180918200644"},
+    {"weapon": "M40",          "skin": "Quake",
+     "rarity": "uncommon",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/f/f9/M40_Quake.PNG/revision/latest?cb=20180918194652"},
+
+    # ── COMMON ─────────────────────────────────────────────────────────────────
+    {"weapon": "AKR12",        "skin": "Desert Camouflage",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/7/7c/AKR12_DesertCamouflage.PNG/revision/latest?cb=20180812160317"},
+    {"weapon": "AKR",          "skin": "Treasure Hunter",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/7/70/AKR_TreasureHunter.PNG/revision/latest?cb=20180813221317"},
+    {"weapon": "AKR12",        "skin": "Mechanic",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/1/19/AKR12_Mechanic.PNG/revision/latest?cb=20180918191704"},
+    {"weapon": "G22",          "skin": "Pattern",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/4/4e/G22_Pattern.PNG/revision/latest?cb=20180815152611"},
+    {"weapon": "G22",          "skin": "Desert Camouflage",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/8/80/G22_Desert_Camouflage.PNG/revision/latest?cb=20180812145713"},
+    {"weapon": "Desert Eagle", "skin": "Blood",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/0/01/Desert_Eagle_Blood.PNG/revision/latest?cb=20180812155105"},
+    {"weapon": "G22",          "skin": "Bird",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/f/fe/G22_Bird.png/revision/latest?cb=20181211210710"},
+    {"weapon": "M40",          "skin": "Pro",
+     "rarity": "common",
+     "img": "https://static.wikia.nocookie.net/standoff-2/images/5/56/M40_Pro.PNG/revision/latest?cb=20180918192434"},
 ]
 
+
 def pick_winner() -> dict:
-    population = []
-    weights = []
-    for item in CRATE_ITEMS:
-        population.append(item)
-        weights.append(RARITIES[item["rarity"]]["weight"])
-    return random.choices(population, weights=weights, k=1)[0]
+    weights = [RARITIES[i["rarity"]]["weight"] for i in CRATE_ITEMS]
+    return random.choices(CRATE_ITEMS, weights=weights, k=1)[0]
+
 
 def build_reel(winner: dict, reel_size: int = 24, winner_idx: int = 17) -> list:
-    """Reel yaradır: winner-i winner_idx mövqeyinə qoyur, qalanları random doldurur."""
-    population = [i for i in CRATE_ITEMS if i != winner]
-    weights = [RARITIES[i["rarity"]]["weight"] for i in population]
-    filler = random.choices(population, weights=weights, k=reel_size)
+    others = [i for i in CRATE_ITEMS if i is not winner]
+    weights = [RARITIES[i["rarity"]]["weight"] for i in others]
+    filler = random.choices(others, weights=weights, k=reel_size)
     reel = list(filler)
     reel[winner_idx] = winner
     return reel
 
-# ── GIF generasiyası ──────────────────────────────────────────────────────────
-CARD_STEP = 114      # card + gap
-CARD_W    = 110
-CARD_H    = 210
-CANVAS_W  = 7 * CARD_STEP   # 798
-CANVAS_H  = 310
-REEL_Y    = (CANVAS_H - CARD_H) // 2   # vertical center
 
-WINNER_IDX   = 17
+# ── Resim indirme / önbellek ──────────────────────────────────────────────────
+def _fetch_skin_image(url: str, target_w: int, target_h: int):
+    """URL-dən skini endirir, cache-ə saxlayır, PIL Image qaytarır."""
+    cache_name = url.split("/")[-2].replace("%20", "_") + ".png"
+    cache_path = os.path.join(CACHE_DIR, cache_name)
+    try:
+        if os.path.exists(cache_path):
+            img = Image.open(cache_path).convert("RGBA")
+        else:
+            resp = requests.get(url, timeout=8,
+                                headers={"User-Agent": "Mozilla/5.0"})
+            resp.raise_for_status()
+            img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+            img.save(cache_path)
+
+        # Fit inside target box keeping aspect ratio
+        img.thumbnail((target_w, target_h), Image.LANCZOS)
+        result = Image.new("RGBA", (target_w, target_h), (0, 0, 0, 0))
+        ox = (target_w  - img.width)  // 2
+        oy = (target_h  - img.height) // 2
+        result.paste(img, (ox, oy), img)
+        return result
+    except Exception:
+        return None
+
+
+# ── GIF animasiya ─────────────────────────────────────────────────────────────
+CARD_STEP  = 120
+CARD_W     = 115
+CARD_H     = 220
+IMG_W      = CARD_W - 10
+IMG_H      = 120
+CANVAS_W   = 7 * CARD_STEP    # 840
+CANVAS_H   = 310
+REEL_Y     = (CANVAS_H - CARD_H) // 2
+
+WINNER_IDX    = 17
 TARGET_OFFSET = WINNER_IDX * CARD_STEP + CARD_W // 2 - CANVAS_W // 2
-
-TOTAL_FRAMES = 52
+TOTAL_FRAMES  = 54
 
 
 def _ease_out(t: float) -> float:
     return 1 - (1 - t) ** 4
 
 
-def _draw_card(draw, x, y, item, rarity_info, highlight=False):
+def _draw_card(canvas: Image.Image, x: int, y: int, item: dict,
+               rarity_info: dict, skin_img, highlight: bool = False):
+    draw = ImageDraw.Draw(canvas)
     r = rarity_info
-    border_w = 3 if not highlight else 5
-    border_col = r["glow"] if highlight else r["color"]
-    # Shadow
-    draw.rectangle([x + 3, y + 3, x + CARD_W + 3, y + CARD_H + 3], fill=(0, 0, 0, 100))
-    # Card bg
-    draw.rectangle([x, y, x + CARD_W, y + CARD_H], fill=r["bg"], outline=border_col, width=border_w)
+    bw = 4 if highlight else 2
+    bc = r["glow"] if highlight else r["color"]
 
-    # Rarity stripe at top
-    stripe_h = 6
-    draw.rectangle([x + border_w, y + border_w, x + CARD_W - border_w, y + border_w + stripe_h], fill=r["color"])
+    # Drop shadow
+    draw.rectangle([x + 4, y + 4, x + CARD_W + 4, y + CARD_H + 4],
+                   fill=(0, 0, 0))
+    # Card background
+    draw.rectangle([x, y, x + CARD_W, y + CARD_H],
+                   fill=r["bg"], outline=bc, width=bw)
+    # Top rarity stripe
+    draw.rectangle([x + bw, y + bw, x + CARD_W - bw, y + bw + 5],
+                   fill=r["color"])
 
-    # Weapon icon placeholder (stylised gun silhouette shape via rectangles)
-    ic_x, ic_y, ic_w, ic_h = x + 12, y + 28, CARD_W - 24, 80
-    draw.rectangle([ic_x, ic_y + ic_h // 2 - 6, ic_x + ic_w, ic_y + ic_h // 2 + 6], fill=r["color"], outline=r["glow"], width=1)
-    draw.rectangle([ic_x + 4, ic_y + ic_h // 2 - 14, ic_x + ic_w - 20, ic_y + ic_h // 2 - 6], fill=r["color"])
-    draw.rectangle([ic_x + ic_w - 14, ic_y + ic_h // 2 + 6, ic_x + ic_w + 2, ic_y + ic_h // 2 + 18], fill=r["color"])
+    # Skin image
+    img_y = y + 16
+    if skin_img:
+        canvas.paste(skin_img, (x + (CARD_W - IMG_W) // 2, img_y), skin_img)
+    else:
+        # Fallback: silhouette placeholder
+        draw.rectangle([x + 8, img_y + 10, x + CARD_W - 8, img_y + IMG_H - 10],
+                       fill=tuple(max(0, c - 20) for c in r["bg"]),
+                       outline=r["color"], width=1)
 
-    # Weapon name (top line)
-    fn_bold_14 = _font(13, bold=True)
-    fn_reg_11  = _font(11)
-    fn_tiny    = _font(10, bold=True)
-
-    center_x = x + CARD_W // 2
-    draw.text((center_x, y + 122), item["name"],  font=fn_bold_14, fill=(230, 230, 230), anchor="mm")
-    draw.text((center_x, y + 140), f"| {item['skin']} |", font=fn_reg_11,  fill=r["color"],  anchor="mm")
+    # Weapon + skin name
+    fn_bold = _font(11, bold=True)
+    fn_reg  = _font(10)
+    fn_tiny = _font(9, bold=True)
+    cx = x + CARD_W // 2
+    ty = y + 16 + IMG_H + 6
+    draw.text((cx, ty),      item["weapon"], font=fn_bold, fill=(230, 228, 220), anchor="mm")
+    draw.text((cx, ty + 14), f"| {item['skin']} |", font=fn_reg,  fill=r["color"],       anchor="mm")
 
     # Stars
-    stars = r["stars"]
-    star_str = "★" * stars + "☆" * (5 - stars)
-    draw.text((center_x, y + 158), star_str, font=fn_tiny, fill=r["glow"], anchor="mm")
+    stars = "★" * r["stars"] + "☆" * (5 - r["stars"])
+    draw.text((cx, ty + 28), stars, font=fn_tiny, fill=r["glow"], anchor="mm")
 
-    # Rarity label bar at bottom
-    bar_y = y + CARD_H - 26
-    draw.rectangle([x + border_w, bar_y, x + CARD_W - border_w, y + CARD_H - border_w], fill=r["color"])
-    draw.text((center_x, bar_y + 12), r["label"], font=fn_tiny, fill=(15, 12, 20), anchor="mm")
+    # Bottom label bar
+    bar_y = y + CARD_H - 22
+    draw.rectangle([x + bw, bar_y, x + CARD_W - bw, y + CARD_H - bw], fill=r["color"])
+    draw.text((cx, bar_y + 10), r["label"], font=fn_tiny,
+              fill=(10, 8, 16), anchor="mm")
 
 
-def _draw_frame(reel, offset, highlight_winner=False):
-    img = Image.new("RGB", (CANVAS_W, CANVAS_H), (14, 12, 18))
+def _draw_frame(reel: list, skin_images: dict, offset: int,
+                highlight_winner: bool) -> Image.Image:
+    img = Image.new("RGB", (CANVAS_W, CANVAS_H), (12, 10, 16))
     draw = ImageDraw.Draw(img)
 
-    # Subtle grid lines
+    # Subtle vertical grid
     for gx in range(0, CANVAS_W, CARD_STEP):
-        draw.line([(gx, 0), (gx, CANVAS_H)], fill=(25, 22, 30), width=1)
+        draw.line([(gx, 0), (gx, CANVAS_H)], fill=(22, 20, 28), width=1)
 
     for ci, item in enumerate(reel):
         x = ci * CARD_STEP - offset
-        if -CARD_STEP <= x <= CANVAS_W + CARD_STEP:
-            is_center = ci == WINNER_IDX and highlight_winner
-            _draw_card(draw, x, REEL_Y, item, RARITIES[item["rarity"]], highlight=is_center)
+        if -CARD_STEP - 5 <= x <= CANVAS_W + 5:
+            is_win = (ci == WINNER_IDX and highlight_winner)
+            skin_img = skin_images.get(id(item))
+            _draw_card(img, x, REEL_Y, item,
+                       RARITIES[item["rarity"]], skin_img, highlight=is_win)
 
-    # Center indicator: two golden triangles top & bottom + side lines
-    cx = CANVAS_W // 2
-    half = CARD_W // 2 + 3
-    tri_size = 14
-    # top arrow
-    draw.polygon([(cx - tri_size, 0), (cx + tri_size, 0), (cx, tri_size)], fill=(255, 200, 0))
-    # bottom arrow
-    draw.polygon([(cx - tri_size, CANVAS_H), (cx + tri_size, CANVAS_H), (cx, CANVAS_H - tri_size)], fill=(255, 200, 0))
-    # side lines
+    # Edge fade (depth effect)
+    fade_w = 100
+    overlay = Image.new("RGBA", (CANVAS_W, CANVAS_H), (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
+    for px in range(fade_w):
+        a = int(210 * (1 - px / fade_w))
+        ov_draw.line([(px, 0), (px, CANVAS_H)], fill=(12, 10, 16, a))
+        ov_draw.line([(CANVAS_W - 1 - px, 0), (CANVAS_W - 1 - px, CANVAS_H)],
+                     fill=(12, 10, 16, a))
+    img = img.convert("RGBA")
+    img.alpha_composite(overlay)
+    img = img.convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # Center golden indicator arrows + lines
+    cx   = CANVAS_W // 2
+    half = CARD_W // 2 + 4
+    tri  = 13
+    draw.polygon([(cx - tri, 0), (cx + tri, 0), (cx, tri)], fill=(255, 200, 0))
+    draw.polygon([(cx - tri, CANVAS_H), (cx + tri, CANVAS_H), (cx, CANVAS_H - tri)],
+                 fill=(255, 200, 0))
     draw.rectangle([cx - half, 0, cx - half + 2, CANVAS_H], fill=(255, 200, 0))
     draw.rectangle([cx + half - 2, 0, cx + half, CANVAS_H], fill=(255, 200, 0))
-
-    # Fade masks (left & right edges for depth)
-    fade_w = 90
-    for px in range(fade_w):
-        alpha = int(200 * (1 - px / fade_w))
-        draw.line([(px, 0), (px, CANVAS_H)], fill=(14, 12, 18, alpha))
-        draw.line([(CANVAS_W - 1 - px, 0), (CANVAS_W - 1 - px, CANVAS_H)], fill=(14, 12, 18, alpha))
 
     return img
 
 
 def generate_crate_gif(winner: dict, reel: list, output_path: str):
-    frames = []
+    # Pre-fetch all unique skin images
+    unique = {id(item): item for item in reel}
+    skin_images = {}
+    for key, item in unique.items():
+        skin_images[key] = _fetch_skin_image(item["img"], IMG_W, IMG_H)
+
+    frames    = []
     durations = []
 
     for fi in range(TOTAL_FRAMES):
-        t = fi / (TOTAL_FRAMES - 1)
-        eased = _ease_out(t)
+        t      = fi / (TOTAL_FRAMES - 1)
+        eased  = _ease_out(t)
         offset = int(eased * TARGET_OFFSET)
-        highlight = fi >= TOTAL_FRAMES - 4
-        frame = _draw_frame(reel, offset, highlight_winner=highlight)
-        frames.append(frame)
+        hl     = fi >= TOTAL_FRAMES - 5
+        frames.append(_draw_frame(reel, skin_images, offset, hl))
 
-        # Duration: fast start → slow end
-        if t < 0.55:
-            durations.append(35)
-        elif t < 0.75:
-            durations.append(55)
-        elif t < 0.88:
-            durations.append(90)
-        else:
-            durations.append(160)
+        if   t < 0.55: durations.append(33)
+        elif t < 0.72: durations.append(52)
+        elif t < 0.86: durations.append(90)
+        else:          durations.append(160)
 
-    # 2 extra hold frames at end
+    # Hold final frame
     for _ in range(2):
         frames.append(frames[-1])
-        durations.append(700)
+        durations.append(800)
 
     frames[0].save(
         output_path,
@@ -212,27 +331,34 @@ def generate_crate_gif(winner: dict, reel: list, output_path: str):
 
 
 def generate_result_card(winner: dict, output_path: str):
-    """Qazanılan skini göstərən statik kart."""
-    W, H = 500, 200
-    r = RARITIES[winner["rarity"]]
+    W, H = 520, 210
+    r    = RARITIES[winner["rarity"]]
 
-    img = Image.new("RGB", (W, H), (14, 12, 18))
+    img  = Image.new("RGB", (W, H), (12, 10, 16))
     draw = ImageDraw.Draw(img)
     draw.rectangle([(0, 0), (W - 1, H - 1)], outline=r["glow"], width=3)
-    draw.rectangle([(0, 0), (W, 8)], fill=r["color"])
-    draw.rectangle([(0, H - 8), (W, H)], fill=r["color"])
+    draw.rectangle([(0, 0), (W, 7)],          fill=r["color"])
+    draw.rectangle([(0, H - 7), (W, H)],      fill=r["color"])
 
-    fn_big   = _font(28, bold=True)
-    fn_med   = _font(18)
-    fn_small = _font(13, bold=True)
-    fn_tiny  = _font(11)
+    # Skin image on the left
+    skin_img = _fetch_skin_image(winner["img"], 160, 150)
+    if skin_img:
+        img_rgba = img.convert("RGBA")
+        img_rgba.paste(skin_img, (20, (H - 150) // 2), skin_img)
+        img = img_rgba.convert("RGB")
+        draw = ImageDraw.Draw(img)
 
-    cx = W // 2
-    draw.text((cx, 50), "🎉  QAZANDINIz!", font=fn_small, fill=r["glow"], anchor="mm")
-    draw.text((cx, 90), winner["name"], font=fn_big, fill=(240, 238, 230), anchor="mm")
-    draw.text((cx, 125), f"| {winner['skin']} |", font=fn_med, fill=r["color"], anchor="mm")
+    # Text on the right
+    fn_big   = _font(24, bold=True)
+    fn_med   = _font(16)
+    fn_small = _font(12, bold=True)
+    fn_tiny  = _font(10)
+    tx = 200
+    draw.text((tx, 42),  "🎉  QAZANDINIz!",         font=fn_small, fill=r["glow"])
+    draw.text((tx, 68),  winner["weapon"],             font=fn_big,   fill=(240, 237, 228))
+    draw.text((tx, 100), f"| {winner['skin']} |",     font=fn_med,   fill=r["color"])
     stars = "★" * r["stars"] + "☆" * (5 - r["stars"])
-    draw.text((cx, 152), stars, font=fn_small, fill=r["glow"], anchor="mm")
-    draw.text((cx, 175), r["label"], font=fn_tiny, fill=r["color"], anchor="mm")
+    draw.text((tx, 128), stars,                        font=fn_small, fill=r["glow"])
+    draw.text((tx, 152), r["label"],                   font=fn_tiny,  fill=r["color"])
 
     img.save(output_path)
