@@ -268,7 +268,7 @@ class MarketItemView(discord.ui.View):
             if not player:
                 await interaction.followup.send("❌ Profiliniz tapılmadı.", ephemeral=True)
                 return
-            discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
+            discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance, *_ = player
             avatar_bytes = None
             try:
                 avatar_url = interaction.user.display_avatar.replace(size=256).url
@@ -900,7 +900,7 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
-        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
+        discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance, *_ = player
         added = add_to_queue(discord_id, nick, elo)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
@@ -1014,7 +1014,7 @@ async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance, *_ = player
 
     avatar_bytes = None
     try:
@@ -1569,7 +1569,7 @@ async def admin_panel(interaction: discord.Interaction, uzv: discord.Member):
         await interaction.response.send_message("❌ Bu üzv qeydiyyatdan keçməyib.", ephemeral=True)
         return
 
-    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance = player
+    discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance, *_ = player
     matches = wins + losses
     win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
 
