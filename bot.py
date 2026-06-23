@@ -35,7 +35,6 @@ from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
 import backup
 from ai_chat import ask_groq
-from crate_game import pick_winner, build_reel, generate_crate_gif, generate_result_card, RARITIES
 import requests
 
 load_dotenv()
@@ -1004,48 +1003,6 @@ async def on_ready():
     if not push_backup_task.is_running():
         push_backup_task.start()
     await bot.tree.sync()
-
-
-_crate_cooldowns: dict = {}
-
-@bot.tree.command(name="sandiq", description="Standoff 2 sandıq aç! Şansını sına 🎁")
-async def sandiq(interaction: discord.Interaction):
-    import time
-    now = time.time()
-    last = _crate_cooldowns.get(interaction.user.id, 0)
-    if now - last < 30:
-        remaining = int(30 - (now - last))
-        await interaction.response.send_message(
-            f"⏳ Növbəti sandığı **{remaining}** saniyə sonra aça bilərsiniz.",
-            ephemeral=True
-        )
-        return
-
-    _crate_cooldowns[interaction.user.id] = now
-    await interaction.response.defer()
-
-    winner = pick_winner()
-    reel   = build_reel(winner)
-
-    gif_path    = os.path.join(DATA_DIR or ".", f"crate_{interaction.user.id}.gif")
-    result_path = os.path.join(DATA_DIR or ".", f"crate_result_{interaction.user.id}.png")
-
-    await asyncio.to_thread(generate_crate_gif, winner, reel, gif_path)
-    await asyncio.to_thread(generate_result_card, winner, result_path)
-
-    r = RARITIES[winner["rarity"]]
-    color_int = (r["color"][0] << 16) | (r["color"][1] << 8) | r["color"][2]
-    stars = "★" * r["stars"] + "☆" * (5 - r["stars"])
-
-    embed = discord.Embed(
-        title=f"🎁  {winner['name']} | {winner['skin']}",
-        description=f"{stars}  **{r['label']}**",
-        color=color_int
-    )
-    embed.set_footer(text=f"{interaction.user.display_name} · /sandiq  |  30s cooldown")
-
-    await interaction.followup.send(file=discord.File(gif_path, filename="crate.gif"))
-    await interaction.followup.send(embed=embed, file=discord.File(result_path, filename="result.png"))
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")

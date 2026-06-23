@@ -1,11 +1,20 @@
-import sqlite3
+﻿import sqlite3
 import os
 
 DB_PATH = os.path.join(os.environ.get("DATA_DIR", "."), "bot_database.db")
 
 
+def _get_conn():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA cache_size=4000")
+    conn.execute("PRAGMA temp_store=MEMORY")
+    return conn
+
+
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS players (
@@ -83,7 +92,7 @@ def init_db():
         )
     """)
 
-    # ===== STANDOFF MARKET / SKIN cədvəlləri =====
+    # ===== STANDOFF MARKET / SKIN cÉ™dvÉ™llÉ™ri =====
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS skins (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,12 +136,21 @@ def init_db():
         )
     """)
 
+    # Tez-tez istifadÉ™ edilÉ™n sorÄŸular Ã¼Ã§Ã¼n indekslÉ™r
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_players_elo       ON players(elo DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_players_id        ON players(discord_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_inventory_user    ON inventory(discord_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_coin_logs_user    ON coin_logs(discord_id, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_user ON chat_history(discord_id, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_boosts_user       ON active_boosts(discord_id, expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_skin_inv_user     ON skin_inventory(discord_id, acquired_at DESC)")
+
     conn.commit()
     conn.close()
 
 
 def get_next_match_number():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE match_counter SET last_number = last_number + 1 WHERE id = 1")
     cursor.execute("SELECT last_number FROM match_counter WHERE id = 1")
@@ -142,7 +160,7 @@ def get_next_match_number():
     return number
 
 def register_player(discord_id, so2_nick, so2_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM players WHERE discord_id = ?", (discord_id,))
     existing = cursor.fetchone()
@@ -158,7 +176,7 @@ def register_player(discord_id, so2_nick, so2_id):
     return True
 
 def get_player(discord_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -167,10 +185,10 @@ def get_player(discord_id):
 
 def update_team_elo(winner_ids, loser_ids):
     """
-    winner_ids, loser_ids: discord_id siyahıları (hər komandada bir neçə oyunçu)
-    Komandanın orta ELO-suna görə hesablanır, hər oyunçu fərdi yenilənir.
+    winner_ids, loser_ids: discord_id siyahÄ±larÄ± (hÉ™r komandada bir neÃ§É™ oyunÃ§u)
+    KomandanÄ±n orta ELO-suna gÃ¶rÉ™ hesablanÄ±r, hÉ™r oyunÃ§u fÉ™rdi yenilÉ™nir.
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     def fetch_all(ids):
@@ -223,7 +241,7 @@ def update_team_elo(winner_ids, loser_ids):
 
 
 def update_elo(winner_id, loser_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
 
     cursor.execute("SELECT elo, wins, losses FROM players WHERE discord_id = ?", (winner_id,))
@@ -266,7 +284,7 @@ def update_elo(winner_id, loser_id):
     }
 
 def get_leaderboard(limit=20):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT so2_nick, so2_id, elo, wins, losses, active_banner FROM players ORDER BY elo DESC LIMIT ?",
@@ -277,7 +295,7 @@ def get_leaderboard(limit=20):
     return rows
 
 
-queue_list = []  # Yaddaşda saxlanılan müvəqqəti növbə
+queue_list = []  # YaddaÅŸda saxlanÄ±lan mÃ¼vÉ™qqÉ™ti nÃ¶vbÉ™
 
 def add_to_queue(discord_id, nick, elo):
     for p in queue_list:
@@ -332,7 +350,7 @@ def pop_10_and_balance():
 
 
 def create_giveaway(mukafat, end_unix, winner_id, channel_id, message_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO giveaways (mukafat, end_unix, winner_id, channel_id, message_id, finished) VALUES (?, ?, ?, ?, ?, 0)",
@@ -345,7 +363,7 @@ def create_giveaway(mukafat, end_unix, winner_id, channel_id, message_id):
 
 
 def get_due_giveaways(current_unix):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, mukafat, winner_id, channel_id, message_id FROM giveaways WHERE finished = 0 AND end_unix <= ?",
@@ -357,7 +375,7 @@ def get_due_giveaways(current_unix):
 
 
 def mark_giveaway_finished(giveaway_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE giveaways SET finished = 1 WHERE id = ?", (giveaway_id,))
     conn.commit()
@@ -365,7 +383,7 @@ def mark_giveaway_finished(giveaway_id):
 
 
 def add_coins(discord_id, amount):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE players SET coins = coins + ? WHERE discord_id = ?", (amount, discord_id))
     conn.commit()
@@ -376,7 +394,7 @@ def add_coins(discord_id, amount):
 
 
 def get_coins(discord_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT coins FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -385,8 +403,8 @@ def get_coins(discord_id):
 
 
 def spend_coins(discord_id, amount):
-    """Balans kifayətdirsə coin çıxır və True qaytarır, yoxdursa False qaytarır."""
-    conn = sqlite3.connect(DB_PATH)
+    """Balans kifayÉ™tdirsÉ™ coin Ã§Ä±xÄ±r vÉ™ True qaytarÄ±r, yoxdursa False qaytarÄ±r."""
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT coins FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -400,7 +418,7 @@ def spend_coins(discord_id, amount):
 
 
 def get_inventory(discord_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT item_id FROM inventory WHERE discord_id = ?", (discord_id,))
     rows = cursor.fetchall()
@@ -409,7 +427,7 @@ def get_inventory(discord_id):
 
 
 def owns_item(discord_id, item_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT 1 FROM inventory WHERE discord_id = ? AND item_id = ?", (discord_id, item_id))
     row = cursor.fetchone()
@@ -419,7 +437,7 @@ def owns_item(discord_id, item_id):
 
 def add_to_inventory(discord_id, item_id):
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     try:
         cursor.execute(
@@ -435,7 +453,7 @@ def add_to_inventory(discord_id, item_id):
 
 
 def set_active_banner(discord_id, item_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE players SET active_banner = ? WHERE discord_id = ?", (item_id, discord_id))
     conn.commit()
@@ -443,7 +461,7 @@ def set_active_banner(discord_id, item_id):
 
 
 def get_active_banner(discord_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT active_banner FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -452,7 +470,7 @@ def get_active_banner(discord_id):
 
 
 def set_active_frame(discord_id, item_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE players SET active_frame = ? WHERE discord_id = ?", (item_id, discord_id))
     conn.commit()
@@ -460,7 +478,7 @@ def set_active_frame(discord_id, item_id):
 
 
 def get_active_frame(discord_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT active_frame FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -472,12 +490,12 @@ def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, w
                           loser_elo_before, loser_elo_after, match_number=None):
     """
     match_type: "1v1" veya "5v5"
-    winner_ids, loser_ids: discord_id siyahısı (1v1 üçün tək elementli)
-    winner_elo_before/after, loser_elo_before/after: hər oyunçunun ELO-su, ids ilə eyni sırada
+    winner_ids, loser_ids: discord_id siyahÄ±sÄ± (1v1 Ã¼Ã§Ã¼n tÉ™k elementli)
+    winner_elo_before/after, loser_elo_before/after: hÉ™r oyunÃ§unun ELO-su, ids ilÉ™ eyni sÄ±rada
     """
     import json as _json
     import time as _time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO match_history
@@ -494,9 +512,9 @@ def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, w
 
 
 def get_player_match_history(discord_id, limit=10):
-    """Verilmiş oyunçunun iştirak etdiyi son matçları qaytarır (ən yenidən köhnəyə)."""
+    """VerilmiÅŸ oyunÃ§unun iÅŸtirak etdiyi son matÃ§larÄ± qaytarÄ±r (É™n yenidÉ™n kÃ¶hnÉ™yÉ™)."""
     import json as _json
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM match_history ORDER BY played_at DESC")
     rows = cursor.fetchall()
@@ -539,7 +557,7 @@ def get_player_match_history(discord_id, limit=10):
 
 
 def get_total_match_count():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM match_history")
     row = cursor.fetchone()
@@ -549,13 +567,13 @@ def get_total_match_count():
 
 def admin_set_player_field(discord_id, field, value):
     """
-    Admin panel üçün: bir oyunçunun tək bir sahəsini dəyişir.
+    Admin panel Ã¼Ã§Ã¼n: bir oyunÃ§unun tÉ™k bir sahÉ™sini dÉ™yiÅŸir.
     field: 'so2_nick', 'so2_id', 'elo', 'coins', 'wins', 'losses'
     """
     allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "zm_balance", "wins", "losses"}
     if field not in allowed_fields:
         return False
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(f"UPDATE players SET {field} = ? WHERE discord_id = ?", (value, discord_id))
     conn.commit()
@@ -566,9 +584,9 @@ def admin_set_player_field(discord_id, field, value):
 # ==================== STANDOFF MARKET / SKIN SISTEMI ====================
 
 def add_skin(name, price, image_url=None):
-    """Mağazaya yeni skin əlavə edir. Yaradılan skin id-sini qaytarır."""
+    """MaÄŸazaya yeni skin É™lavÉ™ edir. YaradÄ±lan skin id-sini qaytarÄ±r."""
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO skins (name, price, image_url, active, created_at) VALUES (?, ?, ?, 1, ?)",
@@ -581,8 +599,8 @@ def add_skin(name, price, image_url=None):
 
 
 def get_active_skins():
-    """Mağazada satışda olan (active=1) skinləri qaytarır."""
-    conn = sqlite3.connect(DB_PATH)
+    """MaÄŸazada satÄ±ÅŸda olan (active=1) skinlÉ™ri qaytarÄ±r."""
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, price, image_url FROM skins WHERE active = 1 ORDER BY price ASC, id ASC")
     rows = cursor.fetchall()
@@ -591,7 +609,7 @@ def get_active_skins():
 
 
 def get_skin_by_id(skin_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT id, name, price, image_url, active FROM skins WHERE id = ?", (skin_id,))
     row = cursor.fetchone()
@@ -602,8 +620,8 @@ def get_skin_by_id(skin_id):
 
 
 def remove_skin(skin_id):
-    """Skini mağazadan götürür (active=0). Tarixçə üçün silmir, deaktiv edir."""
-    conn = sqlite3.connect(DB_PATH)
+    """Skini maÄŸazadan gÃ¶tÃ¼rÃ¼r (active=0). TarixÃ§É™ Ã¼Ã§Ã¼n silmir, deaktiv edir."""
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE skins SET active = 0 WHERE id = ?", (skin_id,))
     conn.commit()
@@ -613,9 +631,9 @@ def remove_skin(skin_id):
 
 
 def add_skin_to_inventory(discord_id, skin_id, skin_name, price_paid, image_url=None):
-    """Alınan skini oyunçunun skin envanterinə əlavə edir (hər alış ayrı sətir)."""
+    """AlÄ±nan skini oyunÃ§unun skin envanterinÉ™ É™lavÉ™ edir (hÉ™r alÄ±ÅŸ ayrÄ± sÉ™tir)."""
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO skin_inventory (discord_id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered)
@@ -629,8 +647,8 @@ def add_skin_to_inventory(discord_id, skin_id, skin_name, price_paid, image_url=
 
 
 def get_skin_inventory(discord_id, only_undelivered=False):
-    """Oyunçunun skin envanterini qaytarır. only_undelivered=True olsa yalnız təhvil verilməyənləri."""
-    conn = sqlite3.connect(DB_PATH)
+    """OyunÃ§unun skin envanterini qaytarÄ±r. only_undelivered=True olsa yalnÄ±z tÉ™hvil verilmÉ™yÉ™nlÉ™ri."""
+    conn = _get_conn()
     cursor = conn.cursor()
     if only_undelivered:
         cursor.execute(
@@ -652,7 +670,7 @@ def get_skin_inventory(discord_id, only_undelivered=False):
 
 
 def get_skin_inventory_entry(inv_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, discord_id, skin_id, skin_name, price_paid, image_url, acquired_at, delivered FROM skin_inventory WHERE id = ?",
@@ -667,8 +685,8 @@ def get_skin_inventory_entry(inv_id):
 
 
 def remove_skin_from_inventory(inv_id):
-    """Admin manuel olaraq oyunçunun envanterindən bir skini silir (oyunda təhvil verildikdə)."""
-    conn = sqlite3.connect(DB_PATH)
+    """Admin manuel olaraq oyunÃ§unun envanterindÉ™n bir skini silir (oyunda tÉ™hvil verildikdÉ™)."""
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM skin_inventory WHERE id = ?", (inv_id,))
     conn.commit()
@@ -679,13 +697,13 @@ def remove_skin_from_inventory(inv_id):
 
 def add_coin_log(discord_id, change, reason, log_type, balance_after=None):
     """
-    Coin hərəkətini loga yazır.
-    change: müsbət (qazanma) və ya mənfi (xərcləmə) say
-    reason: izah mətni (məs: "Skin alışı: AK-47 Redline")
-    log_type: "earn" və ya "spend"
+    Coin hÉ™rÉ™kÉ™tini loga yazÄ±r.
+    change: mÃ¼sbÉ™t (qazanma) vÉ™ ya mÉ™nfi (xÉ™rclÉ™mÉ™) say
+    reason: izah mÉ™tni (mÉ™s: "Skin alÄ±ÅŸÄ±: AK-47 Redline")
+    log_type: "earn" vÉ™ ya "spend"
     """
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO coin_logs (discord_id, change, reason, log_type, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -697,10 +715,10 @@ def add_coin_log(discord_id, change, reason, log_type, balance_after=None):
 
 def get_coin_logs(discord_id, log_type=None, limit=15):
     """
-    Oyunçunun coin loglarını qaytarır (ən yenidən köhnəyə).
-    log_type: None (hamısı), "earn" (qazanma), "spend" (xərcləmə)
+    OyunÃ§unun coin loglarÄ±nÄ± qaytarÄ±r (É™n yenidÉ™n kÃ¶hnÉ™yÉ™).
+    log_type: None (hamÄ±sÄ±), "earn" (qazanma), "spend" (xÉ™rclÉ™mÉ™)
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     if log_type in ("earn", "spend"):
         cursor.execute(
@@ -721,7 +739,7 @@ def get_coin_logs(discord_id, log_type=None, limit=15):
 
 
 def get_zm_balance(discord_id):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -730,7 +748,7 @@ def get_zm_balance(discord_id):
 
 
 def add_zm(discord_id, amount):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("UPDATE players SET zm_balance = zm_balance + ? WHERE discord_id = ?", (amount, discord_id))
     conn.commit()
@@ -741,7 +759,7 @@ def add_zm(discord_id, amount):
 
 
 def spend_zm(discord_id, amount):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -755,8 +773,8 @@ def spend_zm(discord_id, amount):
 
 
 def exchange_coins_to_azn(discord_id, coins_per_pack=250, azn_per_pack=0.5):
-    """250 coin çevirir, 0.5 AZN əlavə edir. (success, new_coins, new_zm) qaytarır."""
-    conn = sqlite3.connect(DB_PATH)
+    """250 coin Ã§evirir, 0.5 AZN É™lavÉ™ edir. (success, new_coins, new_zm) qaytarÄ±r."""
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT coins, zm_balance FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
@@ -786,7 +804,7 @@ def apply_elo_modifiers(discord_id, elo_change):
 
 def add_boost(discord_id, boost_type, multiplier, duration_seconds):
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     now = int(time.time())
     cursor.execute("SELECT id, expires_at FROM active_boosts WHERE discord_id = ? AND boost_type = ?", (discord_id, boost_type))
@@ -803,7 +821,7 @@ def add_boost(discord_id, boost_type, multiplier, duration_seconds):
 
 def get_active_boost(discord_id, boost_type):
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, multiplier, expires_at FROM active_boosts WHERE discord_id = ? AND boost_type = ? AND expires_at > ?",
@@ -818,7 +836,7 @@ def get_active_boost(discord_id, boost_type):
 
 def get_all_active_boosts(discord_id):
     import time
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT boost_type, multiplier, expires_at FROM active_boosts WHERE discord_id = ? AND expires_at > ? ORDER BY boost_type",
