@@ -742,6 +742,24 @@ def spend_zm(discord_id, amount):
     return True
 
 
+def exchange_coins_to_azn(discord_id, coins_per_pack=250, azn_per_pack=0.5):
+    """250 coin çevirir, 0.5 AZN əlavə edir. (success, new_coins, new_zm) qaytarır."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT coins, zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < coins_per_pack:
+        conn.close()
+        return False, 0, 0
+    new_coins = row[0] - coins_per_pack
+    new_zm = round(float(row[1] or 0) + azn_per_pack, 2)
+    cursor.execute("UPDATE players SET coins = ?, zm_balance = ? WHERE discord_id = ?",
+                   (new_coins, new_zm, discord_id))
+    conn.commit()
+    conn.close()
+    return True, new_coins, new_zm
+
+
 def apply_elo_modifiers(discord_id, elo_change):
     if elo_change > 0:
         for bt in ("boost_100", "boost_50"):

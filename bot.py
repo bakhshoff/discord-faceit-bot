@@ -22,7 +22,8 @@ from database import (
     add_skin, get_active_skins, get_skin_by_id, remove_skin,
     add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
     remove_skin_from_inventory, add_coin_log, get_coin_logs,
-    get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts
+    get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
+    exchange_coins_to_azn
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -564,6 +565,40 @@ class CoinLogsView(discord.ui.View):
         await self._refresh(interaction, "spend")
 
 
+class ExchangeConfirmView(discord.ui.View):
+    def __init__(self, discord_id, times):
+        super().__init__(timeout=60)
+        self.discord_id = discord_id
+        self.times = times
+
+    @discord.ui.button(label="Çevir", style=discord.ButtonStyle.success, emoji="✅")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        total_coins = self.times * 250
+        total_azn = round(self.times * 0.5, 2)
+        success = True
+        for _ in range(self.times):
+            ok, _, _ = exchange_coins_to_azn(interaction.user.id)
+            if not ok:
+                success = False
+                break
+        if success:
+            new_coins = get_coins(interaction.user.id)
+            new_zm = get_zm_balance(interaction.user.id)
+            add_coin_log(interaction.user.id, -total_coins, f"Exchange: {total_coins} coin → {total_azn} AZN", "spend", new_coins)
+            await asyncio.to_thread(backup.export_backup)
+            await interaction.response.edit_message(
+                content=f"✅ **{total_coins} coin** → **{total_azn} AZN** çevrildi!\n"
+                        f"🪙 Yeni coin: **{new_coins}** | 💵 Yeni AZN: **{new_zm:.1f}**",
+                view=None
+            )
+        else:
+            await interaction.response.edit_message(content="❌ Kifayət qədər coin yox idi, əməliyyat dayandırıldı.", view=None)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary, emoji="❌")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Çevirmə ləğv edildi.", view=None)
+
+
 class PlayerProfileView(discord.ui.View):
     def __init__(self, discord_id):
         super().__init__(timeout=180)
@@ -659,6 +694,32 @@ class PlayerProfileView(discord.ui.View):
         path = os.path.join(DATA_DIR or ".", f"history_{self.discord_id}.png")
         await asyncio.to_thread(generate_match_history_card, history, path)
         await interaction.followup.send(file=discord.File(path, filename="history.png"), ephemeral=True)
+
+    @discord.ui.button(label="Coin → AZN", style=discord.ButtonStyle.primary, emoji="💱", custom_id="profile_exchange", row=2)
+    async def open_exchange(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        times = coins // 250
+        azn_val = round(times * 0.5, 2)
+        if times == 0:
+            await interaction.response.send_message(
+                f"❌ Çevirmək üçün ən az **250 coin** lazımdır.\nBalansınız: 🪙 **{coins}**",
+                ephemeral=True
+            )
+            return
+        embed = discord.Embed(
+            title="💱 Coin → AZN Çevirici",
+            color=discord.Color.gold()
+        )
+        embed.add_field(name="📊 Kurs", value="250 🪙 = 0.5 AZN", inline=False)
+        embed.add_field(name="🪙 Coin balansınız", value=str(coins), inline=True)
+        embed.add_field(name="💱 Maksimum çevirmə", value=f"{times}x (= {azn_val} AZN)", inline=True)
+        embed.add_field(name="💵 Alacağınız AZN", value=f"{azn_val:.1f} AZN", inline=False)
+        embed.set_footer(text=f"Həmişə maksimum miqdar çevrilir: {times * 250} coin → {azn_val} AZN")
+        await interaction.response.send_message(
+            embed=embed,
+            view=ExchangeConfirmView(self.discord_id, times),
+            ephemeral=True
+        )
 
 class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):

@@ -131,10 +131,18 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None, ou
     coin_circle_d = 16
     draw.ellipse([(WIDTH - 30 - tw - coin_circle_d - 8, 28), (WIDTH - 30 - tw - 8, 28 + coin_circle_d)], fill=GOLD)
     draw.text((WIDTH - 30 - tw, 26), coin_text, font=coin_font, fill=GOLD)
-    zm_text = str(zm_balance) + " AZN"
+
+    zm_val = round(float(zm_balance or 0), 2)
+    zm_text = f"{zm_val:.1f} AZN"
     bbox_zm = draw.textbbox((0, 0), zm_text, font=coin_font)
     tw_zm = bbox_zm[2] - bbox_zm[0]
     draw.text((WIDTH - 30 - tw_zm, 46), zm_text, font=coin_font, fill=(80, 200, 120))
+
+    exchange_font = _load_font(11)
+    ex_text = "250 coin = 0.5 AZN"
+    bbox_ex = draw.textbbox((0, 0), ex_text, font=exchange_font)
+    tw_ex = bbox_ex[2] - bbox_ex[0]
+    draw.text((WIDTH - 30 - tw_ex, 68), ex_text, font=exchange_font, fill=GRAY)
 
     # Avatar (dairəvi)
     avatar_size = 140
