@@ -3,4 +3,5 @@ python-dotenv
 Pillow
 flask
 requests
-# cache-bust-2026-06-18-1045
+groq
+# cache-bust-2026-06-23

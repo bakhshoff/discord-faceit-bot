@@ -34,6 +34,7 @@ from matchmaking_visuals import generate_matchmaking_banner, generate_queue_stat
 from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
 import backup
+from ai_chat import ask_groq
 import requests
 
 load_dotenv()
@@ -969,6 +970,26 @@ class MatchmakingView(discord.ui.View):
         clear_queue()
         await interaction.response.send_message("🧹 Sıra tam təmizləndi.", ephemeral=True)
         await update_queue_status_message()
+
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    is_dm = isinstance(message.channel, discord.DMChannel)
+    is_mentioned = bot.user in message.mentions
+    if not is_dm and not is_mentioned:
+        return
+
+    text = message.content.replace(f"<@{bot.user.id}>", "").strip()
+    if not text:
+        return
+
+    player = get_player(message.author.id)
+    async with message.channel.typing():
+        reply = await asyncio.to_thread(ask_groq, message.author.id, message.author.display_name, text, player)
+
+    await message.reply(reply, mention_author=False)
 
 
 @bot.event

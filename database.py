@@ -27,6 +27,18 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN active_frame TEXT DEFAULT NULL")
     if "zm_balance" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN zm_balance INTEGER DEFAULT 0")
+    if "ai_memory" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN ai_memory TEXT DEFAULT NULL")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS inventory (
