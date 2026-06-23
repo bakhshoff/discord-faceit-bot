@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782244313,
+  "exported_at": 1782245948,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -626,6 +626,18 @@
       "winner_elo_after": "[968, 1016, 1016, 1048, 984]",
       "loser_elo_before": "[1000, 952, 1000, 1016, 984]",
       "loser_elo_after": "[984, 936, 984, 1000, 968]"
+    },
+    {
+      "id": 6,
+      "match_type": "5v5",
+      "played_at": 1782244313,
+      "match_number": 8,
+      "winner_ids": "[1385557493874294855, 807514987043749919, 1134288537546674238, 1513910231212621890, 1326856754511745156]",
+      "loser_ids": "[381710974710972416, 964144436374294609, 1228418531951906838, 1066686022500495420, 1518324691117281404]",
+      "winner_elo_before": "[968, 1032, 984, 1016, 1000]",
+      "winner_elo_after": "[984, 1048, 1000, 1032, 1016]",
+      "loser_elo_before": "[1000, 1048, 1016, 968, 984]",
+      "loser_elo_after": "[984, 1032, 1000, 952, 968]"
     }
   ],
   "skins": [
@@ -636,6 +648,38 @@
       "image_url": "https://static.wikia.nocookie.net/standoff-2/images/9/94/G22_Haunt.jpg/revision/latest?cb=20240723205013",
       "active": 1,
       "created_at": 1781903459
+    },
+    {
+      "id": 2,
+      "name": "AKR \"İcewing\"",
+      "price": 700,
+      "image_url": "https://ibb.co/XZcY9JxP",
+      "active": 0,
+      "created_at": 1782245295
+    },
+    {
+      "id": 3,
+      "name": "AKR \"İcewing\"",
+      "price": 700,
+      "image_url": "https://www.reddit.com/media?url=https%3A%2F%2Fpreview.redd.it%2Ficewing-or-night-fury-v0-8s6qrszep9pe1.jpg%3Fwidth%3D640%26crop%3Dsmart%26auto%3Dwebp%26s%3D9f838b2046c80f5c1244b1d3b24eadfabc77c8a1",
+      "active": 0,
+      "created_at": 1782245414
+    },
+    {
+      "id": 4,
+      "name": "AKR \"İcewing\"",
+      "price": 700,
+      "image_url": "https://standoff-2.fandom.com/wiki/Frosty_Chaos_Collection?file=AKR_Icewing.jpg",
+      "active": 0,
+      "created_at": 1782245812
+    },
+    {
+      "id": 5,
+      "name": "AKR \"İcewing\"",
+      "price": 800,
+      "image_url": "https://kommodo.ai/i/0aFXfYRikq8hznaax8T1",
+      "active": 1,
+      "created_at": 1782245948
     }
   ],
   "skin_inventory": [],
