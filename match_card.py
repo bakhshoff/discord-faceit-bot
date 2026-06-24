@@ -131,3 +131,83 @@ def generate_match_card(match_number, selected_map, team_a, team_b, captain_a_id
 
     img.save(output_path)
     return output_path
+
+
+def generate_result_card(match_number, winner_label, loser_label,
+                         winner_team, loser_team,
+                         winner_results, loser_results,
+                         winner_coins, loser_coins,
+                         timestamp_str, output_path="result_card.png"):
+    """
+    winner_results / loser_results: [{"nick", "old_elo", "new_elo"}, ...]
+    winner_coins / loser_coins:     {discord_id: (earned, balance)}
+    """
+    rows = max(len(winner_team), len(loser_team))
+    body_h = TEAM_HEADER_HEIGHT + rows * ROW_HEIGHT
+    height = HEADER_HEIGHT + body_h + FOOTER_HEIGHT + 20
+
+    img = _vertical_gradient(WIDTH, height, BG_TOP, BG_BOTTOM)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (WIDTH - 1, height - 1)], outline=BORDER, width=2)
+
+    brand_font       = _load_font(14, bold=True)
+    title_font       = _load_font(26, bold=True)
+    sub_font         = _load_font(15)
+    team_header_font = _load_font(18, bold=True)
+    player_font      = _load_font(15)
+    elo_font         = _load_font(13, bold=True)
+    footer_font      = _load_font(12)
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    draw.text((30, 18), "CALESTIFY", font=brand_font, fill=GOLD)
+    draw.text((30, 36), f"MATÇ No{match_number}  —  NƏTİCƏ", font=title_font, fill=WHITE)
+    draw.text((30, 78), f"🏆  Qalib: {winner_label}   ·   {timestamp_str}", font=sub_font, fill=GRAY)
+    draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=BORDER, width=2)
+
+    col_w = WIDTH // 2
+
+    # ── Komanda başlıqları ────────────────────────────────────────────────────
+    # Winner (green tint)
+    draw.rectangle([(0, HEADER_HEIGHT), (col_w, HEADER_HEIGHT + TEAM_HEADER_HEIGHT)],
+                   fill=(18, 42, 22))
+    draw.text((30, HEADER_HEIGHT + 9), f"🏆  {winner_label}", font=team_header_font, fill=GREEN)
+
+    # Loser (red tint)
+    draw.rectangle([(col_w, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT + TEAM_HEADER_HEIGHT)],
+                   fill=(46, 22, 22))
+    draw.text((col_w + 30, HEADER_HEIGHT + 9), f"❌  {loser_label}", font=team_header_font, fill=RED_TEAM)
+
+    draw.line([(col_w, HEADER_HEIGHT), (col_w, height - FOOTER_HEIGHT)], fill=BORDER, width=2)
+
+    # ── Oyunçu sətirləri ──────────────────────────────────────────────────────
+    def draw_rows(team, results, coins_map, x_offset, name_color, elo_color):
+        y = HEADER_HEIGHT + TEAM_HEADER_HEIGHT
+        for idx, (p, r) in enumerate(zip(team, results)):
+            if idx % 2 == 0:
+                draw.rectangle([(x_offset, y), (x_offset + col_w, y + ROW_HEIGHT)],
+                                fill=PANEL_ALT)
+            # Nick
+            draw.text((x_offset + 14, y + 8), p["nick"][:22], font=player_font, fill=name_color)
+            # ELO dəyişimi
+            diff = r["new_elo"] - r["old_elo"]
+            sign = "+" if diff >= 0 else ""
+            elo_txt = f"{r['old_elo']} → {r['new_elo']}  ({sign}{diff})"
+            draw.text((x_offset + 14, y + 26), elo_txt, font=elo_font, fill=elo_color)
+            # Coin
+            earned = coins_map.get(p["discord_id"], (0,))[0]
+            coin_txt = f"+{earned}🪙"
+            bbox = draw.textbbox((0, 0), coin_txt, font=elo_font)
+            tw = bbox[2] - bbox[0]
+            draw.text((x_offset + col_w - 14 - tw, y + 17), coin_txt, font=elo_font, fill=GOLD)
+            y += ROW_HEIGHT
+
+    draw_rows(winner_team, winner_results, winner_coins, 0,       GREEN,    GREEN)
+    draw_rows(loser_team,  loser_results,  loser_coins,  col_w,   RED_TEAM, RED_TEAM)
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    footer_y = height - FOOTER_HEIGHT
+    draw.line([(0, footer_y), (WIDTH, footer_y)], fill=BORDER, width=1)
+    draw.text((30, footer_y + 18), "Calestify Gaming Community  ·  ELO & Coin yeniləndi", font=footer_font, fill=GRAY)
+
+    img.save(output_path)
+    return output_path

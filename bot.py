@@ -29,7 +29,7 @@ from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
 from profile_card import generate_profile_card
 from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card
-from match_card import generate_match_card
+from match_card import generate_match_card, generate_result_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
@@ -827,28 +827,30 @@ class MatchResultView(discord.ui.View):
             child.disabled = True
 
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
-        embed = discord.Embed(
-            title=f"✅ Matç No{self.match_number} — Nəticə qeyd edildi",
-            description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)\n🏆 Qalib: **{winner_label}**",
-            color=discord.Color.gold()
-        )
-        embed.add_field(
-            name=f"✅ {winner_label}",
-            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']}) | 🪙 +{winner_coins[p['discord_id']][0]}"
-                              for p, r in zip(winner_team, results["winners"])]),
-            inline=False
-        )
-        embed.add_field(
-            name=f"❌ {loser_label}",
-            value="\n".join([f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']}) | 🪙 +{loser_coins[p['discord_id']][0]}"
-                              for p, r in zip(loser_team, results["losers"])]),
-            inline=False
+        ts = now.strftime("%d.%m.%Y %H:%M")
+
+        winner_results_list = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                                for p, r in zip(winner_team, results["winners"])]
+        loser_results_list  = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                                for p, r in zip(loser_team,  results["losers"])]
+
+        result_img_path = os.path.join(DATA_DIR or ".", f"result_{self.match_number}.png")
+        await asyncio.to_thread(
+            generate_result_card,
+            self.match_number, winner_label, loser_label,
+            winner_team, loser_team,
+            winner_results_list, loser_results_list,
+            winner_coins, loser_coins,
+            ts, result_img_path
         )
 
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.response.edit_message(
+            content=f"✅ **Matç No{self.match_number}** nəticəsi qeyd edildi — 🏆 **{winner_label}**",
+            view=self
+        )
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
-        if log_channel and log_channel.id != interaction.channel.id:
-            await log_channel.send(embed=embed)
+        if log_channel:
+            await log_channel.send(file=discord.File(result_img_path, filename="result.png"))
 
     @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a")
     async def team_a_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -926,11 +928,18 @@ class MatchmakingView(discord.ui.View):
 
             mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
             ready_view = TeamReadyView(match_number, team_a, team_b, captain_a["discord_id"], captain_b["discord_id"])
-            await interaction.channel.send(
-                content=mentions,
-                file=discord.File(card_path, filename="match.png"),
-                view=ready_view
-            )
+
+            # Matchmaking kanalında sadəcə mention
+            await interaction.channel.send(content=f"🎮 **Matç No{match_number} tapıldı!** {mentions}")
+
+            # Log kanalında match kartı + hazır düymələri
+            log_ch = bot.get_channel(LOG_CHANNEL_ID)
+            if log_ch:
+                await log_ch.send(
+                    content=mentions,
+                    file=discord.File(card_path, filename="match.png"),
+                    view=ready_view
+                )
 
             team_a_channel = bot.get_channel(TEAM_A_VOICE_ID)
             team_b_channel = bot.get_channel(TEAM_B_VOICE_ID)
