@@ -3,7 +3,7 @@ import os
 
 WIDTH = 900
 HEADER_HEIGHT = 110
-ROW_HEIGHT = 46
+ROW_HEIGHT = 58
 TEAM_HEADER_HEIGHT = 40
 FOOTER_HEIGHT = 50
 GAP = 24
@@ -74,8 +74,9 @@ def generate_match_card(match_number, selected_map, team_a, team_b, captain_a_id
     title_font = _load_font(26, bold=True)
     map_font = _load_font(16, bold=True)
     team_header_font = _load_font(18, bold=True)
-    player_font = _load_font(17)
-    elo_font = _load_font(15, bold=True)
+    player_font = _load_font(16)
+    id_font = _load_font(12)
+    elo_font = _load_font(14, bold=True)
     footer_font = _load_font(13)
 
     # Header
@@ -113,12 +114,12 @@ def generate_match_card(match_number, selected_map, team_a, team_b, captain_a_id
             if is_captain:
                 draw.regular_polygon((name_x + 6, y + ROW_HEIGHT // 2, 7), n_sides=3, rotation=0, fill=GOLD)
                 name_x += 20
-            name_text = p["nick"]
-            draw.text((name_x, y + 12), name_text[:28], font=player_font, fill=WHITE)
+            draw.text((name_x, y + 8),  p["nick"][:26],              font=player_font, fill=WHITE)
+            draw.text((name_x, y + 28), f"ID: {p.get('so2_id','')}",  font=id_font,    fill=GRAY)
             elo_text = f"{p['elo']}"
             bbox = draw.textbbox((0, 0), elo_text, font=elo_font)
             tw = bbox[2] - bbox[0]
-            draw.text((x_offset + col_width - 30 - tw, y + 14), elo_text, font=elo_font, fill=GREEN)
+            draw.text((x_offset + col_width - 30 - tw, y + 18), elo_text, font=elo_font, fill=GREEN)
             y += ROW_HEIGHT
 
     draw_team_rows(team_a, captain_a_id, 0)
@@ -154,8 +155,9 @@ def generate_result_card(match_number, winner_label, loser_label,
     title_font       = _load_font(26, bold=True)
     sub_font         = _load_font(15)
     team_header_font = _load_font(18, bold=True)
-    player_font      = _load_font(15)
-    elo_font         = _load_font(13, bold=True)
+    player_font      = _load_font(14)
+    id_font          = _load_font(11)
+    elo_font         = _load_font(12, bold=True)
     footer_font      = _load_font(12)
 
     # ── Header ────────────────────────────────────────────────────────────────
@@ -186,19 +188,22 @@ def generate_result_card(match_number, winner_label, loser_label,
             if idx % 2 == 0:
                 draw.rectangle([(x_offset, y), (x_offset + col_w, y + ROW_HEIGHT)],
                                 fill=PANEL_ALT)
-            # Nick
-            draw.text((x_offset + 14, y + 8), p["nick"][:22], font=player_font, fill=name_color)
-            # ELO dəyişimi
+            # Nick + SO2 ID
+            draw.text((x_offset + 14, y + 6),  p["nick"][:22],                font=player_font, fill=name_color)
+            draw.text((x_offset + 14, y + 24), f"ID: {p.get('so2_id', '')}",  font=id_font,     fill=GRAY)
+            # ELO dəyişimi (sağ üst)
             diff = r["new_elo"] - r["old_elo"]
             sign = "+" if diff >= 0 else ""
-            elo_txt = f"{r['old_elo']} → {r['new_elo']}  ({sign}{diff})"
-            draw.text((x_offset + 14, y + 26), elo_txt, font=elo_font, fill=elo_color)
-            # Coin
-            earned = coins_map.get(p["discord_id"], (0,))[0]
-            coin_txt = f"+{earned}🪙"
-            bbox = draw.textbbox((0, 0), coin_txt, font=elo_font)
+            elo_txt = f"{r['old_elo']}→{r['new_elo']} ({sign}{diff})"
+            bbox = draw.textbbox((0, 0), elo_txt, font=elo_font)
             tw = bbox[2] - bbox[0]
-            draw.text((x_offset + col_w - 14 - tw, y + 17), coin_txt, font=elo_font, fill=GOLD)
+            draw.text((x_offset + col_w - 14 - tw, y + 6), elo_txt, font=elo_font, fill=elo_color)
+            # Coin (sağ alt)
+            earned = coins_map.get(p["discord_id"], (0,))[0]
+            coin_txt = f"+{earned} coin"
+            bbox2 = draw.textbbox((0, 0), coin_txt, font=id_font)
+            tw2 = bbox2[2] - bbox2[0]
+            draw.text((x_offset + col_w - 14 - tw2, y + 38), coin_txt, font=id_font, fill=GOLD)
             y += ROW_HEIGHT
 
     draw_rows(winner_team, winner_results, winner_coins, 0,       GREEN,    GREEN)

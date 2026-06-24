@@ -297,11 +297,11 @@ def get_leaderboard(limit=20):
 
 queue_list = []  # YaddaÅŸda saxlanÄ±lan mÃ¼vÉ™qqÉ™ti nÃ¶vbÉ™
 
-def add_to_queue(discord_id, nick, elo):
+def add_to_queue(discord_id, nick, elo, so2_id=""):
     for p in queue_list:
         if p["discord_id"] == discord_id:
             return False
-    queue_list.append({"discord_id": discord_id, "nick": nick, "elo": elo})
+    queue_list.append({"discord_id": discord_id, "nick": nick, "elo": elo, "so2_id": so2_id})
     return True
 
 def remove_from_queue(discord_id):

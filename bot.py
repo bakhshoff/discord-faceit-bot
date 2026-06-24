@@ -903,7 +903,7 @@ class MatchmakingView(discord.ui.View):
             return
 
         discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance, *_ = player
-        added = add_to_queue(discord_id, nick, elo)
+        added = add_to_queue(discord_id, nick, elo, so2_id)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
             return
