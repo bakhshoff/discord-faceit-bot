@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782245948,
+  "exported_at": 1782330446,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -220,7 +220,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Standoff 2 oyununda yeni başlayan, 0 qələbə və 0 məğlubiyyət, məşğul olmadığını bildirib, futbol komandaları haqqında danışır, maraqları:futbol, komanda dəstəyi:Neftçi/Qarabağ"
+      "ai_memory": "Standoff 2 oyununda yeni başlayan, 0 qələbə və 0 məğlubiyyət, məşğul olmadığını bildirib, futbol komandaları haqqında danışır, maraqları:futbol, komanda dəstəyi:Neftçi/Qarabağ, sevdiyi komanda=Neftçi/Qarabağ, maraqları=futbol, oyunçu statistikası=VXO~P3NAH, ELO=1000, Wins=1, Losses=1, Win Rate=50.0%, Coins=12"
     },
     {
       "discord_id": 1263121818244616195,
@@ -233,7 +233,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null
+      "ai_memory": "sevdiyi silah naməlum, oyun stili naməlum, ELO=984, Wins=2, Losses=3, Win Rate=40.0%, Coins=21"
     },
     {
       "discord_id": 1326856754511745156,
@@ -451,6 +451,19 @@
       "wins": 0,
       "losses": 2,
       "coins": 4,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null
+    },
+    {
+      "discord_id": 1518557549836763271,
+      "so2_nick": "v1x〄",
+      "so2_id": "278607064",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
