@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782410669,
+  "exported_at": 1782411489,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -114,6 +114,22 @@
       "deaths": 0
     },
     {
+      "discord_id": 1134288537546674238,
+      "so2_nick": "Steel",
+      "so2_id": "211299702",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 1208089903544672278,
       "so2_nick": "Antion",
       "so2_id": "190941124",
@@ -133,6 +149,22 @@
       "discord_id": 1228418531951906838,
       "so2_nick": "VXO~P3NAH",
       "so2_id": "158601206",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
+      "discord_id": 1263121818244616195,
+      "so2_nick": "NyxZero",
+      "so2_id": "206022397",
       "elo": 1000,
       "wins": 0,
       "losses": 0,
@@ -231,7 +263,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 0
+      "last_number": 1
     }
   ],
   "match_history": [],
