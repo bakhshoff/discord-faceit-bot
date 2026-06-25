@@ -32,7 +32,6 @@ try:
         add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
         remove_skin_from_inventory, add_coin_log, get_coin_logs,
         get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
-        exchange_coins_to_azn,
         add_combat_stats, get_combat_stats, get_all_players,
         get_or_create_current_season, get_season_by_number, get_season_leaderboard,
         add_season_stat, get_season_stat, close_season,
@@ -40,7 +39,8 @@ try:
         save_scan_result, get_scan_result, confirm_scan,
         refresh_daily_tasks, get_active_daily_tasks,
         get_player_active_task, assign_task_to_player,
-        update_task_progress, fail_expired_tasks
+        update_task_progress, fail_expired_tasks,
+        full_reset
     )
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -651,40 +651,6 @@ class CoinLogsView(discord.ui.View):
         await self._refresh(interaction, "spend")
 
 
-class ExchangeConfirmView(discord.ui.View):
-    def __init__(self, discord_id, times):
-        super().__init__(timeout=60)
-        self.discord_id = discord_id
-        self.times = times
-
-    @discord.ui.button(label="Çevir", style=discord.ButtonStyle.success, emoji="✅")
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        total_coins = self.times * 250
-        total_azn = round(self.times * 0.5, 2)
-        success = True
-        for _ in range(self.times):
-            ok, _, _ = exchange_coins_to_azn(interaction.user.id)
-            if not ok:
-                success = False
-                break
-        if success:
-            new_coins = get_coins(interaction.user.id)
-            new_zm = get_zm_balance(interaction.user.id)
-            add_coin_log(interaction.user.id, -total_coins, f"Exchange: {total_coins} coin → {total_azn} AZN", "spend", new_coins)
-            await asyncio.to_thread(backup.export_backup)
-            await interaction.response.edit_message(
-                content=f"✅ **{total_coins} coin** → **{total_azn} AZN** çevrildi!\n"
-                        f"🪙 Yeni coin: **{new_coins}** | 💵 Yeni AZN: **{new_zm:.1f}**",
-                view=None
-            )
-        else:
-            await interaction.response.edit_message(content="❌ Kifayət qədər coin yox idi, əməliyyat dayandırıldı.", view=None)
-
-    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary, emoji="❌")
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="❌ Çevirmə ləğv edildi.", view=None)
-
-
 # ── Dizayn Market alt-menüsü (Avatar + Çərçivə) ──────────────────────────────
 class DizaynMarketView(discord.ui.View):
     def __init__(self, discord_id):
@@ -875,23 +841,6 @@ class PlayerProfileView(discord.ui.View):
         await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, path)
         await interaction.followup.send(file=discord.File(path, filename="logs.png"),
                                         view=CoinLogsView(self.discord_id), ephemeral=True)
-
-    @discord.ui.button(label="Mübadilə", style=discord.ButtonStyle.primary, emoji="💱", custom_id="profile_exchange", row=1)
-    async def open_exchange(self, interaction: discord.Interaction, button: discord.ui.Button):
-        coins   = get_coins(self.discord_id)
-        times   = coins // 250
-        azn_val = round(times * 0.5, 2)
-        if times == 0:
-            await interaction.response.send_message(
-                f"❌ Ən az **250 coin** lazımdır. Balansınız: 🪙 **{coins}**", ephemeral=True)
-            return
-        embed = discord.Embed(title="💱 Coin → AZN Mübadilə", color=discord.Color.gold())
-        embed.add_field(name="📊 Kurs",         value="250 🪙 = 0.5 AZN", inline=False)
-        embed.add_field(name="🪙 Coin",          value=str(coins),          inline=True)
-        embed.add_field(name="💱 Çeviriləcək",  value=f"{times}x = {azn_val} AZN", inline=True)
-        embed.set_footer(text=f"{times * 250} coin → {azn_val} AZN")
-        await interaction.response.send_message(
-            embed=embed, view=ExchangeConfirmView(self.discord_id, times), ephemeral=True)
 
 class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
@@ -2808,6 +2757,64 @@ class SkinManageView(discord.ui.View):
         remove_skin(skin_id)
         await interaction.response.send_message(
             f"🗑️ **{skin['name'] if skin else skin_id}** marketdən götürüldü (deaktiv).", ephemeral=True)
+
+
+class ResetConfirmView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="Bəli, sıfırla ✅", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True)
+            return
+        await interaction.response.defer()
+        full_reset()
+        refresh_daily_tasks()
+        get_or_create_current_season()
+        await asyncio.to_thread(backup.export_backup)
+        for child in self.children:
+            child.disabled = True
+        await interaction.followup.send(
+            "✅ **Tam sıfırlama tamamlandı.**\n"
+            "ELO (1000), coin, kills, assists, deaths, wins, losses — hamısı sıfırlandı.\n"
+            "Matç tarixçəsi, sezon, tapşırıqlar, loglar silindi.\n"
+            "Hesablar, zm_balance, kosmetik əşyalar saxlanıldı.",
+            ephemeral=False
+        )
+
+    @discord.ui.button(label="Xeyr, ləğv et ❌", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Sıfırlama ləğv edildi.", view=None)
+
+
+@bot.tree.command(name="tam_sifirla", description="[Admin] Bütün oyunçuların statistikasını sıfırla")
+@app_commands.checks.has_permissions(administrator=True)
+async def tam_sifirla_cmd(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="⚠️ TAM SİFIRLAMA",
+        description=(
+            "Bu əməliyyat **geri alına bilməz!**\n\n"
+            "**Silinəcək:**\n"
+            "• Bütün ELO → 1000-ə sıfırlanır\n"
+            "• Coin, kill, asist, ölüm, qələbə, məğlubiyyət → 0\n"
+            "• Matç tarixçəsi, sezonlar, scan nəticələri\n"
+            "• Coin logları, aktiv tapşırıqlar, boost-lar\n\n"
+            "**Saxlanılır:**\n"
+            "• Oyunçu hesabları (qeydiyyat)\n"
+            "• AZN balansı (zm_balance)\n"
+            "• Banner, çərçivə inventarı\n"
+            "• Standoff skin inventarı"
+        ),
+        color=discord.Color.red()
+    )
+    await interaction.response.send_message(embed=embed, view=ResetConfirmView(), ephemeral=True)
+
+
+@tam_sifirla_cmd.error
+async def tam_sifirla_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
 @bot.tree.command(name="admin_market", description="[Admin] Skin marketini idarə et")

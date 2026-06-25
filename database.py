@@ -1344,3 +1344,43 @@ def fail_expired_tasks():
                    (int(time.time()),))
     conn.commit()
     conn.close()
+
+
+def full_reset():
+    """
+    Bütün oyunçuların statistikasını, tarixçəsini və qazancını sıfırlar.
+    Hesab qeydiyyatı (nick, so2_id), zm_balance, kosmetik əşyalar saxlanır.
+    """
+    conn = _get_conn()
+    cursor = conn.cursor()
+
+    # Oyunçu statistikasını sıfırla
+    cursor.execute("""
+        UPDATE players SET
+            elo     = 1000,
+            wins    = 0,
+            losses  = 0,
+            coins   = 0,
+            kills   = 0,
+            assists = 0,
+            deaths  = 0,
+            ai_memory = NULL
+    """)
+
+    # Bütün tarixçə cədvəllərini təmizlə
+    for table in ("match_history", "season_stats", "seasons",
+                  "scan_results", "player_tasks", "daily_tasks",
+                  "coin_logs", "active_boosts", "chat_history"):
+        cursor.execute(f"DELETE FROM {table}")
+
+    # Matç sayacını sıfırla
+    cursor.execute("UPDATE match_counter SET last_number = 0 WHERE id = 1")
+
+    # Aktiv matçı sıfırla
+    cursor.execute(
+        "UPDATE active_match SET match_number=NULL, status=NULL, "
+        "team_a=NULL, team_b=NULL, log_message_id=NULL, log_channel_id=NULL, selected_map=NULL WHERE id=1"
+    )
+
+    conn.commit()
+    conn.close()
