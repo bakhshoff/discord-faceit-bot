@@ -2777,9 +2777,9 @@ class ResetConfirmView(discord.ui.View):
             child.disabled = True
         await interaction.followup.send(
             "✅ **Tam sıfırlama tamamlandı.**\n"
-            "ELO (1000), coin, kills, assists, deaths, wins, losses — hamısı sıfırlandı.\n"
-            "Matç tarixçəsi, sezon, tapşırıqlar, loglar silindi.\n"
-            "Hesablar, zm_balance, kosmetik əşyalar saxlanıldı.",
+            "ELO (1000), coin, AZN, kills, assists, deaths, wins, losses — sıfırlandı.\n"
+            "Matç tarixçəsi, sezon, tapşırıqlar, loglar, inventar, skinlər silindi.\n"
+            "Yalnız oyunçu hesabları (nick, so2_id) saxlanıldı.",
             ephemeral=False
         )
 
@@ -2801,10 +2801,7 @@ async def tam_sifirla_cmd(interaction: discord.Interaction):
             "• Matç tarixçəsi, sezonlar, scan nəticələri\n"
             "• Coin logları, aktiv tapşırıqlar, boost-lar\n\n"
             "**Saxlanılır:**\n"
-            "• Oyunçu hesabları (qeydiyyat)\n"
-            "• AZN balansı (zm_balance)\n"
-            "• Banner, çərçivə inventarı\n"
-            "• Standoff skin inventarı"
+            "• Oyunçu hesabları (nick + SO2 ID)"
         ),
         color=discord.Color.red()
     )
