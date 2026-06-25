@@ -1254,12 +1254,10 @@ class ScanEditView(discord.ui.View):
         await interaction.response.edit_message(content="❌ Scan ləğv edildi.", embed=None, view=None)
 
 
-@bot.tree.command(name="scan", description="[Admin] Oyun ekran görüntüsünü Gemini ilə scan et")
-@app_commands.describe(ekran="Standoff 2 skor ekranının şəkli", qalib="Qalib komanda (A və ya B)")
+@bot.tree.command(name="scan", description="[Admin] Kanalın son şəklini scan et (şəkli reply edib /scan yaz)")
+@app_commands.describe(qalib="Qalib komanda (A və ya B)")
 @app_commands.checks.has_permissions(administrator=True)
-async def scan_cmd(interaction: discord.Interaction,
-                   ekran: discord.Attachment,
-                   qalib: str = "A"):
+async def scan_cmd(interaction: discord.Interaction, qalib: str = "A"):
     active = get_active_match()
     if not active:
         await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
@@ -1272,15 +1270,27 @@ async def scan_cmd(interaction: discord.Interaction,
 
     await interaction.response.defer()
 
-    # Şəkli yüklə
+    # Kanalın son 20 mesajında şəkil tap
+    img_bytes = None
     try:
-        img_bytes = await ekran.read()
+        async for msg in interaction.channel.history(limit=20):
+            for att in msg.attachments:
+                if att.content_type and att.content_type.startswith("image/"):
+                    img_bytes = await att.read()
+                    break
+            if img_bytes:
+                break
     except Exception:
-        await interaction.followup.send("❌ Şəkil yüklənmədi.", ephemeral=True)
+        pass
+
+    if not img_bytes:
+        await interaction.followup.send(
+            "❌ Son 20 mesajda şəkil tapılmadı.\n"
+            "Kapitan şəkli göndərsin, siz həmin şəklə reply edib `/scan` yazın.",
+            ephemeral=True)
         return
 
-    # OCR analizi
-    await interaction.followup.send("🔍 OCR analiz edir...", ephemeral=True)
+    await interaction.followup.send("🔍 Claude Vision analiz edir...", ephemeral=True)
     try:
         ocr_results = await asyncio.to_thread(ocr_scoreboard, img_bytes)
     except Exception as e:
@@ -1288,9 +1298,9 @@ async def scan_cmd(interaction: discord.Interaction,
         return
 
     match_number = active["match_number"]
-    all_players  = []
-    for row in get_leaderboard(limit=200):
-        all_players.append({"discord_id": 0, "nick": row[0], "so2_id": row[1]})
+    team_a = active.get("team_a", [])
+    team_b = active.get("team_b", [])
+    all_players = team_a + team_b
 
     parsed = match_to_registered(ocr_results, all_players)
     parsed = apply_defaults_for_missing(all_players, parsed)
@@ -1312,20 +1322,28 @@ async def ping_cmd(interaction: discord.Interaction):
         f"🏓 Pong! Gecikmə: `{round(bot.latency * 1000)}ms`", ephemeral=True)
 
 
-@bot.tree.command(name="scan_test", description="Scan sistemini test et — matç tələb edilmir")
-@app_commands.describe(ekran="Skor ekranının şəkli")
-async def scan_test_cmd(interaction: discord.Interaction, ekran: discord.Attachment):
-    # Decorator əvəzinə manual admin yoxlaması — daha etibarlı
+@bot.tree.command(name="scan_test", description="Scan sistemini test et — kanalın son şəkli istifadə edilir")
+async def scan_test_cmd(interaction: discord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True)
 
+    img_bytes = None
     try:
-        img_bytes = await ekran.read()
-    except Exception as e:
-        await interaction.followup.send(f"❌ Şəkil yüklənmədi: {e}", ephemeral=True)
+        async for msg in interaction.channel.history(limit=20):
+            for att in msg.attachments:
+                if att.content_type and att.content_type.startswith("image/"):
+                    img_bytes = await att.read()
+                    break
+            if img_bytes:
+                break
+    except Exception:
+        pass
+
+    if not img_bytes:
+        await interaction.followup.send("❌ Son 20 mesajda şəkil tapılmadı.", ephemeral=True)
         return
 
     try:
