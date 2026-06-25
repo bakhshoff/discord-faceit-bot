@@ -2985,6 +2985,27 @@ async def matc_legv_cmd(interaction: discord.Interaction, matc_no: int):
                 (k, a, d, did)
             )
 
+    # Season stats geri al
+    cursor.execute("SELECT id FROM seasons WHERE status='active' ORDER BY id DESC LIMIT 1")
+    s_row = cursor.fetchone()
+    if s_row:
+        season_id = s_row[0]
+        for did, before, after in zip(winner_ids, w_elo_before, w_elo_after):
+            diff = max(0, after - before)
+            s    = kd_map.get(did, {})
+            cursor.execute("""UPDATE season_stats SET
+                elo_gained=MAX(0,elo_gained-?), kills=MAX(0,kills-?),
+                assists=MAX(0,assists-?), deaths=MAX(0,deaths-?), wins=MAX(0,wins-1)
+                WHERE discord_id=? AND season_id=?""",
+                (diff, s.get("kills",0), s.get("assists",0), s.get("deaths",0), did, season_id))
+        for did, before, after in zip(loser_ids, l_elo_before, l_elo_after):
+            s = kd_map.get(did, {})
+            cursor.execute("""UPDATE season_stats SET
+                kills=MAX(0,kills-?), assists=MAX(0,assists-?),
+                deaths=MAX(0,deaths-?), losses=MAX(0,losses-1)
+                WHERE discord_id=? AND season_id=?""",
+                (s.get("kills",0), s.get("assists",0), s.get("deaths",0), did, season_id))
+
     # Qeydləri sil
     cursor.execute("DELETE FROM match_history WHERE match_number=?", (matc_no,))
     cursor.execute("DELETE FROM scan_results WHERE match_number=?", (matc_no,))
