@@ -1126,6 +1126,33 @@ async def _start_match(channel, guild):
     await channel.send(content=mentions, embed=vote_embed, view=vote_view)
 
 
+def _apply_mvp(all_players: list, stats: dict):
+    """
+    Kill + asist toplamı ən çox olan oyunçuya MVP mükafatı verir.
+    all_players: [{"discord_id", "nick", ...}]
+    stats: {discord_id: {"kills", "assists", "deaths"}}
+    Returns: (mvp_player_dict, ka_total) or (None, 0)
+    """
+    best, best_score = None, -1
+    for p in all_players:
+        did = p["discord_id"]
+        s   = stats.get(did, {})
+        ka  = s.get("kills", 0) + s.get("assists", 0)
+        if ka > best_score:
+            best_score = ka
+            best       = p
+    if best and best_score >= 0:
+        coin_bal = add_coins(best["discord_id"], 5)
+        add_coin_log(best["discord_id"], 5, "MVP mükafatı", "earn", coin_bal)
+        # +3 ELO birbaşa
+        from database import _get_conn as _gc
+        conn = _gc(); cur = conn.cursor()
+        cur.execute("UPDATE players SET elo = elo + 3 WHERE discord_id = ?", (best["discord_id"],))
+        conn.commit(); conn.close()
+        return best, best_score
+    return None, 0
+
+
 def _build_match_active_embed(match_number, selected_map, team_a, team_b):
     """Aktiv matç embedi — logs kanalına göndərilir."""
     embed = discord.Embed(
@@ -1147,26 +1174,32 @@ def _build_match_active_embed(match_number, selected_map, team_a, team_b):
 def _build_match_result_embed(match_number, selected_map, winner_label,
                                winner_team, loser_team,
                                winner_results, loser_results,
-                               winner_stats, loser_stats, timestamp_str):
+                               winner_stats, loser_stats, timestamp_str,
+                               mvp_nick=None, mvp_ka=0):
     """Tamamlanmış matç embedi — aktiv mesajı edit etmək üçün."""
-    w_color = 0x57F287  # yaşıl
+    w_color = 0x57F287
+    desc = f"🗺️ {selected_map}  ·  📅 {timestamp_str}"
+    if mvp_nick:
+        desc += f"\n⭐ **MVP: {mvp_nick}** — {mvp_ka} K+A  (+5🪙 +3 ELO)"
     embed = discord.Embed(
         title=f"✅ MATÇ No{match_number} — TAMAMLANDI",
-        description=f"🗺️ {selected_map}  ·  📅 {timestamp_str}",
+        description=desc,
         color=w_color
     )
     embed.add_field(name="🏆 Qalib", value=f"**{winner_label}**", inline=True)
     embed.add_field(name="​", value="​", inline=True)
     embed.add_field(name="​", value="​", inline=True)
 
+    all_stats = {**winner_stats, **loser_stats}
+
     def player_line(p, r, stats):
         diff = r["new_elo"] - r["old_elo"]
         sign = "+" if diff >= 0 else ""
         s    = stats.get(p["discord_id"], {})
         kd   = round(s.get("kills", 0) / max(s.get("deaths", 1), 1), 2)
-        return (f"**{p['nick']}**\n"
-                f"K:{s.get('kills',0)} A:{s.get('assists',0)} D:{s.get('deaths',0)} "
-                f"· KD:{kd}\n"
+        mvp_tag = " ⭐" if mvp_nick and p["nick"] == mvp_nick else ""
+        return (f"**{p['nick']}**{mvp_tag}\n"
+                f"K:{s.get('kills',0)} A:{s.get('assists',0)} D:{s.get('deaths',0)} · KD:{kd}\n"
                 f"ELO: {r['old_elo']}→{r['new_elo']} ({sign}{diff})")
 
     w_lines = "\n\n".join(player_line(p, r, winner_stats)
@@ -1515,6 +1548,12 @@ class ScanEditView(discord.ui.View):
                 [r["new_elo"] for r in results["losers"]],
                 self.match_number)
 
+            # MVP hesabla
+            all_pl = winner_team + loser_team
+            all_st = {**winner_stats, **loser_stats}
+            mvp_p, mvp_ka = _apply_mvp(all_pl, all_st)
+            mvp_nick = mvp_p["nick"] if mvp_p else None
+
             # Logs mesajını edit et
             now_az = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
             result_embed = _build_match_result_embed(
@@ -1522,7 +1561,8 @@ class ScanEditView(discord.ui.View):
                 winner_team, loser_team,
                 winner_results, loser_results,
                 winner_stats, loser_stats,
-                now_az.strftime("%d.%m.%Y %H:%M")
+                now_az.strftime("%d.%m.%Y %H:%M"),
+                mvp_nick=mvp_nick, mvp_ka=mvp_ka
             )
             await _edit_log_match_message(result_embed)
 
@@ -1883,15 +1923,20 @@ class ManuelMatchStatView(discord.ui.View):
         loser_results  = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
                           for p, r in zip(loser_team, results["losers"])]
 
+        # MVP hesabla
+        w_stats_d = {p["discord_id"]: self.stats[p["discord_id"]] for p in winner_team if p["discord_id"] in self.stats}
+        l_stats_d = {p["discord_id"]: self.stats[p["discord_id"]] for p in loser_team  if p["discord_id"] in self.stats}
+        mvp_p2, mvp_ka2 = _apply_mvp(winner_team + loser_team, {**w_stats_d, **l_stats_d})
+        mvp_nick2 = mvp_p2["nick"] if mvp_p2 else None
+
         # Logs mesajını edit et
         sel_map = active.get("selected_map", "?") if (active := get_active_match()) else "?"
         result_embed = _build_match_result_embed(
             self.match_number, sel_map, winner_label,
             winner_team, loser_team,
             winner_results, loser_results,
-            {p["discord_id"]: self.stats[p["discord_id"]] for p in winner_team if p["discord_id"] in self.stats},
-            {p["discord_id"]: self.stats[p["discord_id"]] for p in loser_team  if p["discord_id"] in self.stats},
-            ts
+            w_stats_d, l_stats_d, ts,
+            mvp_nick=mvp_nick2, mvp_ka=mvp_ka2
         )
         await _edit_log_match_message(result_embed)
 
