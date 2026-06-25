@@ -124,6 +124,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     s_matches      = season_wins + season_losses
     s_wr           = round(season_wins/s_matches*100, 1) if s_matches > 0 else 0.0
     kd             = round(kills/deaths, 2) if deaths > 0 else float(kills)
+    season_kd      = round(season_kills/season_deaths, 2) if season_deaths > 0 else float(season_kills)
 
     f_brand  = _load_font(13, bold=True)
     f_title  = _load_font(20, bold=True)
@@ -222,11 +223,11 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     box_h = 90
     bw    = (WIDTH - 36) // 5
     labels_vals = [
-        ("KİLL",   kills,   GREEN),
-        ("ASİST",  assists, BLUE),
-        ("ÖLÜM",   deaths,  RED),
-        ("K/D",    kd,      GOLD),
-        ("SEZON K",season_kills, CYAN),
+        ("KİLL",     kills,     GREEN),
+        ("ASİST",    assists,   BLUE),
+        ("ÖLÜM",     deaths,    RED),
+        ("K/D",      kd,        GOLD),
+        ("SEZON K/D",season_kd, CYAN),
     ]
     for i, (lbl, val, col) in enumerate(labels_vals):
         bx2 = 18 + i * bw

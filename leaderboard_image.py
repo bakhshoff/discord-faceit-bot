@@ -86,8 +86,8 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=LINE_COLOR, width=2)
 
     # Sütun başlıqları
-    columns = ["#", "Player", "SO2 ID", "ELO", "M", "W", "L"]
-    col_x   = [30, 90, 430, 600, 670, 730, 790]
+    columns = ["#", "Player", "SO2 ID", "ELO", "M", "W", "L", "K/D"]
+    col_x   = [30, 90, 390, 560, 630, 690, 740, 800]
     for i, col in enumerate(columns):
         draw.text((col_x[i], HEADER_HEIGHT + 12), col, font=header_font, fill=GOLD)
 
@@ -98,18 +98,20 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
         y += ROW_HEIGHT
     else:
         for idx, row in enumerate(rows):
-            # 5 və ya 6 elementli tuple dəstəyi
-            if len(row) >= 6:
-                nick, so2_id, elo, wins, losses, active_banner = row[0], row[1], row[2], row[3], row[4], row[5]
-            else:
-                nick, so2_id, elo, wins, losses = row[0], row[1], row[2], row[3], row[4]
-                active_banner = None
+            nick         = row[0]
+            so2_id       = row[1]
+            elo          = row[2]
+            wins         = row[3]
+            losses       = row[4]
+            active_banner = row[5] if len(row) > 5 else None
+            kills        = row[6] if len(row) > 6 else 0
+            deaths       = row[7] if len(row) > 7 else 0
+            kd           = round(kills / max(deaths, 1), 2)
 
             row_top = y - 6
             row_bot = y + ROW_HEIGHT - 6
             row_h   = row_bot - row_top
 
-            # Arxa plan: banner varsa banner, yoxdursa standart rəng
             banner_drawn = False
             if active_banner and banner_dir and banner_files:
                 fname = banner_files.get(active_banner)
@@ -118,7 +120,6 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
                     row_bg = _banner_row_bg(bpath, WIDTH, row_h)
                     if row_bg is not None:
                         img.paste(row_bg, (0, row_top))
-                        # İncə sol akzent zolağı (banner rəngini vurğulamaq üçün)
                         draw = ImageDraw.Draw(img)
                         draw.rectangle([(0, row_top), (4, row_bot)], fill=GOLD)
                         banner_drawn = True
@@ -126,19 +127,19 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
             if not banner_drawn and idx % 2 == 0:
                 draw.rectangle([(0, row_top), (WIDTH, row_bot)], fill=ROW_ALT)
 
-            # Yenidən draw al (paste-dən sonra)
             draw = ImageDraw.Draw(img)
 
-            matches = wins + losses
-            # Banner olan oyunçunun adı üçün yüngül parıltı effekti
+            matches    = wins + losses
             nick_color = GOLD if active_banner else WHITE
-            draw.text((col_x[0], y), f"#{idx + 1}", font=row_font, fill=GOLD)
-            draw.text((col_x[1], y), str(nick)[:22],    font=row_font, fill=nick_color)
-            draw.text((col_x[2], y), str(so2_id)[:15],  font=row_font, fill=(140, 170, 230))
-            draw.text((col_x[3], y), str(elo),           font=row_font, fill=GREEN)
-            draw.text((col_x[4], y), str(matches),       font=row_font, fill=LIGHT_GRAY)
-            draw.text((col_x[5], y), str(wins),          font=row_font, fill=LIGHT_GRAY)
-            draw.text((col_x[6], y), str(losses),        font=row_font, fill=LIGHT_GRAY)
+            draw.text((col_x[0], y), f"#{idx + 1}",      font=row_font, fill=GOLD)
+            draw.text((col_x[1], y), str(nick)[:20],     font=row_font, fill=nick_color)
+            draw.text((col_x[2], y), str(so2_id)[:13],   font=row_font, fill=(140, 170, 230))
+            draw.text((col_x[3], y), str(elo),            font=row_font, fill=GREEN)
+            draw.text((col_x[4], y), str(matches),        font=row_font, fill=LIGHT_GRAY)
+            draw.text((col_x[5], y), str(wins),           font=row_font, fill=LIGHT_GRAY)
+            draw.text((col_x[6], y), str(losses),         font=row_font, fill=LIGHT_GRAY)
+            kd_color = (255, 100, 100) if kd < 1.0 else GREEN if kd >= 1.5 else LIGHT_GRAY
+            draw.text((col_x[7], y), str(kd),             font=row_font, fill=kd_color)
             y += ROW_HEIGHT
 
     draw.text((30, y + 10), "Auto-updated by Calestify FACEIT Bot", font=sub_font, fill=FOOTER_GRAY)

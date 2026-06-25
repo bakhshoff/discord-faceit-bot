@@ -381,7 +381,7 @@ def get_leaderboard(limit=20):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT so2_nick, so2_id, elo, wins, losses, active_banner FROM players ORDER BY elo DESC LIMIT ?",
+        "SELECT so2_nick, so2_id, elo, wins, losses, active_banner, kills, deaths FROM players ORDER BY elo DESC LIMIT ?",
         (limit,)
     )
     rows = cursor.fetchall()
