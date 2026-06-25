@@ -1069,68 +1069,150 @@ async def _start_match(channel, guild):
     await channel.send(content=mentions, embed=vote_embed, view=vote_view)
 
 
+def _build_match_active_embed(match_number, selected_map, team_a, team_b):
+    """Aktiv matç embedi — logs kanalına göndərilir."""
+    embed = discord.Embed(
+        title=f"🎮 MATÇ No{match_number} — DAVAM EDİR",
+        color=0x5865F2
+    )
+    embed.add_field(name="🗺️ Xəritə", value=f"**{selected_map}**", inline=True)
+    embed.add_field(name="⏱️ Status", value="🟡 Oyun davam edir...", inline=True)
+    embed.add_field(name="​", value="​", inline=True)
+
+    a_lines = "\n".join(f"▸ {p['nick']} — `{p['elo']} ELO`" for p in team_a)
+    b_lines = "\n".join(f"▸ {p['nick']} — `{p['elo']} ELO`" for p in team_b)
+    embed.add_field(name="🔵 KOMANDA A", value=a_lines or "—", inline=True)
+    embed.add_field(name="🔴 KOMANDA B", value=b_lines or "—", inline=True)
+    embed.set_footer(text="Matç bitdikdən sonra kapitan nəticəni #results kanalına göndərsin.")
+    return embed
+
+
+def _build_match_result_embed(match_number, selected_map, winner_label,
+                               winner_team, loser_team,
+                               winner_results, loser_results,
+                               winner_stats, loser_stats, timestamp_str):
+    """Tamamlanmış matç embedi — aktiv mesajı edit etmək üçün."""
+    w_color = 0x57F287  # yaşıl
+    embed = discord.Embed(
+        title=f"✅ MATÇ No{match_number} — TAMAMLANDI",
+        description=f"🗺️ {selected_map}  ·  📅 {timestamp_str}",
+        color=w_color
+    )
+    embed.add_field(name="🏆 Qalib", value=f"**{winner_label}**", inline=True)
+    embed.add_field(name="​", value="​", inline=True)
+    embed.add_field(name="​", value="​", inline=True)
+
+    def player_line(p, r, stats):
+        diff = r["new_elo"] - r["old_elo"]
+        sign = "+" if diff >= 0 else ""
+        s    = stats.get(p["discord_id"], {})
+        kd   = round(s.get("kills", 0) / max(s.get("deaths", 1), 1), 2)
+        return (f"**{p['nick']}**\n"
+                f"K:{s.get('kills',0)} A:{s.get('assists',0)} D:{s.get('deaths',0)} "
+                f"· KD:{kd}\n"
+                f"ELO: {r['old_elo']}→{r['new_elo']} ({sign}{diff})")
+
+    w_lines = "\n\n".join(player_line(p, r, winner_stats)
+                           for p, r in zip(winner_team, winner_results))
+    l_lines = "\n\n".join(player_line(p, r, loser_stats)
+                           for p, r in zip(loser_team, loser_results))
+
+    loser_label = "Komanda B" if winner_label == "Komanda A" else "Komanda A"
+    embed.add_field(name=f"🏆 {winner_label}", value=w_lines or "—", inline=True)
+    embed.add_field(name=f"❌ {loser_label}",  value=l_lines or "—", inline=True)
+    return embed
+
+
+async def _edit_log_match_message(embed):
+    """Logs kanalındakı aktiv matç mesajını edit edir."""
+    active = get_active_match()
+    if not active:
+        return
+    msg_id = active.get("log_message_id")
+    ch_id  = active.get("log_channel_id")
+    if not msg_id or not ch_id:
+        return
+    try:
+        ch  = bot.get_channel(ch_id)
+        if ch:
+            msg = await ch.fetch_message(msg_id)
+            await msg.edit(embed=embed, view=None)
+    except Exception:
+        pass
+
+
 async def _launch_match(match_number, selected_map, team_a, team_b, captain_a_id, captain_b_id, channel, guild):
     """Xəritə seçildikdən sonra matçı başladır."""
+    import json as _j
+
     card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
     await asyncio.to_thread(
         generate_match_card, match_number, selected_map, team_a, team_b,
         captain_a_id, captain_b_id, card_path
     )
-    import json as _j
-    set_active_match(match_number,
-                     team_a_json=_j.dumps(team_a, ensure_ascii=False),
-                     team_b_json=_j.dumps(team_b, ensure_ascii=False))
+
     season = get_or_create_current_season()
     for p in team_a + team_b:
         player = get_player(p["discord_id"])
         if player:
             add_season_stat(p["discord_id"], season["id"], elo_start=player[3])
 
-    mentions  = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
-    all_ids   = {p["discord_id"] for p in team_a + team_b}
+    mentions   = " ".join(f"<@{p['discord_id']}>" for p in team_a + team_b)
     ready_view = TeamReadyView(match_number, team_a, team_b, captain_a_id, captain_b_id)
 
     # Matchmaking kanalında mention
     await channel.send(content=f"🎮 **Matç No{match_number} — {selected_map}!** {mentions}")
 
-    # Log kanalında matç kartı + hazır düymələri
-    log_ch = bot.get_channel(LOG_CHANNEL_ID)
+    # Log kanalında: matç kartı + hazır düymələri + aktiv matç embedi
+    log_ch     = bot.get_channel(LOG_CHANNEL_ID)
+    log_msg_id = None
     if log_ch:
-        await log_ch.send(content=mentions,
-                          file=discord.File(card_path, filename="match.png"),
-                          view=ready_view)
+        active_embed = _build_match_active_embed(match_number, selected_map, team_a, team_b)
+        log_msg = await log_ch.send(
+            content=mentions,
+            embed=active_embed,
+            file=discord.File(card_path, filename="match.png"),
+            view=ready_view
+        )
+        log_msg_id = log_msg.id
+
+    set_active_match(
+        match_number,
+        team_a_json=_j.dumps(team_a, ensure_ascii=False),
+        team_b_json=_j.dumps(team_b, ensure_ascii=False),
+        log_message_id=log_msg_id,
+        log_channel_id=LOG_CHANNEL_ID,
+        selected_map=selected_map
+    )
 
     # Kapitanlara DM + #general-chat bildirişi
     general_ch = bot.get_channel(GENERAL_CHAT_ID)
     for captain_id in (captain_a_id, captain_b_id):
-        captain_member = guild.get_member(captain_id)
-        if captain_member:
-            dm_msg = (f"🎮 **Matç No{match_number}** başladı!\n"
-                      f"Xəritə: **{selected_map}**\n"
-                      f"Matç bitdikdən sonra oyun statistikalarını (K/A/D) "
-                      f"**#results** kanalına göndərməyinizi xahiş edirik.")
+        m = guild.get_member(captain_id)
+        if m:
             try:
-                await captain_member.send(dm_msg)
+                await m.send(
+                    f"🎮 **Matç No{match_number}** başladı! Xəritə: **{selected_map}**\n"
+                    f"Matç bitdikdən sonra skor şəklini **#results** kanalına göndərin."
+                )
             except discord.Forbidden:
                 pass
             if general_ch:
                 await general_ch.send(
-                    f"📢 {captain_member.mention} — **Matç No{match_number}** kapitanısınız!\n"
-                    f"Matç bitdikdən sonra oyun statistikalarını **#results** kanalına göndərin."
+                    f"📢 {m.mention} — **Matç No{match_number}** kapitanısınız!\n"
+                    f"Matç bitdikdən sonra skor şəklini **#results** kanalına göndərin."
                 )
 
-    # Ses kanallarına daşı
-    team_a_ch = bot.get_channel(TEAM_A_VOICE_ID)
-    team_b_ch = bot.get_channel(TEAM_B_VOICE_ID)
+    # Ses kanallarına köçür
     for p in team_a:
-        m = guild.get_member(p["discord_id"])
-        if m and m.voice and team_a_ch:
-            try: await m.move_to(team_a_ch)
+        mbr = guild.get_member(p["discord_id"])
+        if mbr and mbr.voice:
+            try: await mbr.move_to(bot.get_channel(TEAM_A_VOICE_ID))
             except discord.Forbidden: pass
     for p in team_b:
-        m = guild.get_member(p["discord_id"])
-        if m and m.voice and team_b_ch:
-            try: await m.move_to(team_b_ch)
+        mbr = guild.get_member(p["discord_id"])
+        if mbr and mbr.voice:
+            try: await mbr.move_to(bot.get_channel(TEAM_B_VOICE_ID))
             except discord.Forbidden: pass
 
     await update_queue_status_message()
@@ -1310,30 +1392,107 @@ class ScanEditView(discord.ui.View):
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
             return
-        import json
-        scan_json = json.dumps({str(k): v for k, v in self.parsed.items()}, ensure_ascii=False)
+        if self.winner_label not in ("A", "B"):
+            await interaction.response.send_message("❌ Əvvəlcə Qalib A/B seçin.", ephemeral=True)
+            return
+
+        active = get_active_match()
+        team_a = active.get("team_a", []) if active else []
+        team_b = active.get("team_b", []) if active else []
+        sel_map = (active or {}).get("selected_map", "?")
+
+        winner_team = team_a if self.winner_label == "A" else team_b
+        loser_team  = team_b if self.winner_label == "A" else team_a
+        winner_label_full = f"Komanda {self.winner_label}"
+
+        winner_ids = [p["discord_id"] for p in winner_team]
+        loser_ids  = [p["discord_id"] for p in loser_team]
+
+        results = update_team_elo(winner_ids, loser_ids) if (winner_ids and loser_ids) else None
+
+        import json as _j
+        scan_json = _j.dumps({str(k): v for k, v in self.parsed.items()}, ensure_ascii=False)
         scan_id   = save_scan_result(self.match_number, scan_json, self.winner_label)
         confirm_scan(scan_id)
 
         season = get_or_create_current_season()
+        winner_coins, loser_coins, winner_stats, loser_stats = {}, {}, {}, {}
+
         for key, stats in self.parsed.items():
-            try:
-                did = int(key)
-            except (ValueError, TypeError):
-                continue
+            try: did = int(key)
+            except: continue
             add_combat_stats(did, stats["kills"], stats["assists"], stats["deaths"])
-            add_season_stat(did, season["id"],
-                            kills=stats["kills"], assists=stats["assists"], deaths=stats["deaths"])
+            add_season_stat(did, season["id"], kills=stats["kills"],
+                            assists=stats["assists"], deaths=stats["deaths"])
             completed, reward = update_task_progress(did, stats["kills"], stats["assists"])
             if completed and reward:
                 bal = add_coins(did, reward)
                 add_coin_log(did, reward, "Günlük tapşırıq tamamlandı", "earn", bal)
+            (winner_stats if did in winner_ids else loser_stats)[did] = stats
+
+        if results:
+            for p, r in zip(winner_team, results["winners"]):
+                earned = random.randint(5, 10)
+                bal    = add_coins(p["discord_id"], earned)
+                add_coin_log(p["discord_id"], earned, f"Matç No{self.match_number} qələbə", "earn", bal)
+                winner_coins[p["discord_id"]] = (earned, bal)
+                add_season_stat(p["discord_id"], season["id"], wins=1,
+                                elo_gained=max(0, r["new_elo"] - r["old_elo"]))
+            for p, r in zip(loser_team, results["losers"]):
+                earned = random.randint(0, 5)
+                bal    = add_coins(p["discord_id"], earned)
+                add_coin_log(p["discord_id"], earned, f"Matç No{self.match_number} iştirak", "earn", bal)
+                loser_coins[p["discord_id"]] = (earned, bal)
+                add_season_stat(p["discord_id"], season["id"], losses=1,
+                                elo_gained=max(0, r["new_elo"] - r["old_elo"]))
+
+            winner_results = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                              for p, r in zip(winner_team, results["winners"])]
+            loser_results  = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                              for p, r in zip(loser_team, results["losers"])]
+            await asyncio.to_thread(record_match_history, "5v5",
+                winner_ids, loser_ids,
+                [r["old_elo"] for r in results["winners"]],
+                [r["new_elo"] for r in results["winners"]],
+                [r["old_elo"] for r in results["losers"]],
+                [r["new_elo"] for r in results["losers"]],
+                self.match_number)
+
+            # Logs mesajını edit et
+            now_az = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+            result_embed = _build_match_result_embed(
+                self.match_number, sel_map, winner_label_full,
+                winner_team, loser_team,
+                winner_results, loser_results,
+                winner_stats, loser_stats,
+                now_az.strftime("%d.%m.%Y %H:%M")
+            )
+            await _edit_log_match_message(result_embed)
+
+            # Nəticə kartı log kanalına
+            result_img = os.path.join(DATA_DIR or ".", f"result_{self.match_number}.png")
+            loser_label_full = "Komanda B" if self.winner_label == "A" else "Komanda A"
+            await asyncio.to_thread(generate_result_card,
+                self.match_number, winner_label_full, loser_label_full,
+                winner_team, loser_team,
+                winner_results, loser_results,
+                winner_coins, loser_coins,
+                now_az.strftime("%d.%m.%Y %H:%M"), result_img)
+            log_ch = bot.get_channel(LOG_CHANNEL_ID)
+            if log_ch:
+                await log_ch.send(file=discord.File(result_img, filename="result.png"))
+
+        clear_active_match()
+        await asyncio.to_thread(backup.export_backup)
 
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(
-            content=f"✅ **Matç No{self.match_number}** statistikası DB-ə yazıldı! Qalib: Komanda **{self.winner_label}**",
+            content=f"✅ **Matç No{self.match_number}** tamamlandı — 🏆 **{winner_label_full}**",
             embed=None, view=self)
+
+        if queue_size() >= 10 and interaction.guild:
+            await _start_match(interaction.channel, interaction.guild)
 
     @discord.ui.button(label="Ləğv et ❌", style=discord.ButtonStyle.secondary, row=2)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1667,6 +1826,18 @@ class ManuelMatchStatView(discord.ui.View):
         loser_results  = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
                           for p, r in zip(loser_team, results["losers"])]
 
+        # Logs mesajını edit et
+        sel_map = active.get("selected_map", "?") if (active := get_active_match()) else "?"
+        result_embed = _build_match_result_embed(
+            self.match_number, sel_map, winner_label,
+            winner_team, loser_team,
+            winner_results, loser_results,
+            {p["discord_id"]: self.stats[p["discord_id"]] for p in winner_team if p["discord_id"] in self.stats},
+            {p["discord_id"]: self.stats[p["discord_id"]] for p in loser_team  if p["discord_id"] in self.stats},
+            ts
+        )
+        await _edit_log_match_message(result_embed)
+
         result_img = os.path.join(DATA_DIR or ".", f"result_{self.match_number}.png")
         await asyncio.to_thread(
             generate_result_card,
@@ -1685,10 +1856,8 @@ class ManuelMatchStatView(discord.ui.View):
         if log_ch:
             await log_ch.send(file=discord.File(result_img, filename="result.png"))
 
-        if queue_size() >= 10:
-            mm_ch = interaction.channel
-            if mm_ch:
-                await _start_match(mm_ch, interaction.guild)
+        if queue_size() >= 10 and interaction.guild:
+            await _start_match(interaction.channel, interaction.guild)
 
 
 @bot.tree.command(name="manuel_stat", description="[Admin] Aktiv matçın statlarını manuel daxil et")
@@ -1945,52 +2114,6 @@ async def profile(interaction: discord.Interaction):
         await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), embed=boost_embed, view=PlayerProfileView(discord_id))
     else:
         await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=PlayerProfileView(discord_id))
-
-
-@bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")
-@app_commands.describe(qalib="Qalib oyunçu", məğlub="Məğlub oyunçu")
-@app_commands.checks.has_permissions(administrator=True)
-async def matchresult(interaction: discord.Interaction, qalib: discord.Member, məğlub: discord.Member):
-    if not get_player(qalib.id) or not get_player(məğlub.id):
-        await interaction.response.send_message("❌ Hər iki oyunçu əvvəlcə `/register` etməlidir.", ephemeral=True)
-        return
-
-    result = update_elo(qalib.id, məğlub.id)
-
-    winner_earned = random.randint(5, 10)
-    loser_earned = random.randint(0, 5)
-    w_balance = add_coins(qalib.id, winner_earned)
-    l_balance = add_coins(məğlub.id, loser_earned)
-    add_coin_log(qalib.id, winner_earned, "1v1 matç qələbə", "earn", w_balance)
-    add_coin_log(məğlub.id, loser_earned, "1v1 matç iştirak", "earn", l_balance)
-    await asyncio.to_thread(backup.export_backup)
-
-    await asyncio.to_thread(
-        record_match_history,
-        "1v1",
-        [qalib.id], [məğlub.id],
-        [result["winner_old_elo"]], [result["winner_new_elo"]],
-        [result["loser_old_elo"]], [result["loser_new_elo"]]
-    )
-
-    embed = discord.Embed(title="🏆 Matç nəticəsi qeyd edildi", color=discord.Color.gold())
-    embed.add_field(
-        name=f"✅ Qalib: {qalib.display_name}",
-        value=f"{result['winner_old_elo']} → **{result['winner_new_elo']}** ELO (+{result['winner_new_elo'] - result['winner_old_elo']}) | 🪙 +{winner_earned}",
-        inline=False
-    )
-    embed.add_field(
-        name=f"❌ Məğlub: {məğlub.display_name}",
-        value=f"{result['loser_old_elo']} → **{result['loser_new_elo']}** ELO ({result['loser_new_elo'] - result['loser_old_elo']}) | 🪙 +{loser_earned}",
-        inline=False
-    )
-    await interaction.response.send_message(embed=embed)
-
-
-@matchresult.error
-async def matchresult_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")

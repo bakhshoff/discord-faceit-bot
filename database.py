@@ -1066,19 +1066,24 @@ def close_season(season_id):
 # AKTİV MATÇ KİLİDİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def set_active_match(match_number, team_a_json=None, team_b_json=None):
-    conn = _get_conn()
+def set_active_match(match_number, team_a_json=None, team_b_json=None,
+                     log_message_id=None, log_channel_id=None, selected_map=None):
+    conn   = _get_conn()
     cursor = conn.cursor()
-    # team sütunları mövcud deyilsə əlavə et
     cursor.execute("PRAGMA table_info(active_match)")
     cols = [r[1] for r in cursor.fetchall()]
-    if "team_a" not in cols:
-        cursor.execute("ALTER TABLE active_match ADD COLUMN team_a TEXT DEFAULT NULL")
-    if "team_b" not in cols:
-        cursor.execute("ALTER TABLE active_match ADD COLUMN team_b TEXT DEFAULT NULL")
+    for col, default in [("team_a","NULL"),("team_b","NULL"),
+                         ("log_message_id","NULL"),("log_channel_id","NULL"),
+                         ("selected_map","NULL")]:
+        if col not in cols:
+            cursor.execute(f"ALTER TABLE active_match ADD COLUMN {col} TEXT DEFAULT {default}")
     cursor.execute(
-        "UPDATE active_match SET match_number=?, status='active', team_a=?, team_b=? WHERE id=1",
-        (match_number, team_a_json, team_b_json)
+        "UPDATE active_match SET match_number=?, status='active', "
+        "team_a=?, team_b=?, log_message_id=?, log_channel_id=?, selected_map=? WHERE id=1",
+        (match_number, team_a_json, team_b_json,
+         str(log_message_id) if log_message_id else None,
+         str(log_channel_id) if log_channel_id else None,
+         selected_map)
     )
     conn.commit()
     conn.close()
@@ -1087,7 +1092,10 @@ def set_active_match(match_number, team_a_json=None, team_b_json=None):
 def clear_active_match():
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("UPDATE active_match SET match_number=NULL, status=NULL, team_a=NULL, team_b=NULL WHERE id=1")
+    cursor.execute(
+        "UPDATE active_match SET match_number=NULL, status=NULL, "
+        "team_a=NULL, team_b=NULL, log_message_id=NULL, log_channel_id=NULL, selected_map=NULL WHERE id=1"
+    )
     conn.commit()
     conn.close()
 
@@ -1098,24 +1106,25 @@ def get_active_match():
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(active_match)")
     cols = [r[1] for r in cursor.fetchall()]
-    if "team_a" in cols:
-        cursor.execute("SELECT match_number, status, team_a, team_b FROM active_match WHERE id=1")
-        row = cursor.fetchone()
-        conn.close()
-        if not row or row[1] is None:
-            return None
-        return {
-            "match_number": row[0], "status": row[1],
-            "team_a": _json.loads(row[2]) if row[2] else [],
-            "team_b": _json.loads(row[3]) if row[3] else [],
-        }
+    extra = "team_a" in cols
+    if extra:
+        cursor.execute("SELECT match_number, status, team_a, team_b, log_message_id, log_channel_id, selected_map FROM active_match WHERE id=1")
     else:
         cursor.execute("SELECT match_number, status FROM active_match WHERE id=1")
-        row = cursor.fetchone()
-        conn.close()
-        if not row or row[1] is None:
-            return None
-        return {"match_number": row[0], "status": row[1], "team_a": [], "team_b": []}
+    row = cursor.fetchone()
+    conn.close()
+    if not row or row[1] is None:
+        return None
+    result = {"match_number": row[0], "status": row[1],
+              "team_a": [], "team_b": [],
+              "log_message_id": None, "log_channel_id": None, "selected_map": None}
+    if extra and len(row) >= 7:
+        result["team_a"]         = _json.loads(row[2]) if row[2] else []
+        result["team_b"]         = _json.loads(row[3]) if row[3] else []
+        result["log_message_id"] = int(row[4]) if row[4] else None
+        result["log_channel_id"] = int(row[5]) if row[5] else None
+        result["selected_map"]   = row[6]
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
