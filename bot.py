@@ -628,6 +628,141 @@ class ExchangeConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="❌ Çevirmə ləğv edildi.", view=None)
 
 
+# ── Dizayn Market alt-menüsü (Avatar + Çərçivə) ──────────────────────────────
+class DizaynMarketView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="Avatar (Bannerlər)", style=discord.ButtonStyle.primary, emoji="🖼️", row=0)
+    async def open_banners(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        banners = [i for i in MARKET_ITEMS if i.get("type") == "banner"]
+        lines = [f"**{i['name']}**" + (" ✅" if owns_item(self.discord_id, i["id"]) else f" — 🪙 {i['price']}") for i in banners]
+        embed = discord.Embed(title="🖼️ Avatar Bannerlər", description="\n".join(lines), color=discord.Color.gold())
+        embed.set_footer(text=f"Balansınız: 🪙 {coins}")
+        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
+
+    @discord.ui.button(label="Çərçivə", style=discord.ButtonStyle.secondary, emoji="🔲", row=0)
+    async def open_frames(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        frames = [i for i in MARKET_ITEMS if i.get("type") == "avatar_frame"]
+        lines = [f"**{i['name']}**" + (" ✅" if owns_item(self.discord_id, i["id"]) else f" — 🪙 {i['price']}") for i in frames]
+        embed = discord.Embed(title="🔲 Çərçivələr", description="\n".join(lines), color=discord.Color.blurple())
+        embed.set_footer(text=f"Balansınız: 🪙 {coins}")
+        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
+
+
+# ── Market ana alt-menüsü ─────────────────────────────────────────────────────
+class MarketSubView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="Premium Market", style=discord.ButtonStyle.danger, emoji="⚡", row=0)
+    async def open_premium(self, interaction: discord.Interaction, button: discord.ui.Button):
+        zm = get_zm_balance(self.discord_id)
+        boosts = get_all_active_boosts(self.discord_id)
+        lines = [f"**{i['name']}** — {i['price_azn']} AZN" for i in ZM_MARKET_ITEMS]
+        embed = discord.Embed(title="⚡ Premium Market", description="\n".join(lines), color=discord.Color.purple())
+        embed.add_field(name="💼 AZN Balansınız", value=f"{zm} AZN", inline=True)
+        if boosts:
+            bls = []
+            for b in boosts:
+                tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
+                h, mn = tl // 3600, (tl % 3600) // 60
+                bn = "🛡 ELO Qoruma" if b["boost_type"] == "protection" else ("🚀 50% Boost" if b["boost_type"] == "boost_50" else "⚡ 100% Boost")
+                bls.append(f"{bn} — {h}s {mn}dəq")
+            embed.add_field(name="Aktiv güclənmələr", value="\n".join(bls), inline=False)
+        embed.set_footer(text="AZN almaq üçün WhatsApp düyməsinə basın.")
+        await interaction.response.send_message(embed=embed, view=ZMMarketView(self.discord_id, zm), ephemeral=True)
+
+    @discord.ui.button(label="Skin Market", style=discord.ButtonStyle.success, emoji="🔫", row=0)
+    async def open_skins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        skins = get_active_skins()
+        if not skins:
+            await interaction.response.send_message("🔫 Hələ mağazada skin yoxdur.", ephemeral=True)
+            return
+        lines = [f"**{s['name']}** — 🪙 {s['price']}" for s in skins[:25]]
+        embed = discord.Embed(title="🔫 Skin Market", description="\n".join(lines), color=discord.Color.blue())
+        embed.set_footer(text=f"🪙 {coins}  ·  Skin alınca envantara düşür")
+        await interaction.response.send_message(embed=embed, view=SkinBuyView(self.discord_id), ephemeral=True)
+
+    @discord.ui.button(label="Dizayn Market", style=discord.ButtonStyle.primary, emoji="🎨", row=0)
+    async def open_dizayn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins = get_coins(self.discord_id)
+        embed = discord.Embed(
+            title="🎨 Dizayn Market",
+            description="**Avatar Bannerlər** — profil arxa planını dəyişir\n**Çərçivələr** — avatar ətrafına çərçivə əlavə edir",
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text=f"Balansınız: 🪙 {coins}")
+        await interaction.response.send_message(embed=embed, view=DizaynMarketView(self.discord_id), ephemeral=True)
+
+
+# ── İnventar alt-menüsü ───────────────────────────────────────────────────────
+class InventarSubView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="Avatar", style=discord.ButtonStyle.primary, emoji="🖼️", row=0)
+    async def inv_avatar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        owned = [i for i in get_inventory(self.discord_id)
+                 if get_item_by_id(i) and get_item_by_id(i).get("type") == "banner"]
+        active = get_active_banner(self.discord_id)
+        if not owned:
+            await interaction.response.send_message("🖼️ Heç bir banneriniz yoxdur.", ephemeral=True)
+            return
+        lines = [f"{'▶️' if i == active else '⬜'} **{get_item_by_id(i)['name']}**" for i in owned]
+        embed = discord.Embed(title="🖼️ Avatar Bannerlərim", description="\n".join(lines), color=discord.Color.gold())
+        embed.set_footer(text="Aktivləşdirmək üçün aşağıdan seçin")
+        view = InventoryActivateView(self.discord_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Çərçivə", style=discord.ButtonStyle.secondary, emoji="🔲", row=0)
+    async def inv_frame(self, interaction: discord.Interaction, button: discord.ui.Button):
+        owned = [i for i in get_inventory(self.discord_id)
+                 if get_item_by_id(i) and get_item_by_id(i).get("type") == "avatar_frame"]
+        active = get_active_frame(self.discord_id)
+        if not owned:
+            await interaction.response.send_message("🔲 Heç bir çərçivəniz yoxdur.", ephemeral=True)
+            return
+        lines = [f"{'▶️' if i == active else '⬜'} **{get_item_by_id(i)['name']}**" for i in owned]
+        embed = discord.Embed(title="🔲 Çərçivələrim", description="\n".join(lines), color=discord.Color.blurple())
+        view = InventoryActivateView(self.discord_id)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Skin", style=discord.ButtonStyle.success, emoji="🔫", row=0)
+    async def inv_skin(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        skin_inv = get_skin_inventory(self.discord_id)
+        if not skin_inv:
+            await interaction.followup.send("🔫 Heç bir skininiz yoxdur.", ephemeral=True)
+            return
+        lines = [f"**{s['skin_name']}** — {'✅ Təhvil verildi' if s['delivered'] else '⏳ Gözləyir'}" for s in skin_inv]
+        embed = discord.Embed(title="🔫 Skin Envanterim", description="\n".join(lines[:20]), color=discord.Color.blue())
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Premium", style=discord.ButtonStyle.danger, emoji="⚡", row=0)
+    async def inv_premium(self, interaction: discord.Interaction, button: discord.ui.Button):
+        boosts = get_all_active_boosts(self.discord_id)
+        if not boosts:
+            await interaction.response.send_message("⚡ Aktiv Premium güclənməniiz yoxdur.", ephemeral=True)
+            return
+        lines = []
+        for b in boosts:
+            tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
+            h, mn = tl // 3600, (tl % 3600) // 60
+            bn = "🛡 ELO Qoruma" if b["boost_type"] == "protection" else ("🚀 50% Boost" if b["boost_type"] == "boost_50" else "⚡ 100% Boost")
+            exp = datetime.datetime.utcfromtimestamp(b["expires_at"]) + datetime.timedelta(hours=4)
+            lines.append(f"**{bn}** — {h}s {mn}dəq qalıb\n⏰ {exp.strftime('%d.%m %H:%M')}")
+        embed = discord.Embed(title="⚡ Premium Envanterim", description="\n\n".join(lines), color=discord.Color.purple())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# ── Əsas profil menyusu ───────────────────────────────────────────────────────
 class PlayerProfileView(discord.ui.View):
     def __init__(self, discord_id):
         super().__init__(timeout=180)
@@ -642,81 +777,31 @@ class PlayerProfileView(discord.ui.View):
     @discord.ui.button(label="Market", style=discord.ButtonStyle.primary, emoji="🛒", custom_id="profile_market", row=0)
     async def open_market(self, interaction: discord.Interaction, button: discord.ui.Button):
         coins = get_coins(self.discord_id)
-        lines = []
-        for item in MARKET_ITEMS:
-            owned = owns_item(self.discord_id, item["id"])
-            status = " ✅ Sahibsiniz" if owned else f" — 🪙 {item['price']}"
-            lines.append(f"**{item['name']}**{status}")
-
+        zm    = get_zm_balance(self.discord_id)
         embed = discord.Embed(
-            title="🛒 Calestify Market",
-            description="\n".join(lines),
+            title="🛒 Market",
+            description="**⚡ Premium Market** — AZN ilə ELO boost, qoruma\n**🔫 Skin Market** — Standoff 2 skinləri\n**🎨 Dizayn Market** — Avatar bannerlər, çərçivələr",
             color=discord.Color.gold()
         )
-        embed.set_footer(text=f"Balansınız: 🪙 {coins}")
-        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
+        embed.add_field(name="🪙 Coin", value=str(coins), inline=True)
+        embed.add_field(name="💵 AZN",  value=f"{zm} AZN", inline=True)
+        await interaction.response.send_message(embed=embed, view=MarketSubView(self.discord_id), ephemeral=True)
 
-    @discord.ui.button(label="Standoff Market", style=discord.ButtonStyle.success, emoji="🔫", custom_id="profile_skinmarket", row=0)
-    async def open_skin_market(self, interaction: discord.Interaction, button: discord.ui.Button):
-        coins = get_coins(self.discord_id)
-        skins = get_active_skins()
-        if not skins:
-            await interaction.response.send_message("🔫 Hələ mağazada skin yoxdur. Tezliklə əlavə olunacaq.", ephemeral=True)
-            return
-
-        lines = []
-        for skin in skins[:25]:
-            lines.append(f"**{skin['name']}** — 🪙 {skin['price']}")
-
-        embed = discord.Embed(
-            title="🔫 Standoff 2 Skin Market",
-            description="\n".join(lines),
-            color=discord.Color.blue()
-        )
-        embed.set_footer(text=f"Balansınız: 🪙 {coins}  ·  Skin alınca envantara düşür, oyunda rəhbərlik təhvil verir.")
-        await interaction.response.send_message(embed=embed, view=SkinBuyView(self.discord_id), ephemeral=True)
-
-    @discord.ui.button(label="ZM Market", style=discord.ButtonStyle.danger, emoji="⚡", custom_id="profile_zmmarket", row=1)
-    async def open_zm_market(self, interaction: discord.Interaction, button: discord.ui.Button):
-        zm_balance = get_zm_balance(self.discord_id)
-        boosts = get_all_active_boosts(self.discord_id)
-        lines = [f"**{item['name']}** — {item['price_azn']} AZN" for item in ZM_MARKET_ITEMS]
-        embed = discord.Embed(title="⚡ ZM Market", description="\n".join(lines), color=discord.Color.purple())
-        embed.add_field(name="💼 Balansınız", value=f"{zm_balance} AZN", inline=True)
-        if boosts:
-            bls = []
-            for b in boosts:
-                tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
-                h, mn = tl // 3600, (tl % 3600) // 60
-                bn = "🛡 ELO Qoruma" if b["boost_type"]=="protection" else ("🚀 50% Boost" if b["boost_type"]=="boost_50" else "⚡ 100% Boost")
-                bls.append(f"{bn} — {h}s {mn}dəq qalıb")
-            embed.add_field(name="⚡ Aktiv güclənmələr", value="\n".join(bls), inline=False)
-        embed.set_footer(text="ZM almaq üçün WhatsApp düyməsinə basın.")
-        await interaction.response.send_message(embed=embed, view=ZMMarketView(self.discord_id, zm_balance), ephemeral=True)
-
-    @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory", row=1)
+    @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒", custom_id="profile_inventory", row=0)
     async def open_inventory(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
         owned_ids = get_inventory(self.discord_id)
-        skin_inv = get_skin_inventory(self.discord_id)
-        active = get_active_banner(self.discord_id)
-        active_f = get_active_frame(self.discord_id)
-        path = os.path.join(DATA_DIR or ".", f"inventory_{self.discord_id}.png")
-        await asyncio.to_thread(generate_inventory_card, owned_ids, active, active_f, skin_inv, get_item_by_id, path)
-        view = InventoryActivateView(self.discord_id) if owned_ids else None
-        await interaction.followup.send(file=discord.File(path, filename="inventory.png"), view=view, ephemeral=True)
+        skin_cnt  = len(get_skin_inventory(self.discord_id))
+        boost_cnt = len(get_all_active_boosts(self.discord_id))
+        banner_cnt = sum(1 for i in owned_ids if get_item_by_id(i) and get_item_by_id(i).get("type") == "banner")
+        frame_cnt  = sum(1 for i in owned_ids if get_item_by_id(i) and get_item_by_id(i).get("type") == "avatar_frame")
+        embed = discord.Embed(
+            title="🎒 İnventar",
+            description=f"🖼️ Avatar: **{banner_cnt}**\n🔲 Çərçivə: **{frame_cnt}**\n🔫 Skin: **{skin_cnt}**\n⚡ Premium: **{boost_cnt}** aktiv",
+            color=discord.Color.blurple()
+        )
+        await interaction.response.send_message(embed=embed, view=InventarSubView(self.discord_id), ephemeral=True)
 
-    @discord.ui.button(label="Loglar", style=discord.ButtonStyle.secondary, emoji="🪙", custom_id="profile_logs", row=1)
-    async def open_logs(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-        logs = get_coin_logs(self.discord_id, limit=15)
-        balance = get_coins(self.discord_id)
-        path = os.path.join(DATA_DIR or ".", f"logs_{self.discord_id}.png")
-        await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, path)
-        view = CoinLogsView(self.discord_id)
-        await interaction.followup.send(file=discord.File(path, filename="logs.png"), view=view, ephemeral=True)
-
-    @discord.ui.button(label="Matç Tarixçəsi", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="profile_history", row=2)
+    @discord.ui.button(label="Matç Tarixçəsi", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="profile_history", row=0)
     async def open_history(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         history = get_player_match_history(self.discord_id, limit=10)
@@ -724,31 +809,32 @@ class PlayerProfileView(discord.ui.View):
         await asyncio.to_thread(generate_match_history_card, history, path)
         await interaction.followup.send(file=discord.File(path, filename="history.png"), ephemeral=True)
 
-    @discord.ui.button(label="Coin → AZN", style=discord.ButtonStyle.primary, emoji="💱", custom_id="profile_exchange", row=2)
+    @discord.ui.button(label="Loglar", style=discord.ButtonStyle.secondary, emoji="🪙", custom_id="profile_logs", row=1)
+    async def open_logs(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        logs    = get_coin_logs(self.discord_id, limit=15)
+        balance = get_coins(self.discord_id)
+        path    = os.path.join(DATA_DIR or ".", f"logs_{self.discord_id}.png")
+        await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, path)
+        await interaction.followup.send(file=discord.File(path, filename="logs.png"),
+                                        view=CoinLogsView(self.discord_id), ephemeral=True)
+
+    @discord.ui.button(label="Mübadilə", style=discord.ButtonStyle.primary, emoji="💱", custom_id="profile_exchange", row=1)
     async def open_exchange(self, interaction: discord.Interaction, button: discord.ui.Button):
-        coins = get_coins(self.discord_id)
-        times = coins // 250
+        coins   = get_coins(self.discord_id)
+        times   = coins // 250
         azn_val = round(times * 0.5, 2)
         if times == 0:
             await interaction.response.send_message(
-                f"❌ Çevirmək üçün ən az **250 coin** lazımdır.\nBalansınız: 🪙 **{coins}**",
-                ephemeral=True
-            )
+                f"❌ Ən az **250 coin** lazımdır. Balansınız: 🪙 **{coins}**", ephemeral=True)
             return
-        embed = discord.Embed(
-            title="💱 Coin → AZN Çevirici",
-            color=discord.Color.gold()
-        )
-        embed.add_field(name="📊 Kurs", value="250 🪙 = 0.5 AZN", inline=False)
-        embed.add_field(name="🪙 Coin balansınız", value=str(coins), inline=True)
-        embed.add_field(name="💱 Maksimum çevirmə", value=f"{times}x (= {azn_val} AZN)", inline=True)
-        embed.add_field(name="💵 Alacağınız AZN", value=f"{azn_val:.1f} AZN", inline=False)
-        embed.set_footer(text=f"Həmişə maksimum miqdar çevrilir: {times * 250} coin → {azn_val} AZN")
+        embed = discord.Embed(title="💱 Coin → AZN Mübadilə", color=discord.Color.gold())
+        embed.add_field(name="📊 Kurs",         value="250 🪙 = 0.5 AZN", inline=False)
+        embed.add_field(name="🪙 Coin",          value=str(coins),          inline=True)
+        embed.add_field(name="💱 Çeviriləcək",  value=f"{times}x = {azn_val} AZN", inline=True)
+        embed.set_footer(text=f"{times * 250} coin → {azn_val} AZN")
         await interaction.response.send_message(
-            embed=embed,
-            view=ExchangeConfirmView(self.discord_id, times),
-            ephemeral=True
-        )
+            embed=embed, view=ExchangeConfirmView(self.discord_id, times), ephemeral=True)
 
 class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
