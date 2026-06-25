@@ -1291,6 +1291,43 @@ async def scan_error(interaction, error):
         await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
 
 
+@bot.tree.command(name="scan_test", description="[Admin] Scan sistemini test et — matç tələb edilmir")
+@app_commands.describe(ekran="Skor ekranının şəkli")
+@app_commands.checks.has_permissions(administrator=True)
+async def scan_test_cmd(interaction: discord.Interaction, ekran: discord.Attachment):
+    await interaction.response.defer()
+    try:
+        img_bytes = await ekran.read()
+    except Exception:
+        await interaction.followup.send("❌ Şəkil yüklənmədi.", ephemeral=True)
+        return
+
+    await interaction.followup.send("🔍 Gemini Vision analiz edir...", ephemeral=True)
+    try:
+        gemini_results = await asyncio.to_thread(analyze_with_gemini, img_bytes)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Gemini xətası: {e}", ephemeral=True)
+        return
+
+    lines = []
+    for r in gemini_results:
+        lines.append(f"👤 **{r['nick']}** — K:{r['kills']} A:{r['assists']} D:{r['deaths']}")
+
+    embed = discord.Embed(
+        title="🧪 Scan Test — Gemini Nəticəsi",
+        description="\n".join(lines) if lines else "Heç bir oyunçu tapılmadı.",
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text=f"Cəmi {len(gemini_results)} oyunçu oxundu  ·  Heç bir data yazılmadı")
+    await interaction.followup.send(embed=embed)
+
+
+@scan_test_cmd.error
+async def scan_test_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SEZON KOMANDası
 # ═══════════════════════════════════════════════════════════════════════════════
