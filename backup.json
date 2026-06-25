@@ -1,6 +1,23 @@
 {
-  "exported_at": 1782406467,
-  "players": [],
+  "exported_at": 1782407352,
+  "players": [
+    {
+      "discord_id": 1513910231212621890,
+      "so2_nick": "PHOENİX",
+      "so2_id": "200882046",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    }
+  ],
   "inventory": [],
   "giveaways": [],
   "match_counter": [
