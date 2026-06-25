@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782414966,
+  "exported_at": 1782416665,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -258,6 +258,54 @@
       "deaths": 0
     },
     {
+      "discord_id": 1424104516214849617,
+      "so2_nick": "SeeyouSo2",
+      "so2_id": "175004314",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
+      "discord_id": 1429511300391764060,
+      "so2_nick": "Hidra",
+      "so2_id": "201509341",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
+      "discord_id": 1457800486882382022,
+      "so2_nick": "Urka____117",
+      "so2_id": "279345596",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 1478002530284736687,
       "so2_nick": "zyko",
       "so2_id": "198811620",
@@ -311,7 +359,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 1
+      "last_number": 2
     }
   ],
   "match_history": [],
