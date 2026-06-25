@@ -1289,41 +1289,49 @@ async def scan_error(interaction, error):
         await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
 
 
-@bot.tree.command(name="scan_test", description="[Admin] Scan sistemini test et — matç tələb edilmir")
+@bot.tree.command(name="ping", description="Bot cavab verir?")
+async def ping_cmd(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        f"🏓 Pong! Gecikmə: `{round(bot.latency * 1000)}ms`", ephemeral=True)
+
+
+@bot.tree.command(name="scan_test", description="Scan sistemini test et — matç tələb edilmir")
 @app_commands.describe(ekran="Skor ekranının şəkli")
-@app_commands.checks.has_permissions(administrator=True)
 async def scan_test_cmd(interaction: discord.Interaction, ekran: discord.Attachment):
-    await interaction.response.defer()
-    try:
-        img_bytes = await ekran.read()
-    except Exception:
-        await interaction.followup.send("❌ Şəkil yüklənmədi.", ephemeral=True)
+    # Decorator əvəzinə manual admin yoxlaması — daha etibarlı
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
         return
 
-    await interaction.followup.send("🔍 OCR analiz edir...", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        img_bytes = await ekran.read()
+    except Exception as e:
+        await interaction.followup.send(f"❌ Şəkil yüklənmədi: {e}", ephemeral=True)
+        return
+
     try:
         ocr_results = await asyncio.to_thread(ocr_scoreboard, img_bytes)
     except Exception as e:
         await interaction.followup.send(f"❌ OCR xətası: {e}", ephemeral=True)
         return
 
-    lines = []
-    for r in ocr_results:
-        lines.append(f"👤 **{r['nick']}** — K:{r['kills']} A:{r['assists']} D:{r['deaths']}")
+    if not ocr_results:
+        await interaction.followup.send(
+            "⚠️ Heç bir oyunçu tapılmadı. Şəkil aydın və yaxın çəkilmiş olmalıdır.",
+            ephemeral=True)
+        return
 
+    lines = [f"👤 **{r['nick']}** — K:{r['kills']} A:{r['assists']} D:{r['deaths']}"
+             for r in ocr_results]
     embed = discord.Embed(
         title="🧪 Scan Test — OCR Nəticəsi",
-        description="\n".join(lines) if lines else "Heç bir oyunçu tapılmadı.",
+        description="\n".join(lines),
         color=discord.Color.blurple()
     )
-    embed.set_footer(text=f"Cəmi {len(ocr_results)} oyunçu oxundu  ·  Heç bir data yazılmadı")
-    await interaction.followup.send(embed=embed)
-
-
-@scan_test_cmd.error
-async def scan_test_error(interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
+    embed.set_footer(text=f"{len(ocr_results)} oyunçu oxundu  ·  Data yazılmadı")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
