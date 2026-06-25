@@ -1,132 +1,156 @@
 """
-Scan sistemi: Gemini Vision ekran görüntüsündən K/A/D oxuyur.
+Scan sistemi: pytesseract OCR ilə skor ekranından K/A/D oxuyur.
 """
-import os
-import json
-import base64
 import re
+import io
+from PIL import Image, ImageEnhance, ImageFilter
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-
-GEMINI_PROMPT = """Bu bir Standoff 2 oyununun skor ekranıdır.
-Ekrandakı hər oyunçu üçün:
-- oyunçu adı (nick)
-- kill sayı
-- asist sayı
-- ölüm (death) sayı
-
-məlumatlarını tap və YALNIZCA aşağıdakı JSON formatında ver, başqa heç nə yazma:
-[
-  {"nick": "OyuncuAdi1", "kills": 15, "assists": 3, "deaths": 2},
-  {"nick": "OyuncuAdi2", "kills": 8, "assists": 5, "deaths": 4}
-]
-
-Qeydlər:
-- Əgər asist sütunu görünmürsə, assists üçün 0 yaz
-- Oyunçu adını tam olaraq ekranda göründüyü kimi yaz
-- Rəqəmləri dəqiq oxu
-- Yalnız JSON qaytır, izahat yazma
-"""
+try:
+    import pytesseract
+    TESSERACT_OK = True
+except ImportError:
+    TESSERACT_OK = False
 
 
-def analyze_with_gemini(image_bytes: bytes) -> list[dict]:
+def _preprocess(image_bytes: bytes) -> Image.Image:
+    """OCR keyfiyyətini artırmaq üçün şəkli hazırlayır."""
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    # 2x böyüt — kiçik şrift üçün vacibdir
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS)
+
+    # Boz çalara çevir
+    img = img.convert("L")
+
+    # Kontrast artır
+    img = ImageEnhance.Contrast(img).enhance(2.5)
+    img = ImageEnhance.Sharpness(img).enhance(2.0)
+
+    return img
+
+
+def ocr_scoreboard(image_bytes: bytes) -> list[dict]:
     """
-    Ekran görüntüsünü Gemini-yə göndərir, K/A/D siyahısı qaytarır.
-    Returns: [{"nick": str, "kills": int, "assists": int, "deaths": int}, ...]
+    Şəkildən oyunçu adı + K/A/D oxuyur.
+    Returns: [{"nick": str, "kills": int, "assists": int, "deaths": int}]
     """
-    try:
-        from google import genai
-        from google.genai import types
+    if not TESSERACT_OK:
+        raise RuntimeError("pytesseract qurulmayıb.")
 
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        mime   = "image/jpeg" if image_bytes[:3] == b'\xff\xd8\xff' else "image/png"
-
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                GEMINI_PROMPT,
-                types.Part.from_bytes(data=image_bytes, mime_type=mime),
-            ]
-        )
-        raw = response.text.strip()
-
-        # JSON blokunu çıxar (``` bloku ola bilər)
-        match = re.search(r'\[.*\]', raw, re.DOTALL)
-        if match:
-            raw = match.group(0)
-
-        parsed = json.loads(raw)
-        result = []
-        for item in parsed:
-            result.append({
-                "nick":    str(item.get("nick", "")).strip(),
-                "kills":   int(item.get("kills",   0)),
-                "assists": int(item.get("assists",  0)),
-                "deaths":  int(item.get("deaths",   0)),
-            })
-        return result
-    except Exception as e:
-        raise RuntimeError(f"Gemini Vision xətası: {e}")
+    img  = _preprocess(image_bytes)
+    text = pytesseract.image_to_string(
+        img,
+        config="--psm 6 --oem 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#[]().-/ "
+    )
+    return _parse_ocr_text(text)
 
 
-def match_to_registered(gemini_results: list[dict], registered_players: list[dict]) -> dict:
+def _parse_ocr_text(text: str) -> list[dict]:
     """
-    Gemini nəticələrini qeydiyyatlı oyunçularla uyğunlaşdırır.
-    registered_players: [{"discord_id", "nick", "so2_id", ...}]
-    Returns: {discord_id: {"nick", "kills", "assists", "deaths", "matched", "gemini_nick"}}
+    OCR mətnini parse edib oyunçu siyahısı qaytarır.
+
+    Dəstəklənən formatlar (hər sətirdə):
+      PlayerName 15 3 2
+      #1 PlayerName 15 3 2
+      15 3 2 PlayerName
+      PlayerName: 15/3/2
     """
-    matched = {}
+    results = []
+    seen_nicks = set()
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        nums = re.findall(r'\b(\d{1,3})\b', line)
+        if len(nums) < 3:
+            continue
+
+        # Rəqəmləri çıxarıb adı tap
+        name_part = re.sub(r'\b\d+\b', '', line)
+        name_part = re.sub(r'[^A-Za-z0-9_#\[\]\.\-]', ' ', name_part)
+        words = [w for w in name_part.split() if len(w) >= 2]
+        if not words:
+            continue
+
+        nick = max(words, key=len)
+
+        # Eyni ad iki dəfə əlavə olunmasın
+        if nick.lower() in seen_nicks:
+            continue
+        seen_nicks.add(nick.lower())
+
+        k, a, d = int(nums[0]), int(nums[1]), int(nums[2])
+
+        # Ağlabatan həddlər: kill/asist/death 0-99 arasında olmalıdır
+        if k > 99 or a > 99 or d > 99:
+            continue
+
+        results.append({"nick": nick, "kills": k, "assists": a, "deaths": d})
+
+    return results
+
+
+def match_to_registered(ocr_results: list[dict], registered_players: list[dict]) -> dict:
+    """
+    OCR nəticələrini qeydiyyatlı oyunçularla uyğunlaşdırır.
+    registered_players: [{"discord_id", "nick", ...}]
+    Returns: {discord_id|"unknown_nick": {"nick", "kills", "assists", "deaths", "matched", "ocr_nick"}}
+    """
+    matched  = {}
     used_ids = set()
 
-    for gr in gemini_results:
-        g_nick = gr["nick"].lower().strip()
-        best_id, best_score = None, 0
+    for gr in ocr_results:
+        g_nick     = gr["nick"].lower().strip()
+        best_id    = None
+        best_score = 0
 
         for rp in registered_players:
             if rp["discord_id"] in used_ids:
                 continue
-            r_nick = rp["nick"].lower().strip()
-            score  = _similarity(g_nick, r_nick)
+            score = _similarity(g_nick, rp["nick"].lower().strip())
             if score > best_score:
                 best_score = score
                 best_id    = rp["discord_id"]
 
         if best_id and best_score >= 0.55:
+            reg_nick = next(p["nick"] for p in registered_players if p["discord_id"] == best_id)
             matched[best_id] = {
-                "nick":        next(p["nick"] for p in registered_players if p["discord_id"] == best_id),
-                "gemini_nick": gr["nick"],
-                "kills":       gr["kills"],
-                "assists":     gr["assists"],
-                "deaths":      gr["deaths"],
-                "matched":     True,
+                "nick":     reg_nick,
+                "ocr_nick": gr["nick"],
+                "kills":    gr["kills"],
+                "assists":  gr["assists"],
+                "deaths":   gr["deaths"],
+                "matched":  True,
             }
             used_ids.add(best_id)
         else:
-            # Uyğun tapılmadı - unknown olaraq saxla
             matched[f"unknown_{gr['nick']}"] = {
-                "nick":        gr["nick"],
-                "gemini_nick": gr["nick"],
-                "kills":       gr["kills"],
-                "assists":     gr["assists"],
-                "deaths":      gr["deaths"],
-                "matched":     False,
+                "nick":     gr["nick"],
+                "ocr_nick": gr["nick"],
+                "kills":    gr["kills"],
+                "assists":  gr["assists"],
+                "deaths":   gr["deaths"],
+                "matched":  False,
             }
 
     return matched
 
 
 def apply_defaults_for_missing(team_players: list, scan_results: dict) -> dict:
-    """Scan-da adı olmayan qeydiyyatlı oyunçulara 0/0/5 verir."""
+    """Scan-da tapılmayan qeydiyyatlı oyunçulara 0/0/5 verir."""
     scanned_ids = {k for k in scan_results if isinstance(k, int)}
     for p in team_players:
         if p["discord_id"] not in scanned_ids:
             scan_results[p["discord_id"]] = {
-                "nick":        p["nick"],
-                "gemini_nick": "",
-                "kills":       0,
-                "assists":     0,
-                "deaths":      5,
-                "matched":     True,
+                "nick":     p["nick"],
+                "ocr_nick": "",
+                "kills":    0,
+                "assists":  0,
+                "deaths":   5,
+                "matched":  True,
             }
     return scan_results
 

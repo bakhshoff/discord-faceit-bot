@@ -43,7 +43,7 @@ from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
 import backup
 from ai_chat import ask_groq
-from scan_system import analyze_with_gemini, match_to_registered, apply_defaults_for_missing
+from scan_system import ocr_scoreboard, match_to_registered, apply_defaults_for_missing
 import requests
 
 load_dotenv()
@@ -1262,22 +1262,20 @@ async def scan_cmd(interaction: discord.Interaction,
         await interaction.followup.send("❌ Şəkil yüklənmədi.", ephemeral=True)
         return
 
-    # Gemini Vision analizi
-    await interaction.followup.send("🔍 Gemini Vision analiz edir...", ephemeral=True)
+    # OCR analizi
+    await interaction.followup.send("🔍 OCR analiz edir...", ephemeral=True)
     try:
-        gemini_results = await asyncio.to_thread(analyze_with_gemini, img_bytes)
+        ocr_results = await asyncio.to_thread(ocr_scoreboard, img_bytes)
     except Exception as e:
-        await interaction.followup.send(f"❌ Gemini xətası: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ OCR xətası: {e}", ephemeral=True)
         return
 
-    # Qeydiyyatlı oyunçularla uyğunlaşdır
-    # Aktiv matçın oyunçularını DB-dən al
     match_number = active["match_number"]
     all_players  = []
     for row in get_leaderboard(limit=200):
         all_players.append({"discord_id": 0, "nick": row[0], "so2_id": row[1]})
 
-    parsed = match_to_registered(gemini_results, all_players)
+    parsed = match_to_registered(ocr_results, all_players)
     parsed = apply_defaults_for_missing(all_players, parsed)
 
     embed = _build_scan_embed(match_number, parsed, qalib)
@@ -1302,23 +1300,23 @@ async def scan_test_cmd(interaction: discord.Interaction, ekran: discord.Attachm
         await interaction.followup.send("❌ Şəkil yüklənmədi.", ephemeral=True)
         return
 
-    await interaction.followup.send("🔍 Gemini Vision analiz edir...", ephemeral=True)
+    await interaction.followup.send("🔍 OCR analiz edir...", ephemeral=True)
     try:
-        gemini_results = await asyncio.to_thread(analyze_with_gemini, img_bytes)
+        ocr_results = await asyncio.to_thread(ocr_scoreboard, img_bytes)
     except Exception as e:
-        await interaction.followup.send(f"❌ Gemini xətası: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ OCR xətası: {e}", ephemeral=True)
         return
 
     lines = []
-    for r in gemini_results:
+    for r in ocr_results:
         lines.append(f"👤 **{r['nick']}** — K:{r['kills']} A:{r['assists']} D:{r['deaths']}")
 
     embed = discord.Embed(
-        title="🧪 Scan Test — Gemini Nəticəsi",
+        title="🧪 Scan Test — OCR Nəticəsi",
         description="\n".join(lines) if lines else "Heç bir oyunçu tapılmadı.",
         color=discord.Color.blurple()
     )
-    embed.set_footer(text=f"Cəmi {len(gemini_results)} oyunçu oxundu  ·  Heç bir data yazılmadı")
+    embed.set_footer(text=f"Cəmi {len(ocr_results)} oyunçu oxundu  ·  Heç bir data yazılmadı")
     await interaction.followup.send(embed=embed)
 
 
