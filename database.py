@@ -1361,11 +1361,17 @@ def full_reset():
     # Matç sayacını sıfırla
     cursor.execute("UPDATE match_counter SET last_number = 0 WHERE id = 1")
 
-    # Aktiv matçı sıfırla
-    cursor.execute(
-        "UPDATE active_match SET match_number=NULL, status=NULL, "
-        "team_a=NULL, team_b=NULL, log_message_id=NULL, log_channel_id=NULL, selected_map=NULL WHERE id=1"
-    )
+    # Aktiv matçı sıfırla (yalnız mövcud sütunları yenilə)
+    cursor.execute("PRAGMA table_info(active_match)")
+    am_cols = {r[1] for r in cursor.fetchall()}
+    extra = ", ".join(f"{c}=NULL" for c in
+                      ("team_a","team_b","log_message_id","log_channel_id","selected_map")
+                      if c in am_cols)
+    sql = "UPDATE active_match SET match_number=NULL, status=NULL"
+    if extra:
+        sql += ", " + extra
+    sql += " WHERE id=1"
+    cursor.execute(sql)
 
     conn.commit()
     conn.close()
