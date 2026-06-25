@@ -1,10 +1,42 @@
 {
-  "exported_at": 1782409881,
+  "exported_at": 1782410669,
   "players": [
+    {
+      "discord_id": 381710974710972416,
+      "so2_nick": "AzE _ -Elfat1Ha-",
+      "so2_id": "28699896",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
     {
       "discord_id": 530035951347433474,
       "so2_nick": "khasar",
       "so2_id": "33049963",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
+      "discord_id": 673522186400563210,
+      "so2_nick": "ShampioNes",
+      "so2_id": "79603508",
       "elo": 1000,
       "wins": 0,
       "losses": 0,
