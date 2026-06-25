@@ -1,6 +1,22 @@
 {
-  "exported_at": 1782407624,
+  "exported_at": 1782407793,
   "players": [
+    {
+      "discord_id": 1066686022500495420,
+      "so2_nick": "Xyro~",
+      "so2_id": "144159784",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
     {
       "discord_id": 1228418531951906838,
       "so2_nick": "VXO~P3NAH",
