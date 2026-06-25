@@ -4,4 +4,5 @@ Pillow
 flask
 requests
 groq
-# cache-bust-2026-06-25d
+anthropic
+# cache-bust-2026-06-25e
