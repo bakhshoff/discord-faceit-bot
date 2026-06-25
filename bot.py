@@ -2761,30 +2761,35 @@ class SkinManageView(discord.ui.View):
 
 class ResetConfirmView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=60)
+        super().__init__(timeout=120)
 
     @discord.ui.button(label="Bəli, sıfırla ✅", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌", ephemeral=True)
+            await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
             return
-        await interaction.response.defer()
-        full_reset()
-        refresh_daily_tasks()
-        get_or_create_current_season()
-        await asyncio.to_thread(backup.export_backup)
-        for child in self.children:
-            child.disabled = True
-        await interaction.followup.send(
-            "✅ **Tam sıfırlama tamamlandı.**\n"
-            "Bütün qeydiyyatlar, statistika, tarixçə, inventar — hamısı silindi.\n"
-            "Bütün oyunçular yenidən qeydiyyatdan keçməlidir.",
-            ephemeral=False
+        # Əvvəl cavab ver ki timeout olmasın
+        await interaction.response.edit_message(
+            content="⏳ Sıfırlanır...", embed=None, view=None
         )
+        try:
+            await asyncio.to_thread(full_reset)
+            await asyncio.to_thread(refresh_daily_tasks)
+            await asyncio.to_thread(get_or_create_current_season)
+            await asyncio.to_thread(backup.export_backup)
+            await interaction.edit_original_response(
+                content=(
+                    "✅ **Tam sıfırlama tamamlandı.**\n"
+                    "Bütün qeydiyyatlar, statistika, tarixçə, inventar silindi.\n"
+                    "Hamı yenidən qeydiyyatdan keçməlidir."
+                )
+            )
+        except Exception as e:
+            await interaction.edit_original_response(content=f"❌ Xəta: {e}")
 
     @discord.ui.button(label="Xeyr, ləğv et ❌", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="❌ Sıfırlama ləğv edildi.", view=None)
+        await interaction.response.edit_message(content="❌ Sıfırlama ləğv edildi.", embed=None, view=None)
 
 
 @bot.tree.command(name="tam_sifirla", description="[Admin] Bütün oyunçuların statistikasını sıfırla")
