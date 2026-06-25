@@ -842,6 +842,45 @@ class PlayerProfileView(discord.ui.View):
         await interaction.followup.send(file=discord.File(path, filename="logs.png"),
                                         view=CoinLogsView(self.discord_id), ephemeral=True)
 
+    @discord.ui.button(label="Nick Dəyiş", style=discord.ButtonStyle.secondary, emoji="✏️", custom_id="profile_nick_change", row=1)
+    async def change_nick(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        current_nick = player[1] if player else ""
+        await interaction.response.send_modal(NickChangeModal(self.discord_id, current_nick))
+
+
+class NickChangeModal(discord.ui.Modal, title="Nick Dəyişdir"):
+    new_nick = discord.ui.TextInput(
+        label="Yeni oyun adı (oyundakı ilə eyni olmalı!)",
+        placeholder="⚠️ Böyük/kiçik hərfə qədər dəqiq yazın",
+        required=True,
+        min_length=2,
+        max_length=50
+    )
+
+    def __init__(self, discord_id: int, current_nick: str):
+        super().__init__()
+        self.discord_id   = discord_id
+        self.new_nick.default = current_nick
+
+    async def on_submit(self, interaction: discord.Interaction):
+        new = str(self.new_nick).strip()
+        admin_set_player_field(self.discord_id, "so2_nick", new)
+        await asyncio.to_thread(backup.export_backup)
+        embed = discord.Embed(
+            title="✅ Nick yeniləndi",
+            description=f"Yeni adınız: **{new}**",
+            color=discord.Color.green()
+        )
+        embed.add_field(
+            name="⚠️ Xatırlatma",
+            value="Scan sistemi oyundakı adınızla bu adı uyğunlaşdırır.\n"
+                  "Ad oyundakı adla eyni olmalıdır, əks halda **0/0/5** veriləcək!",
+            inline=False
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class TeamReadyView(discord.ui.View):
     def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id):
         super().__init__(timeout=None)
