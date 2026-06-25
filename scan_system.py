@@ -35,24 +35,19 @@ def analyze_with_gemini(image_bytes: bytes) -> list[dict]:
     Returns: [{"nick": str, "kills": int, "assists": int, "deaths": int}, ...]
     """
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
+        from google import genai
+        from google.genai import types
 
-        mime = "image/jpeg" if image_bytes[:3] == b'\xff\xd8\xff' else "image/png"
-        img_part = {"mime_type": mime, "data": base64.b64encode(image_bytes).decode()}
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        mime   = "image/jpeg" if image_bytes[:3] == b'\xff\xd8\xff' else "image/png"
 
-        response = None
-        last_err = None
-        for model_name in ("gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest", "gemini-1.5-pro"):
-            try:
-                model = genai.GenerativeModel(model_name)
-                response = model.generate_content([GEMINI_PROMPT, img_part])
-                break
-            except Exception as e:
-                last_err = e
-                continue
-        if response is None:
-            raise RuntimeError(str(last_err))
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                GEMINI_PROMPT,
+                types.Part.from_bytes(data=image_bytes, mime_type=mime),
+            ]
+        )
         raw = response.text.strip()
 
         # JSON blokunu çıxar (``` bloku ola bilər)

@@ -4,5 +4,5 @@ Pillow
 flask
 requests
 groq
-google-generativeai
-# cache-bust-2026-06-25
+google-genai
+# cache-bust-2026-06-25b
