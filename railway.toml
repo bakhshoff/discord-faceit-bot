@@ -1,4 +1,3 @@
 [deploy]
-startCommand = "python -u bot.py"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

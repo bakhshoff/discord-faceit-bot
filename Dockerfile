@@ -15,5 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONFAULTHANDLER=1
 
-CMD ["python", "-u", "bot.py"]
+CMD ["sh", "-c", "echo '[CMD] Container alive' && ls /app && python -u /app/bot.py"]
