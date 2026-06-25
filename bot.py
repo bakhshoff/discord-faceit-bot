@@ -1,50 +1,64 @@
-import discord
-from discord.ext import commands, tasks
-from discord import app_commands
-import os
-import datetime
-import random
-import asyncio
-import threading
-from dotenv import load_dotenv
-from database import (
-    init_db, register_player, get_player, update_elo,
-    add_to_queue, remove_from_queue, queue_size, clear_queue,
-    is_in_queue, pop_10_and_balance, get_leaderboard,
-    update_team_elo, get_next_match_number,
-    create_giveaway, get_due_giveaways, mark_giveaway_finished,
-    get_queue_list, add_coins, get_coins, spend_coins,
-    get_inventory, owns_item, add_to_inventory,
-    set_active_banner, get_active_banner,
-    set_active_frame, get_active_frame,
-    record_match_history, get_player_match_history, get_total_match_count,
-    admin_set_player_field,
-    add_skin, get_active_skins, get_skin_by_id, remove_skin,
-    add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
-    remove_skin_from_inventory, add_coin_log, get_coin_logs,
-    get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
-    exchange_coins_to_azn,
-    add_combat_stats, get_combat_stats,
-    get_or_create_current_season, get_season_by_number, get_season_leaderboard,
-    add_season_stat, get_season_stat, close_season,
-    set_active_match, clear_active_match, get_active_match,
-    save_scan_result, get_scan_result, confirm_scan,
-    refresh_daily_tasks, get_active_daily_tasks,
-    get_player_active_task, assign_task_to_player,
-    update_task_progress, fail_expired_tasks
-)
-from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
-from web_server import run_web_server
-from profile_card import generate_profile_card
-from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card
-from match_card import generate_match_card, generate_result_card
-from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
-from rules_card import generate_rules_card, generate_register_banner
-from market_config import MARKET_ITEMS, get_item_by_id
-import backup
-from ai_chat import ask_groq
-from scan_system import ocr_scoreboard, match_to_registered, apply_defaults_for_missing
-import requests
+import sys
+print(f"[STARTUP] Python {sys.version}", flush=True)
+
+try:
+    import discord
+    from discord.ext import commands, tasks
+    from discord import app_commands
+    import os
+    import datetime
+    import random
+    import asyncio
+    import threading
+    from dotenv import load_dotenv
+    print("[STARTUP] Core imports OK", flush=True)
+except Exception as _e:
+    print(f"[STARTUP] Core import FAILED: {_e}", flush=True)
+    sys.exit(1)
+try:
+    from database import (
+        init_db, register_player, get_player, update_elo,
+        add_to_queue, remove_from_queue, queue_size, clear_queue,
+        is_in_queue, pop_10_and_balance, get_leaderboard,
+        update_team_elo, get_next_match_number,
+        create_giveaway, get_due_giveaways, mark_giveaway_finished,
+        get_queue_list, add_coins, get_coins, spend_coins,
+        get_inventory, owns_item, add_to_inventory,
+        set_active_banner, get_active_banner,
+        set_active_frame, get_active_frame,
+        record_match_history, get_player_match_history, get_total_match_count,
+        admin_set_player_field,
+        add_skin, get_active_skins, get_skin_by_id, remove_skin,
+        add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
+        remove_skin_from_inventory, add_coin_log, get_coin_logs,
+        get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
+        exchange_coins_to_azn,
+        add_combat_stats, get_combat_stats,
+        get_or_create_current_season, get_season_by_number, get_season_leaderboard,
+        add_season_stat, get_season_stat, close_season,
+        set_active_match, clear_active_match, get_active_match,
+        save_scan_result, get_scan_result, confirm_scan,
+        refresh_daily_tasks, get_active_daily_tasks,
+        get_player_active_task, assign_task_to_player,
+        update_task_progress, fail_expired_tasks
+    )
+    from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
+    from web_server import run_web_server
+    from profile_card import generate_profile_card
+    from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card
+    from match_card import generate_match_card, generate_result_card
+    from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
+    from rules_card import generate_rules_card, generate_register_banner
+    from market_config import MARKET_ITEMS, get_item_by_id
+    import backup
+    from ai_chat import ask_groq
+    from scan_system import ocr_scoreboard, match_to_registered, apply_defaults_for_missing
+    import requests
+    print("[STARTUP] All module imports OK", flush=True)
+except Exception as _e:
+    print(f"[STARTUP] Module import FAILED: {_e}", flush=True)
+    import traceback; traceback.print_exc()
+    sys.exit(1)
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
