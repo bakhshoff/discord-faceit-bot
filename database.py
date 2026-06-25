@@ -664,7 +664,8 @@ def admin_set_player_field(discord_id, field, value):
     Admin panel Ã¼Ã§Ã¼n: bir oyunÃ§unun tÉ™k bir sahÉ™sini dÉ™yiÅŸir.
     field: 'so2_nick', 'so2_id', 'elo', 'coins', 'wins', 'losses'
     """
-    allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "zm_balance", "wins", "losses"}
+    allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "zm_balance", "wins", "losses",
+                      "kills", "assists", "deaths"}
     if field not in allowed_fields:
         return False
     conn = _get_conn()

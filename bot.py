@@ -2427,7 +2427,25 @@ class AdminPanelView(discord.ui.View):
         player = get_player(self.discord_id)
         await interaction.response.send_modal(AdminEditModal(self.discord_id, "losses", player[5], "Losses dəyiş"))
 
-    @discord.ui.button(label="🔫 Skin envanteri / Sil", style=discord.ButtonStyle.danger, row=3)
+    @discord.ui.button(label="Kill dəyiş",   style=discord.ButtonStyle.secondary, row=2)
+    async def edit_kills(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = get_player(self.discord_id)
+        kills  = player[10] if len(player) > 10 else 0
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "kills", kills, "Kill dəyiş"))
+
+    @discord.ui.button(label="Asist dəyiş", style=discord.ButtonStyle.secondary, row=2)
+    async def edit_assists(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player   = get_player(self.discord_id)
+        assists  = player[11] if len(player) > 11 else 0
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "assists", assists, "Asist dəyiş"))
+
+    @discord.ui.button(label="Ölüm dəyiş",  style=discord.ButtonStyle.secondary, row=2)
+    async def edit_deaths(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player  = get_player(self.discord_id)
+        deaths  = player[12] if len(player) > 12 else 0
+        await interaction.response.send_modal(AdminEditModal(self.discord_id, "deaths", deaths, "Ölüm dəyiş"))
+
+    @discord.ui.button(label="🔫 Skin Envanteri", style=discord.ButtonStyle.danger, row=3)
     async def manage_skins(self, interaction: discord.Interaction, button: discord.ui.Button):
         skin_inv = get_skin_inventory(self.discord_id)
         if not skin_inv:
@@ -2437,13 +2455,115 @@ class AdminPanelView(discord.ui.View):
         for s in skin_inv[:25]:
             dt = datetime.datetime.utcfromtimestamp(s["acquired_at"]) + datetime.timedelta(hours=4)
             lines.append(f"🔫 **{s['skin_name']}** — 🪙 {s['price_paid']}  ·  {dt.strftime('%d.%m %H:%M')}")
-        embed = discord.Embed(
-            title="🔫 Oyunçunun Skin Envanteri",
-            description="\n".join(lines),
-            color=discord.Color.orange()
-        )
+        embed = discord.Embed(title="🔫 Oyunçunun Skin Envanteri", description="\n".join(lines), color=discord.Color.orange())
         embed.set_footer(text="Oyunda təhvil verdikdən sonra aşağıdakı düymə ilə silin.")
         await interaction.response.send_message(embed=embed, view=SkinDeleteView(self.discord_id, interaction.user.id), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SKIN MARKET İDARƏSİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SkinEditModal(discord.ui.Modal, title="Skin Düzəliş"):
+    name_inp  = discord.ui.TextInput(label="Skin adı",    required=True,  max_length=80)
+    price_inp = discord.ui.TextInput(label="Qiymət (coin)", required=True, max_length=6)
+    img_inp   = discord.ui.TextInput(label="Şəkil URL (boş = dəyişmə)", required=False, max_length=300)
+
+    def __init__(self, skin: dict):
+        super().__init__(title=f"Skin Düzəliş — {skin['name'][:30]}")
+        self.skin_id          = skin["id"]
+        self.name_inp.default  = skin["name"]
+        self.price_inp.default = str(skin["price"])
+        self.img_inp.default   = skin.get("image_url") or ""
+
+    async def on_submit(self, interaction: discord.Interaction):
+        import sqlite3 as _sq
+        from database import _get_conn
+        try:
+            price = int(self.price_inp.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Qiymət rəqəm olmalıdır.", ephemeral=True)
+            return
+        conn   = _get_conn()
+        cursor = conn.cursor()
+        img    = self.img_inp.value.strip() or None
+        if img:
+            cursor.execute("UPDATE skins SET name=?, price=?, image_url=? WHERE id=?",
+                           (self.name_inp.value, price, img, self.skin_id))
+        else:
+            cursor.execute("UPDATE skins SET name=?, price=? WHERE id=?",
+                           (self.name_inp.value, price, self.skin_id))
+        conn.commit(); conn.close()
+        await interaction.response.send_message(
+            f"✅ **{self.name_inp.value}** yeniləndi — 🪙 {price}", ephemeral=True)
+
+
+class SkinManageView(discord.ui.View):
+    def __init__(self, skins: list):
+        super().__init__(timeout=180)
+        self._skins = {str(s["id"]): s for s in skins}
+        options = [discord.SelectOption(
+            label=f"#{s['id']} {s['name'][:40]}",
+            value=str(s["id"]),
+            description=f"🪙 {s['price']}"
+        ) for s in skins[:25]]
+        sel = discord.ui.Select(placeholder="Düzəltmək üçün skin seçin...",
+                                options=options, min_values=1, max_values=1)
+        sel.callback    = self._on_select
+        self.select_menu = sel
+        self.add_item(sel)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        skin = self._skins.get(self.select_menu.values[0])
+        if not skin:
+            await interaction.response.send_message("❌ Tapılmadı.", ephemeral=True); return
+        await interaction.response.send_modal(SkinEditModal(skin))
+
+    @discord.ui.button(label="Skin sil (deaktiv)", style=discord.ButtonStyle.danger, emoji="🗑️", row=1)
+    async def deactivate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        if not self.select_menu.values:
+            await interaction.response.send_message("❌ Əvvəlcə skin seçin.", ephemeral=True); return
+        skin_id = int(self.select_menu.values[0])
+        skin    = self._skins.get(str(skin_id))
+        remove_skin(skin_id)
+        await interaction.response.send_message(
+            f"🗑️ **{skin['name'] if skin else skin_id}** marketdən götürüldü (deaktiv).", ephemeral=True)
+
+
+@bot.tree.command(name="admin_market", description="[Admin] Skin marketini idarə et")
+@app_commands.checks.has_permissions(administrator=True)
+async def admin_market_cmd(interaction: discord.Interaction):
+    skins = get_active_skins()
+    embed = discord.Embed(
+        title="🔫 Skin Market İdarəsi",
+        description=f"Aktivdə **{len(skins)}** skin var.\nDropdown-dan seçib düzəldin, ya da yeni skin əlavə edin.",
+        color=discord.Color.blue()
+    )
+    for s in skins[:10]:
+        embed.add_field(name=f"#{s['id']} {s['name']}", value=f"🪙 {s['price']}", inline=True)
+    if len(skins) > 10:
+        embed.set_footer(text=f"+ {len(skins)-10} daha... dropdown-da hamısı görünür")
+
+    view = SkinManageView(skins)
+
+    @discord.ui.button(label="+ Yeni Skin", style=discord.ButtonStyle.success, emoji="➕")
+    async def add_new(btn_inter: discord.Interaction, button: discord.ui.Button):
+        await btn_inter.response.send_modal(AddSkinModal())
+
+    view.add_item(discord.ui.Button(label="➕ Yeni Skin", style=discord.ButtonStyle.success,
+                                    custom_id="admin_add_skin_btn", row=2))
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@admin_market_cmd.error
+async def admin_market_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
 @bot.tree.command(name="admin_panel", description="[Admin] Oyunçunun datalarını manuel idarə et")
