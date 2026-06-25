@@ -1,62 +1,54 @@
 """
-Scan sistemi: pytesseract OCR ilə skor ekranından K/A/D oxuyur.
+Scan sistemi: OCR.space API ilə skor ekranından K/A/D oxuyur.
+Heç bir sistem paketi tələb etmir — sadəcə HTTP sorğusu.
 """
+import os
 import re
-import io
-from PIL import Image, ImageEnhance, ImageFilter
+import json
+import base64
+import requests
 
-try:
-    import pytesseract
-    import shutil
-    import os as _os
-
-    for _path in ("/usr/bin/tesseract", "/usr/local/bin/tesseract",
-                  "/opt/homebrew/bin/tesseract"):
-        if _os.path.isfile(_path):
-            pytesseract.pytesseract.tesseract_cmd = _path
-            break
-    else:
-        _found = shutil.which("tesseract")
-        if _found:
-            pytesseract.pytesseract.tesseract_cmd = _found
-
-    TESSERACT_OK = True
-except Exception:
-    TESSERACT_OK = False
-
-
-def _preprocess(image_bytes: bytes) -> Image.Image:
-    """OCR keyfiyyətini artırmaq üçün şəkli hazırlayır."""
-    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
-    # 2x böyüt — kiçik şrift üçün vacibdir
-    w, h = img.size
-    img = img.resize((w * 2, h * 2), Image.LANCZOS)
-
-    # Boz çalara çevir
-    img = img.convert("L")
-
-    # Kontrast artır
-    img = ImageEnhance.Contrast(img).enhance(2.5)
-    img = ImageEnhance.Sharpness(img).enhance(2.0)
-
-    return img
+OCR_API_KEY = os.getenv("OCR_API_KEY", "helloworld")  # helloworld = test key
 
 
 def ocr_scoreboard(image_bytes: bytes) -> list:
     """
-    Şəkildən oyunçu adı + K/A/D oxuyur.
+    Şəkli OCR.space API-yə göndərir, K/A/D siyahısı qaytarır.
     Returns: [{"nick": str, "kills": int, "assists": int, "deaths": int}]
     """
-    if not TESSERACT_OK:
-        raise RuntimeError("pytesseract qurulmayıb.")
+    try:
+        b64 = base64.b64encode(image_bytes).decode()
+        mime = "image/jpeg" if image_bytes[:3] == b'\xff\xd8\xff' else "image/png"
 
-    img  = _preprocess(image_bytes)
-    text = pytesseract.image_to_string(
-        img,
-        config="--psm 6 --oem 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_#[]().-/ "
-    )
-    return _parse_ocr_text(text)
+        payload = {
+            "base64Image": f"data:{mime};base64,{b64}",
+            "apikey":       OCR_API_KEY,
+            "language":     "eng",
+            "isOverlayRequired": False,
+            "detectOrientation": True,
+            "scale":        True,
+            "OCREngine":    2,
+        }
+
+        resp = requests.post(
+            "https://api.ocr.space/parse/image",
+            data=payload,
+            timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("IsErroredOnProcessing"):
+            raise RuntimeError(data.get("ErrorMessage", ["OCR xətası"])[0])
+
+        full_text = ""
+        for result in data.get("ParsedResults", []):
+            full_text += result.get("ParsedText", "") + "\n"
+
+        return _parse_ocr_text(full_text)
+
+    except requests.RequestException as e:
+        raise RuntimeError(f"OCR.space API xətası: {e}")
 
 
 def _parse_ocr_text(text: str) -> list:
@@ -67,7 +59,6 @@ def _parse_ocr_text(text: str) -> list:
       PlayerName 15 3 2
       #1 PlayerName 15 3 2
       15 3 2 PlayerName
-      PlayerName: 15/3/2
     """
     results = []
     seen_nicks = set()
@@ -81,7 +72,6 @@ def _parse_ocr_text(text: str) -> list:
         if len(nums) < 3:
             continue
 
-        # Rəqəmləri çıxarıb adı tap
         name_part = re.sub(r'\b\d+\b', '', line)
         name_part = re.sub(r'[^A-Za-z0-9_#\[\]\.\-]', ' ', name_part)
         words = [w for w in name_part.split() if len(w) >= 2]
@@ -89,15 +79,11 @@ def _parse_ocr_text(text: str) -> list:
             continue
 
         nick = max(words, key=len)
-
-        # Eyni ad iki dəfə əlavə olunmasın
         if nick.lower() in seen_nicks:
             continue
         seen_nicks.add(nick.lower())
 
         k, a, d = int(nums[0]), int(nums[1]), int(nums[2])
-
-        # Ağlabatan həddlər: kill/asist/death 0-99 arasında olmalıdır
         if k > 99 or a > 99 or d > 99:
             continue
 
@@ -107,11 +93,6 @@ def _parse_ocr_text(text: str) -> list:
 
 
 def match_to_registered(ocr_results: list, registered_players: list) -> dict:
-    """
-    OCR nəticələrini qeydiyyatlı oyunçularla uyğunlaşdırır.
-    registered_players: [{"discord_id", "nick", ...}]
-    Returns: {discord_id|"unknown_nick": {"nick", "kills", "assists", "deaths", "matched", "ocr_nick"}}
-    """
     matched  = {}
     used_ids = set()
 
@@ -153,7 +134,6 @@ def match_to_registered(ocr_results: list, registered_players: list) -> dict:
 
 
 def apply_defaults_for_missing(team_players: list, scan_results: dict) -> dict:
-    """Scan-da tapılmayan qeydiyyatlı oyunçulara 0/0/5 verir."""
     scanned_ids = {k for k in scan_results if isinstance(k, int)}
     for p in team_players:
         if p["discord_id"] not in scanned_ids:
