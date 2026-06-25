@@ -107,38 +107,59 @@ def is_queue_open():
     return True
 
 
-leaderboard_channel_id = None
-leaderboard_message_id = None
-queue_status_channel_id = None
-queue_status_message_id = None
+leaderboard_channel_id        = None
+leaderboard_message_id        = None
+season_lb_channel_id          = None
+season_lb_message_id          = None
+queue_status_channel_id       = None
+queue_status_message_id       = None
 
-
-LEADERBOARD_IMAGE_PATH = "leaderboard.png"
+LEADERBOARD_IMAGE_PATH        = "leaderboard.png"
+SEASON_LEADERBOARD_IMAGE_PATH = "season_leaderboard.png"
 
 
 @tasks.loop(seconds=60)
 async def refresh_leaderboard():
-    global leaderboard_message_id
-    if leaderboard_channel_id is None or leaderboard_message_id is None:
-        return
-    channel = bot.get_channel(leaderboard_channel_id)
-    if channel is None:
-        return
-    rows = get_leaderboard(20)
-    _base = os.path.dirname(os.path.abspath(__file__))
-    _bdir = os.path.join(_base, "banners")
-    _bfiles = {}
-    for _r in rows:
-        _bid = _r[5] if len(_r) > 5 else None
-        if _bid:
-            _it = get_item_by_id(_bid)
-            if _it: _bfiles[_bid] = _it["file"]
-    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH, _bdir, _bfiles)
-    try:
-        message = await channel.fetch_message(leaderboard_message_id)
-        await message.edit(attachments=[discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")])
-    except discord.NotFound:
-        pass
+    global leaderboard_message_id, season_lb_message_id
+
+    # ── Ümumi leaderboard ────────────────────────────────────────────────────
+    if leaderboard_channel_id and leaderboard_message_id:
+        channel = bot.get_channel(leaderboard_channel_id)
+        if channel:
+            rows = get_leaderboard(20)
+            _base  = os.path.dirname(os.path.abspath(__file__))
+            _bdir  = os.path.join(_base, "banners")
+            _bfiles = {}
+            for _r in rows:
+                _bid = _r[5] if len(_r) > 5 else None
+                if _bid:
+                    _it = get_item_by_id(_bid)
+                    if _it: _bfiles[_bid] = _it["file"]
+            lb_path = os.path.join(DATA_DIR or ".", LEADERBOARD_IMAGE_PATH)
+            await asyncio.to_thread(generate_leaderboard_image, rows, lb_path, _bdir, _bfiles)
+            try:
+                msg = await channel.fetch_message(leaderboard_message_id)
+                await msg.edit(attachments=[discord.File(lb_path, filename="leaderboard.png")])
+            except discord.NotFound:
+                pass
+
+    # ── Sezon leaderboard ─────────────────────────────────────────────────────
+    if season_lb_channel_id and season_lb_message_id:
+        s_channel = bot.get_channel(season_lb_channel_id)
+        if s_channel:
+            season   = get_or_create_current_season()
+            s_rows   = get_season_leaderboard(season["id"])
+            slb_path = os.path.join(DATA_DIR or ".", SEASON_LEADERBOARD_IMAGE_PATH)
+            await asyncio.to_thread(
+                generate_season_leaderboard_image,
+                s_rows, season["season_number"],
+                season["start_date"], season["end_date"], slb_path
+            )
+            try:
+                s_msg = await s_channel.fetch_message(season_lb_message_id)
+                await s_msg.edit(attachments=[discord.File(slb_path, filename="season_lb.png")])
+            except discord.NotFound:
+                pass
 
 
 @tasks.loop(seconds=30)
@@ -2208,34 +2229,85 @@ async def setup_rules_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-@bot.tree.command(name="setup_leaderboard", description="[Admin] Leaderboard mesajını bu kanalda yaradır və avtomatik yeniləməyə başlayır")
+@bot.tree.command(name="setup_leaderboard", description="[Admin] Ümumi + Sezon leaderboard yaradır, 60s-də bir yenilənir")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_leaderboard(interaction: discord.Interaction):
     global leaderboard_channel_id, leaderboard_message_id
+    global season_lb_channel_id, season_lb_message_id
 
+    await interaction.response.defer(ephemeral=True)
+
+    _base  = os.path.dirname(os.path.abspath(__file__))
+    _bdir  = os.path.join(_base, "banners")
+
+    # ── Ümumi leaderboard ────────────────────────────────────────────────────
     rows = get_leaderboard(20)
-    _base = os.path.dirname(os.path.abspath(__file__))
-    _bdir = os.path.join(_base, "banners")
     _bfiles = {}
     for _r in rows:
         _bid = _r[5] if len(_r) > 5 else None
         if _bid:
             _it = get_item_by_id(_bid)
             if _it: _bfiles[_bid] = _it["file"]
-    await asyncio.to_thread(generate_leaderboard_image, rows, LEADERBOARD_IMAGE_PATH, _bdir, _bfiles)
+    lb_path = os.path.join(DATA_DIR or ".", LEADERBOARD_IMAGE_PATH)
+    await asyncio.to_thread(generate_leaderboard_image, rows, lb_path, _bdir, _bfiles)
 
-    message = await interaction.channel.send(
-        content="🏆 **Calestify FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir.",
-        file=discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")
+    lb_embed = discord.Embed(
+        title="🏆 CALESTIFY FACEIT — ÜMUMİ LEADERBOARD",
+        description="Bütün zamanların ELO sıralaması · Hər 60 saniyədə yenilənir",
+        color=discord.Color.gold()
+    )
+    lb_msg = await interaction.channel.send(
+        embed=lb_embed,
+        file=discord.File(lb_path, filename="leaderboard.png")
+    )
+    leaderboard_channel_id = interaction.channel.id
+    leaderboard_message_id = lb_msg.id
+
+    # ── Sezon leaderboard ────────────────────────────────────────────────────
+    season   = get_or_create_current_season()
+    s_rows   = get_season_leaderboard(season["id"])
+    slb_path = os.path.join(DATA_DIR or ".", SEASON_LEADERBOARD_IMAGE_PATH)
+    await asyncio.to_thread(
+        generate_season_leaderboard_image,
+        s_rows, season["season_number"],
+        season["start_date"], season["end_date"], slb_path
     )
 
-    leaderboard_channel_id = interaction.channel.id
-    leaderboard_message_id = message.id
+    import datetime as _dt
+    try:
+        end_dt    = _dt.datetime.strptime(season["end_date"], "%Y-%m-%d")
+        now_dt    = _dt.datetime.utcnow() + _dt.timedelta(hours=4)
+        days_left = max(0, (end_dt - now_dt).days)
+    except Exception:
+        days_left = "?"
+
+    slb_embed = discord.Embed(
+        title=f"🌟 SEZON {season['season_number']} LEADERBOARD",
+        description=(
+            f"📅 {season['start_date']}  →  {season['end_date']}\n"
+            f"⏰ Sezona **{days_left} gün** qalıb · Hər 60 saniyədə yenilənir"
+        ),
+        color=discord.Color.teal()
+    )
+    slb_embed.add_field(
+        name="🎁 Sezon Sonu Mükafatları",
+        value="🥇🥈🥉 Ən çox ELO qazanan Top 3 → Ekstra coin\n🗡️ Ən yüksək KD Top 3 → Ekstra coin",
+        inline=False
+    )
+    slb_msg = await interaction.channel.send(
+        embed=slb_embed,
+        file=discord.File(slb_path, filename="season_lb.png")
+    )
+    season_lb_channel_id = interaction.channel.id
+    season_lb_message_id = slb_msg.id
 
     if not refresh_leaderboard.is_running():
         refresh_leaderboard.start()
 
-    await interaction.response.send_message("✅ Leaderboard mesajı yaradıldı, avtomatik yenilənəcək.", ephemeral=True)
+    await interaction.followup.send(
+        "✅ Ümumi + Sezon leaderboard yaradıldı. Hər 60 saniyədə avtomatik yenilənəcək.",
+        ephemeral=True
+    )
 
 
 @setup_leaderboard.error
