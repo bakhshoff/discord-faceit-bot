@@ -34,7 +34,6 @@ try:
         get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
         exchange_coins_to_azn,
         add_combat_stats, get_combat_stats, get_all_players,
-        form_party, dissolve_party, get_party_partner,
         get_or_create_current_season, get_season_by_number, get_season_leaderboard,
         add_season_stat, get_season_stat, close_season,
         set_active_match, clear_active_match, get_active_match,
@@ -2066,99 +2065,6 @@ async def gunluk_cmd(interaction: discord.Interaction):
             inline=False
         )
     await interaction.response.send_message(embed=embed, view=TaskSelectView(interaction.user.id, tasks), ephemeral=True)
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# PARTY SİSTEMİ — 2 oyunçu eyni teama düşsün
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class PartyInviteView(discord.ui.View):
-    def __init__(self, leader_id: int, partner_id: int, leader_nick: str):
-        super().__init__(timeout=60)
-        self.leader_id   = leader_id
-        self.partner_id  = partner_id
-        self.leader_nick = leader_nick
-
-    @discord.ui.button(label="Qəbul et ✅", style=discord.ButtonStyle.success)
-    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.partner_id:
-            await interaction.response.send_message("❌ Bu dəvət sizə deyil.", ephemeral=True)
-            return
-        # Əvvəlki partneri sil
-        dissolve_party(self.leader_id)
-        dissolve_party(self.partner_id)
-        form_party(self.leader_id, self.partner_id)
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(
-            content=(
-                f"🤝 **{self.leader_nick}** ilə party quruldu!\n"
-                f"İkiniz eyni teama düşəcəksiniz. Queue-a qoşulun."
-            ),
-            view=self
-        )
-
-    @discord.ui.button(label="Rədd et ❌", style=discord.ButtonStyle.secondary)
-    async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.partner_id:
-            await interaction.response.send_message("❌ Bu dəvət sizə deyil.", ephemeral=True)
-            return
-        for child in self.children:
-            child.disabled = True
-        await interaction.response.edit_message(content="❌ Party dəvəti rədd edildi.", view=self)
-
-    async def on_timeout(self):
-        pass
-
-
-@bot.tree.command(name="party", description="Bir oyunçuya party dəvəti göndər — matçda eyni teama düşürsünüz")
-@app_commands.describe(oyuncu="Party qurmaq istədiyiniz oyunçu")
-async def party_cmd(interaction: discord.Interaction, oyuncu: discord.Member):
-    if oyuncu.id == interaction.user.id:
-        await interaction.response.send_message("❌ Özünüzlə party qura bilməzsiniz.", ephemeral=True)
-        return
-    if oyuncu.bot:
-        await interaction.response.send_message("❌ Botla party qurulmaz.", ephemeral=True)
-        return
-
-    leader  = get_player(interaction.user.id)
-    partner = get_player(oyuncu.id)
-    if not leader:
-        await interaction.response.send_message("❌ Siz qeydiyyatdan keçməmisiniz.", ephemeral=True)
-        return
-    if not partner:
-        await interaction.response.send_message("❌ Həmin oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
-        return
-
-    current_partner = get_party_partner(interaction.user.id)
-    if current_partner:
-        dissolve_party(interaction.user.id)
-
-    embed = discord.Embed(
-        title="🤝 Party Dəvəti",
-        description=(
-            f"{interaction.user.mention} sizi **party**-yə dəvət edir.\n\n"
-            f"Qəbul etsəniz matçda **eyni teama** düşəcəksiniz.\n"
-            f"Dəvət **60 saniyə** ərzində etibarlıdır."
-        ),
-        color=discord.Color.blurple()
-    )
-    embed.set_footer(text=f"Dəvəti yalnız {oyuncu.display_name} qəbul edə bilər")
-    await interaction.response.send_message(
-        content=oyuncu.mention,
-        embed=embed,
-        view=PartyInviteView(interaction.user.id, oyuncu.id, interaction.user.display_name)
-    )
-
-
-@bot.tree.command(name="party_sil", description="Mövcud party-ni ləğv et")
-async def party_sil_cmd(interaction: discord.Interaction):
-    partner_id = get_party_partner(interaction.user.id)
-    if not partner_id:
-        await interaction.response.send_message("ℹ️ Aktiv party-niz yoxdur.", ephemeral=True)
-        return
-    dissolve_party(interaction.user.id)
-    await interaction.response.send_message("✅ Party ləğv edildi.", ephemeral=True)
 
 
 @bot.event
