@@ -194,8 +194,8 @@ class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
         max_length=50
     )
     nick = discord.ui.TextInput(
-        label="Faceit adı / oyundakı ad",
-        placeholder="Oyundakı adınızı yazın",
+        label="Oyundakı adınız (dəqiq eyni olmalıdır!)",
+        placeholder="⚠️ Oyunda göründüyü kimi yazın — böyük/kiçik hərfə qədər!",
         required=True,
         max_length=50
     )
@@ -206,8 +206,21 @@ class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
             await asyncio.to_thread(backup.export_backup)
             embed = discord.Embed(
                 title="✅ Qeydiyyat tamamlandı!",
-                description=f"**Nick:** {self.nick}\n**ID:** {self.so2_id}\n**Başlanğıc ELO:** 1000",
+                description=(
+                    f"**Nick:** `{self.nick}`\n"
+                    f"**ID:** `{self.so2_id}`\n"
+                    f"**Başlanğıc ELO:** 1000"
+                ),
                 color=discord.Color.green()
+            )
+            embed.add_field(
+                name="⚠️ Vacib Xəbərdarlıq",
+                value=(
+                    "Matç nəticəsi scan ediləndə bot oyundakı adınızla qeydiyyat adınızı uyğunlaşdırır.\n"
+                    "**Ad eyni olmazsa** sizə avtomatik olaraq **0 kill · 0 asist · 5 ölüm** veriləcək!\n\n"
+                    "Adınızı dəyişdirmisinizsə admindən `/admin_panel` vasitəsilə yeniləməsini xahiş edin."
+                ),
+                inline=False
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
@@ -215,6 +228,16 @@ class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
                 "❌ Siz artıq qeydiyyatdan keçmisiniz! `/profile` ilə baxa bilərsiniz.",
                 ephemeral=True
             )
+
+
+class _RegisterConfirmView(discord.ui.View):
+    """Qeydiyyat xəbərdarlığından sonra 'Anladım, davam et' düyməsi."""
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="Anladım, davam et →", style=discord.ButtonStyle.success, emoji="✅")
+    async def proceed(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(RegisterModal())
 
 
 class RegisterView(discord.ui.View):
@@ -230,7 +253,20 @@ class RegisterView(discord.ui.View):
                 ephemeral=True
             )
             return
-        await interaction.response.send_modal(RegisterModal())
+        # Qeydiyyatdan əvvəl xəbərdarlıq göstər
+        warn_embed = discord.Embed(
+            title="📋 Qeydiyyatdan əvvəl oxuyun!",
+            description=(
+                "Qeydiyyat formasında **oyundakı adınızı** dəqiq daxil etməlisiniz.\n\n"
+                "🔴 **Niyə vacibdir?**\n"
+                "Hər matçdan sonra bot skor ekranını scan edir və oyundakı adınızla qeydiyyat adınızı müqayisə edir.\n\n"
+                "⚠️ **Ad eyni olmazsa:**\n"
+                "Sizə avtomatik **0 kill · 0 asist · 5 ölüm** statistikası veriləcək!\n\n"
+                "✅ **Doğru:** Oyunda `xXSlayerXx` adınızdırsa, formada da `xXSlayerXx` yazın — böyük/kiçik hərfə qədər dəqiq!"
+            ),
+            color=discord.Color.orange()
+        )
+        await interaction.response.send_message(embed=warn_embed, view=_RegisterConfirmView(), ephemeral=True)
 
 
 class MarketItemDetailView(discord.ui.View):
