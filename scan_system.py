@@ -7,6 +7,19 @@ from PIL import Image, ImageEnhance, ImageFilter
 
 try:
     import pytesseract
+    import shutil
+
+    # Tesseract yolunu avtomatik tap
+    for _path in ("/usr/bin/tesseract", "/usr/local/bin/tesseract",
+                  "/opt/homebrew/bin/tesseract"):
+        if shutil.os.path.isfile(_path):
+            pytesseract.pytesseract.tesseract_cmd = _path
+            break
+    else:
+        found = shutil.which("tesseract")
+        if found:
+            pytesseract.pytesseract.tesseract_cmd = found
+
     TESSERACT_OK = True
 except ImportError:
     TESSERACT_OK = False
