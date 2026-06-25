@@ -38,6 +38,87 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN zm_balance INTEGER DEFAULT 0")
     if "ai_memory" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN ai_memory TEXT DEFAULT NULL")
+    if "kills" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN kills INTEGER DEFAULT 0")
+    if "assists" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN assists INTEGER DEFAULT 0")
+    if "deaths" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN deaths INTEGER DEFAULT 0")
+
+    # ── Seasons ──────────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS seasons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            season_number INTEGER UNIQUE NOT NULL,
+            start_date TEXT NOT NULL,
+            end_date TEXT NOT NULL,
+            status TEXT DEFAULT 'active'
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS season_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            season_id INTEGER NOT NULL,
+            elo_start INTEGER DEFAULT 0,
+            elo_gained INTEGER DEFAULT 0,
+            kills INTEGER DEFAULT 0,
+            assists INTEGER DEFAULT 0,
+            deaths INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            UNIQUE(discord_id, season_id)
+        )
+    """)
+
+    # ── Active match lock ─────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS active_match (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            match_number INTEGER DEFAULT NULL,
+            status TEXT DEFAULT NULL
+        )
+    """)
+    cursor.execute("INSERT OR IGNORE INTO active_match (id) VALUES (1)")
+
+    # ── Scan results ──────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scan_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_number INTEGER NOT NULL,
+            scan_data TEXT NOT NULL,
+            winner_team TEXT DEFAULT NULL,
+            confirmed INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )
+    """)
+
+    # ── Daily tasks ───────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            description TEXT NOT NULL,
+            kill_target INTEGER DEFAULT 0,
+            assist_target INTEGER DEFAULT 0,
+            reward_coins INTEGER NOT NULL,
+            active INTEGER DEFAULT 1,
+            expires_at INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS player_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            task_id INTEGER NOT NULL,
+            started_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            kills_progress INTEGER DEFAULT 0,
+            assists_progress INTEGER DEFAULT 0,
+            completed INTEGER DEFAULT 0,
+            failed INTEGER DEFAULT 0,
+            UNIQUE(discord_id, task_id)
+        )
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
@@ -845,3 +926,317 @@ def get_all_active_boosts(discord_id):
     rows = cursor.fetchall()
     conn.close()
     return [{"boost_type": r[0], "multiplier": r[1], "expires_at": r[2]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# KILLS / ASSISTS / DEATHS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def add_combat_stats(discord_id, kills=0, assists=0, deaths=0):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE players SET kills=kills+?, assists=assists+?, deaths=deaths+? WHERE discord_id=?",
+        (kills, assists, deaths, discord_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_combat_stats(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT kills, assists, deaths FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return {"kills": row[0], "assists": row[1], "deaths": row[2]} if row else {"kills": 0, "assists": 0, "deaths": 0}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEASON SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_or_create_current_season():
+    import datetime as dt
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, season_number, start_date, end_date FROM seasons WHERE status='active' ORDER BY id DESC LIMIT 1")
+    row = cursor.fetchone()
+    if row:
+        conn.close()
+        return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3]}
+    # Yeni sezon yarat
+    now = dt.date.today()
+    # Ayın 1-i başlayır, ayın son günü bitir
+    start = now.replace(day=1).isoformat()
+    if now.month == 12:
+        end = now.replace(year=now.year+1, month=1, day=1).isoformat()
+    else:
+        end = now.replace(month=now.month+1, day=1).isoformat()
+    cursor.execute("SELECT COALESCE(MAX(season_number),0)+1 FROM seasons")
+    season_num = cursor.fetchone()[0]
+    cursor.execute("INSERT INTO seasons (season_number, start_date, end_date, status) VALUES (?,?,?,'active')",
+                   (season_num, start, end))
+    conn.commit()
+    sid = cursor.lastrowid
+    conn.close()
+    return {"id": sid, "season_number": season_num, "start_date": start, "end_date": end}
+
+
+def get_season_by_number(season_number):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, season_number, start_date, end_date, status FROM seasons WHERE season_number=?", (season_number,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3], "status": row[4]}
+
+
+def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0, losses=0, elo_gained=0, elo_start=0):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO season_stats (discord_id, season_id, elo_start, elo_gained, kills, assists, deaths, wins, losses)
+        VALUES (?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(discord_id, season_id) DO UPDATE SET
+            elo_gained=elo_gained+excluded.elo_gained,
+            kills=kills+excluded.kills,
+            assists=assists+excluded.assists,
+            deaths=deaths+excluded.deaths,
+            wins=wins+excluded.wins,
+            losses=losses+excluded.losses
+    """, (discord_id, season_id, elo_start, elo_gained, kills, assists, deaths, wins, losses))
+    conn.commit()
+    conn.close()
+
+
+def get_season_stat(discord_id, season_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT elo_start,elo_gained,kills,assists,deaths,wins,losses FROM season_stats WHERE discord_id=? AND season_id=?",
+                   (discord_id, season_id))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return {"elo_start": 0, "elo_gained": 0, "kills": 0, "assists": 0, "deaths": 0, "wins": 0, "losses": 0}
+    return {"elo_start": row[0], "elo_gained": row[1], "kills": row[2], "assists": row[3],
+            "deaths": row[4], "wins": row[5], "losses": row[6]}
+
+
+def get_season_leaderboard(season_id, limit=20):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.so2_nick, p.so2_id, ss.elo_gained, ss.kills, ss.assists, ss.deaths, ss.wins, ss.losses, p.discord_id
+        FROM season_stats ss
+        JOIN players p ON p.discord_id = ss.discord_id
+        WHERE ss.season_id=?
+        ORDER BY ss.elo_gained DESC LIMIT ?
+    """, (season_id, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def close_season(season_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE seasons SET status='completed' WHERE id=?", (season_id,))
+    conn.commit()
+    conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AKTİV MATÇ KİLİDİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def set_active_match(match_number):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE active_match SET match_number=?, status='active' WHERE id=1", (match_number,))
+    conn.commit()
+    conn.close()
+
+
+def clear_active_match():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE active_match SET match_number=NULL, status=NULL WHERE id=1")
+    conn.commit()
+    conn.close()
+
+
+def get_active_match():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT match_number, status FROM active_match WHERE id=1")
+    row = cursor.fetchone()
+    conn.close()
+    if not row or row[1] is None:
+        return None
+    return {"match_number": row[0], "status": row[1]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SCAN NƏTİCƏLƏRİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def save_scan_result(match_number, scan_data_json, winner_team=None):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM scan_results WHERE match_number=? AND confirmed=0", (match_number,))
+    cursor.execute(
+        "INSERT INTO scan_results (match_number, scan_data, winner_team, confirmed, created_at) VALUES (?,?,?,0,?)",
+        (match_number, scan_data_json, winner_team, int(time.time()))
+    )
+    conn.commit()
+    rid = cursor.lastrowid
+    conn.close()
+    return rid
+
+
+def get_scan_result(match_number):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, scan_data, winner_team, confirmed FROM scan_results WHERE match_number=? ORDER BY id DESC LIMIT 1",
+                   (match_number,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "scan_data": row[1], "winner_team": row[2], "confirmed": row[3]}
+
+
+def confirm_scan(scan_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE scan_results SET confirmed=1 WHERE id=?", (scan_id,))
+    conn.commit()
+    conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GÜNDƏLİK TAPŞIRIQLAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def refresh_daily_tasks():
+    """Vaxtı keçmiş tapşırıqları silir, 3 aktiv tapşırıq olmasını təmin edir."""
+    import time, random as rnd
+    TASK_POOL = [
+        ("24 saat ərzində 35 kill əldə et",    35, 0,  80),
+        ("24 saat ərzində 20 kill əldə et",    20, 0,  45),
+        ("24 saat ərzində 10 asist et",          0, 10, 35),
+        ("24 saat ərzində 50 kill əldə et",    50, 0, 120),
+        ("24 saat ərzində 30 kill + 5 asist",  30, 5,  90),
+        ("24 saat ərzində 15 kill + 10 asist", 15, 10, 65),
+        ("24 saat ərzində 25 kill əldə et",    25, 0,  55),
+        ("24 saat ərzində 40 kill əldə et",    40, 0, 100),
+        ("24 saat ərzində 8 asist et",           0, 8,  30),
+        ("24 saat ərzində 45 kill + 3 asist",  45, 3, 110),
+    ]
+    conn = _get_conn()
+    cursor = conn.cursor()
+    now = int(time.time())
+    cursor.execute("DELETE FROM daily_tasks WHERE expires_at <= ?", (now,))
+    cursor.execute("SELECT COUNT(*) FROM daily_tasks WHERE active=1 AND expires_at > ?", (now,))
+    count = cursor.fetchone()[0]
+    needed = 3 - count
+    exp = now + 86400
+    for _ in range(needed):
+        desc, kt, at, rc = rnd.choice(TASK_POOL)
+        cursor.execute("INSERT INTO daily_tasks (description, kill_target, assist_target, reward_coins, active, expires_at) VALUES (?,?,?,?,1,?)",
+                       (desc, kt, at, rc, exp))
+    conn.commit()
+    conn.close()
+
+
+def get_active_daily_tasks():
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, description, kill_target, assist_target, reward_coins, expires_at FROM daily_tasks WHERE active=1 AND expires_at > ? ORDER BY id LIMIT 3",
+                   (int(time.time()),))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "description": r[1], "kill_target": r[2], "assist_target": r[3],
+             "reward_coins": r[4], "expires_at": r[5]} for r in rows]
+
+
+def get_player_active_task(discord_id):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT pt.id, pt.task_id, dt.description, dt.kill_target, dt.assist_target, dt.reward_coins,
+               pt.kills_progress, pt.assists_progress, pt.expires_at, pt.completed, pt.failed
+        FROM player_tasks pt
+        JOIN daily_tasks dt ON dt.id = pt.task_id
+        WHERE pt.discord_id=? AND pt.completed=0 AND pt.failed=0 AND pt.expires_at > ?
+        ORDER BY pt.id DESC LIMIT 1
+    """, (discord_id, int(time.time())))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "task_id": row[1], "description": row[2], "kill_target": row[3],
+            "assist_target": row[4], "reward_coins": row[5], "kills_progress": row[6],
+            "assists_progress": row[7], "expires_at": row[8], "completed": row[9], "failed": row[10]}
+
+
+def assign_task_to_player(discord_id, task_id):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    now = int(time.time())
+    exp = now + 86400
+    try:
+        cursor.execute("INSERT INTO player_tasks (discord_id, task_id, started_at, expires_at) VALUES (?,?,?,?)",
+                       (discord_id, task_id, now, exp))
+        conn.commit()
+        result = True
+    except sqlite3.IntegrityError:
+        result = False
+    conn.close()
+    return result
+
+
+def update_task_progress(discord_id, kills=0, assists=0):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE player_tasks SET kills_progress=kills_progress+?, assists_progress=assists_progress+?
+        WHERE discord_id=? AND completed=0 AND failed=0 AND expires_at > ?
+    """, (kills, assists, discord_id, int(time.time())))
+    conn.commit()
+    # Check completion
+    cursor.execute("""
+        SELECT pt.id, pt.kills_progress, pt.assists_progress, dt.kill_target, dt.assist_target, dt.reward_coins
+        FROM player_tasks pt JOIN daily_tasks dt ON dt.id=pt.task_id
+        WHERE pt.discord_id=? AND pt.completed=0 AND pt.failed=0 AND pt.expires_at > ?
+    """, (discord_id, int(time.time())))
+    row = cursor.fetchone()
+    completed = False
+    reward = 0
+    if row:
+        pt_id, kp, ap, kt, at, rc = row
+        if kp >= kt and ap >= at:
+            cursor.execute("UPDATE player_tasks SET completed=1 WHERE id=?", (pt_id,))
+            conn.commit()
+            completed = True
+            reward = rc
+    conn.close()
+    return completed, reward
+
+
+def fail_expired_tasks():
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE player_tasks SET failed=1 WHERE completed=0 AND failed=0 AND expires_at <= ?",
+                   (int(time.time()),))
+    conn.commit()
+    conn.close()

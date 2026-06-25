@@ -23,9 +23,17 @@ from database import (
     add_skin_to_inventory, get_skin_inventory, get_skin_inventory_entry,
     remove_skin_from_inventory, add_coin_log, get_coin_logs,
     get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
-    exchange_coins_to_azn
+    exchange_coins_to_azn,
+    add_combat_stats, get_combat_stats,
+    get_or_create_current_season, get_season_by_number, get_season_leaderboard,
+    add_season_stat, get_season_stat, close_season,
+    set_active_match, clear_active_match, get_active_match,
+    save_scan_result, get_scan_result, confirm_scan,
+    refresh_daily_tasks, get_active_daily_tasks,
+    get_player_active_task, assign_task_to_player,
+    update_task_progress, fail_expired_tasks
 )
-from leaderboard_image import generate_leaderboard_image
+from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
 from web_server import run_web_server
 from profile_card import generate_profile_card
 from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card
@@ -35,6 +43,7 @@ from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
 import backup
 from ai_chat import ask_groq
+from scan_system import parse_scoreboard, apply_defaults_for_missing
 import requests
 
 load_dotenv()
@@ -44,11 +53,16 @@ DATA_DIR = os.environ.get("DATA_DIR")
 if DATA_DIR and not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
-TEAM_A_VOICE_ID = 1517460739059617883
-TEAM_B_VOICE_ID = 1517460822148911124
-LOG_CHANNEL_ID = 1517460644440313926
+TEAM_A_VOICE_ID   = 1517460739059617883
+TEAM_B_VOICE_ID   = 1517460822148911124
+LOG_CHANNEL_ID    = 1517460644440313926
+GENERAL_CHAT_ID   = int(os.getenv("GENERAL_CHAT_ID",   "0"))
+RESULTS_CHANNEL_ID = int(os.getenv("RESULTS_CHANNEL_ID", "0"))
 
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
+
+# Aktiv matç gözləmə siyahısı (matç kilidlənmişkən yığılan komandalar)
+queued_match: dict | None = None
 
 LOGO_PATH = "logo.jpg"
 
@@ -844,6 +858,18 @@ class MatchResultView(discord.ui.View):
             ts, result_img_path
         )
 
+        # Sezon statistikası yenilə
+        season = get_or_create_current_season()
+        for p, r in zip(winner_team, results["winners"]):
+            elo_diff = r["new_elo"] - r["old_elo"]
+            add_season_stat(p["discord_id"], season["id"], wins=1, elo_gained=max(0, elo_diff))
+        for p, r in zip(loser_team, results["losers"]):
+            elo_diff = r["new_elo"] - r["old_elo"]
+            add_season_stat(p["discord_id"], season["id"], losses=1, elo_gained=max(0, elo_diff))
+
+        # Matç kilidini aç
+        clear_active_match()
+
         await interaction.response.edit_message(
             content=f"✅ **Matç No{self.match_number}** nəticəsi qeyd edildi — 🏆 **{winner_label}**",
             view=self
@@ -851,6 +877,14 @@ class MatchResultView(discord.ui.View):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             await log_channel.send(file=discord.File(result_img_path, filename="result.png"))
+
+        # Gözləyən matç varsa avtomatik başlat
+        if queue_size() >= 10:
+            mm_ch = interaction.guild.get_channel(
+                queue_status_channel_id or interaction.channel_id
+            ) if interaction.guild else None
+            if mm_ch:
+                await _start_match(mm_ch, interaction.guild)
 
     @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a")
     async def team_a_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -881,6 +915,124 @@ async def update_queue_status_message():
         pass
 
 
+class MapVoteView(discord.ui.View):
+    """30 saniyəlik xəritə səsverməsi. Yalnız seçilmiş 10 oyunçu iştirak edir."""
+    def __init__(self, allowed_ids: set, match_number: int, team_a, team_b, captain_a_id, captain_b_id, channel, guild):
+        super().__init__(timeout=30)
+        self.allowed_ids   = allowed_ids
+        self.match_number  = match_number
+        self.team_a        = team_a
+        self.team_b        = team_b
+        self.captain_a_id  = captain_a_id
+        self.captain_b_id  = captain_b_id
+        self.channel       = channel
+        self.guild         = guild
+        self.votes: dict   = {}
+        for m in MAPS:
+            btn = discord.ui.Button(label=m, style=discord.ButtonStyle.secondary)
+            async def _cb(inter: discord.Interaction, map_name=m):
+                if inter.user.id not in self.allowed_ids:
+                    await inter.response.send_message("❌ Yalnız matça seçilmiş oyunçular səs verə bilər.", ephemeral=True)
+                    return
+                self.votes[inter.user.id] = map_name
+                await inter.response.send_message(f"✅ **{map_name}** üçün səs verdiniz.", ephemeral=True)
+            btn.callback = _cb
+            self.add_item(btn)
+
+    async def on_timeout(self):
+        selected_map = max(self.votes, key=lambda k: list(self.votes.values()).count(self.votes[k]), default=None)
+        if selected_map:
+            selected_map = self.votes[selected_map]
+        else:
+            selected_map = random.choice(MAPS)
+        await _launch_match(self.match_number, selected_map, self.team_a, self.team_b,
+                            self.captain_a_id, self.captain_b_id, self.channel, self.guild)
+
+
+async def _start_match(channel, guild):
+    """10 oyunçu toplananda çağırılır. Əvvəlcə xəritə səsverməsi, sonra matç."""
+    result = pop_10_and_balance()
+    if result is None:
+        return
+    team_a, team_b, captain_a, captain_b = result
+    match_number = get_next_match_number()
+    all_ids = {p["discord_id"] for p in team_a + team_b}
+    mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
+
+    vote_embed = discord.Embed(
+        title=f"🗺️ Matç No{match_number} — Xəritə Seçimi",
+        description=f"**30 saniyə** ərzində xəritəni seçin!\nYalnız matça seçilmiş oyunçular səs verə bilər.",
+        color=discord.Color.blurple()
+    )
+    vote_view = MapVoteView(all_ids, match_number, team_a, team_b,
+                            captain_a["discord_id"], captain_b["discord_id"], channel, guild)
+    await channel.send(content=mentions, embed=vote_embed, view=vote_view)
+
+
+async def _launch_match(match_number, selected_map, team_a, team_b, captain_a_id, captain_b_id, channel, guild):
+    """Xəritə seçildikdən sonra matçı başladır."""
+    card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
+    await asyncio.to_thread(
+        generate_match_card, match_number, selected_map, team_a, team_b,
+        captain_a_id, captain_b_id, card_path
+    )
+    set_active_match(match_number)
+    season = get_or_create_current_season()
+    for p in team_a + team_b:
+        player = get_player(p["discord_id"])
+        if player:
+            add_season_stat(p["discord_id"], season["id"], elo_start=player[3])
+
+    mentions  = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
+    all_ids   = {p["discord_id"] for p in team_a + team_b}
+    ready_view = TeamReadyView(match_number, team_a, team_b, captain_a_id, captain_b_id)
+
+    # Matchmaking kanalında mention
+    await channel.send(content=f"🎮 **Matç No{match_number} — {selected_map}!** {mentions}")
+
+    # Log kanalında matç kartı + hazır düymələri
+    log_ch = bot.get_channel(LOG_CHANNEL_ID)
+    if log_ch:
+        await log_ch.send(content=mentions,
+                          file=discord.File(card_path, filename="match.png"),
+                          view=ready_view)
+
+    # Kapitanlara DM + #general-chat bildirişi
+    general_ch = bot.get_channel(GENERAL_CHAT_ID)
+    for captain_id in (captain_a_id, captain_b_id):
+        captain_member = guild.get_member(captain_id)
+        if captain_member:
+            dm_msg = (f"🎮 **Matç No{match_number}** başladı!\n"
+                      f"Xəritə: **{selected_map}**\n"
+                      f"Matç bitdikdən sonra oyun statistikalarını (K/A/D) "
+                      f"**#results** kanalına göndərməyinizi xahiş edirik.")
+            try:
+                await captain_member.send(dm_msg)
+            except discord.Forbidden:
+                pass
+            if general_ch:
+                await general_ch.send(
+                    f"📢 {captain_member.mention} — **Matç No{match_number}** kapitanısınız!\n"
+                    f"Matç bitdikdən sonra oyun statistikalarını **#results** kanalına göndərin."
+                )
+
+    # Ses kanallarına daşı
+    team_a_ch = bot.get_channel(TEAM_A_VOICE_ID)
+    team_b_ch = bot.get_channel(TEAM_B_VOICE_ID)
+    for p in team_a:
+        m = guild.get_member(p["discord_id"])
+        if m and m.voice and team_a_ch:
+            try: await m.move_to(team_a_ch)
+            except discord.Forbidden: pass
+    for p in team_b:
+        m = guild.get_member(p["discord_id"])
+        if m and m.voice and team_b_ch:
+            try: await m.move_to(team_b_ch)
+            except discord.Forbidden: pass
+
+    await update_queue_status_message()
+
+
 class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -909,58 +1061,20 @@ class MatchmakingView(discord.ui.View):
             return
 
         size = queue_size()
+
+        # Sıra dolu (10 nəfər var, lakin aktiv matç davam edir)
+        if size >= 10 and get_active_match():
+            await interaction.response.send_message(
+                "⏳ Sıra doludur (10/10). Aktiv matç bitdikdən sonra növbəti matç avtomatik başlayacaq.",
+                ephemeral=True
+            )
+            return
+
         await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/10)", ephemeral=True)
         await update_queue_status_message()
 
         if size >= 10:
-            result = pop_10_and_balance()
-            if result is None:
-                return
-            team_a, team_b, captain_a, captain_b = result
-            selected_map = random.choice(MAPS)
-            match_number = get_next_match_number()
-
-            card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
-            await asyncio.to_thread(
-                generate_match_card, match_number, selected_map, team_a, team_b,
-                captain_a["discord_id"], captain_b["discord_id"], card_path
-            )
-
-            mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
-            ready_view = TeamReadyView(match_number, team_a, team_b, captain_a["discord_id"], captain_b["discord_id"])
-
-            # Matchmaking kanalında sadəcə mention
-            await interaction.channel.send(content=f"🎮 **Matç No{match_number} tapıldı!** {mentions}")
-
-            # Log kanalında match kartı + hazır düymələri
-            log_ch = bot.get_channel(LOG_CHANNEL_ID)
-            if log_ch:
-                await log_ch.send(
-                    content=mentions,
-                    file=discord.File(card_path, filename="match.png"),
-                    view=ready_view
-                )
-
-            team_a_channel = bot.get_channel(TEAM_A_VOICE_ID)
-            team_b_channel = bot.get_channel(TEAM_B_VOICE_ID)
-
-            for p in team_a:
-                member = interaction.guild.get_member(p["discord_id"])
-                if member and member.voice and team_a_channel:
-                    try:
-                        await member.move_to(team_a_channel)
-                    except discord.Forbidden:
-                        pass
-
-            for p in team_b:
-                member = interaction.guild.get_member(p["discord_id"])
-                if member and member.voice and team_b_channel:
-                    try:
-                        await member.move_to(team_b_channel)
-                    except discord.Forbidden:
-                        pass
-
-            await update_queue_status_message()
+            await _start_match(interaction.channel, interaction.guild)
 
     @discord.ui.button(label="Sıradan çıx", style=discord.ButtonStyle.secondary, emoji="🚪", custom_id="mm_leave")
     async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -979,6 +1093,237 @@ class MatchmakingView(discord.ui.View):
         clear_queue()
         await interaction.response.send_message("🧹 Sıra tam təmizləndi.", ephemeral=True)
         await update_queue_status_message()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SCAN SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ScanConfirmView(discord.ui.View):
+    def __init__(self, scan_id, match_number, parsed, team_a, team_b, winner_team_label):
+        super().__init__(timeout=300)
+        self.scan_id           = scan_id
+        self.match_number      = match_number
+        self.parsed            = parsed
+        self.team_a            = team_a
+        self.team_b            = team_b
+        self.winner_team_label = winner_team_label
+
+    @discord.ui.button(label="Təsdiqlə", style=discord.ButtonStyle.success, emoji="✅")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
+            return
+        confirm_scan(self.scan_id)
+        season = get_or_create_current_season()
+        for did, stats in self.parsed.items():
+            if not isinstance(did, int):
+                continue
+            add_combat_stats(did, stats["kills"], stats["assists"], stats["deaths"])
+            add_season_stat(did, season["id"],
+                            kills=stats["kills"], assists=stats["assists"], deaths=stats["deaths"])
+            completed, reward = update_task_progress(did, stats["kills"], stats["assists"])
+            if completed and reward:
+                add_coins(did, reward)
+                add_coin_log(did, reward, "Günlük tapşırıq tamamlandı", "earn", get_coins(did))
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content=f"✅ **Matç No{self.match_number}** statistikası təsdiqləndi!", view=self)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary, emoji="❌")
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Scan ləğv edildi.", view=None)
+
+
+class ScanModal(discord.ui.Modal, title="Oyun Skorbordunu Yapışdırın"):
+    scoreboard = discord.ui.TextInput(
+        label="K  A  D  Oyunçu adı (hər sətirdə bir oyunçu)",
+        style=discord.TextStyle.paragraph,
+        placeholder="PlayerName 15 3 2\nPlayerName2 12 5 1\n...",
+        required=True, max_length=2000
+    )
+    winner_team = discord.ui.TextInput(
+        label="Qalib komanda (A və ya B yazın)",
+        placeholder="A",
+        required=True, max_length=1
+    )
+
+    def __init__(self, match_number, team_a, team_b):
+        super().__init__()
+        self.match_number = match_number
+        self.team_a = team_a
+        self.team_b = team_b
+
+    async def on_submit(self, interaction: discord.Interaction):
+        import json
+        registered = {}
+        for p in self.team_a + self.team_b:
+            registered[p["nick"].lower()] = p["discord_id"]
+
+        parsed = parse_scoreboard(str(self.scoreboard), registered)
+        parsed = apply_defaults_for_missing(self.team_a + self.team_b, parsed)
+
+        winner_label = str(self.winner_team).strip().upper()
+        scan_json = json.dumps({str(k): v for k, v in parsed.items()}, ensure_ascii=False)
+        scan_id = save_scan_result(self.match_number, scan_json, winner_label)
+
+        lines = []
+        for did, s in parsed.items():
+            mark = "✅" if s.get("matched") else "⚠️"
+            lines.append(f"{mark} **{s['nick']}** — K:{s['kills']} A:{s['assists']} D:{s['deaths']}")
+
+        embed = discord.Embed(
+            title=f"🔍 Matç No{self.match_number} — Scan Nəticəsi",
+            description="\n".join(lines) or "Heç bir oyunçu tapılmadı.",
+            color=discord.Color.orange()
+        )
+        embed.add_field(name="Qalib komanda", value=f"Komanda **{winner_label}**", inline=True)
+        embed.set_footer(text="✅ = uyğun tapıldı   ⚠️ = avtomatik 0/0/5")
+
+        view = ScanConfirmView(scan_id, self.match_number, parsed, self.team_a, self.team_b, winner_label)
+        await interaction.response.send_message(embed=embed, view=view)
+
+
+@bot.tree.command(name="scan", description="[Admin] Oyun statistikasını scan et")
+@app_commands.checks.has_permissions(administrator=True)
+async def scan_cmd(interaction: discord.Interaction):
+    active = get_active_match()
+    if not active:
+        await interaction.response.send_message("❌ Hal-hazırda aktiv matç yoxdur.", ephemeral=True)
+        return
+    match_number = active["match_number"]
+    scan_data = get_scan_result(match_number)
+    # Son bilinen team_a/team_b olmadığından sadə modal açırıq
+    await interaction.response.send_modal(ScanModal(match_number, [], []))
+
+
+@scan_cmd.error
+async def scan_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEZON KOMANDası
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="sezon", description="Sezon leaderboardunu göstərir")
+@app_commands.describe(nomre="Sezon nömrəsi (boş buraxsanız cari sezon)")
+async def sezon_cmd(interaction: discord.Interaction, nomre: int = 0):
+    await interaction.response.defer()
+    import datetime as dt
+
+    if nomre == 0:
+        season = get_or_create_current_season()
+    else:
+        season = get_season_by_number(nomre)
+        if not season:
+            await interaction.followup.send(f"❌ Sezon {nomre} tapılmadı.", ephemeral=True)
+            return
+
+    rows = get_season_leaderboard(season["id"])
+    lb_path = os.path.join(DATA_DIR or ".", f"season_lb_{season['season_number']}.png")
+    await asyncio.to_thread(
+        generate_season_leaderboard_image, rows,
+        season["season_number"], season["start_date"], season["end_date"], lb_path
+    )
+
+    # Sezon info embed
+    try:
+        end_dt  = dt.datetime.strptime(season["end_date"], "%Y-%m-%d")
+        now_dt  = dt.datetime.utcnow() + dt.timedelta(hours=4)
+        days_left = (end_dt - now_dt).days
+        day_num   = (now_dt - dt.datetime.strptime(season["start_date"], "%Y-%m-%d")).days + 1
+    except Exception:
+        days_left = "?"
+        day_num   = "?"
+
+    color = discord.Color.teal() if season.get("status") == "active" else discord.Color.greyple()
+    embed = discord.Embed(
+        title=f"🏆 Sezon {season['season_number']}",
+        color=color
+    )
+    embed.add_field(name="Başlangıc", value=season["start_date"], inline=True)
+    embed.add_field(name="Son",       value=season["end_date"],   inline=True)
+    embed.add_field(name="Gün",       value=f"{day_num}. gün",   inline=True)
+    if season.get("status") == "active":
+        embed.add_field(name="⏰ Qalan", value=f"{days_left} gün", inline=True)
+        embed.add_field(name="🎁 Sezon sonu mükafatları",
+                        value="🥇 Ən çox ELO qazanan Top 3 → Ekstra coin\n"
+                              "🗡️ Ən yüksək K/D Top 3 → Ekstra coin", inline=False)
+    await interaction.followup.send(embed=embed, file=discord.File(lb_path, filename="season_lb.png"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GÜNDƏLİK TAPŞIRIQLAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TaskSelectView(discord.ui.View):
+    def __init__(self, discord_id, tasks):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        for t in tasks:
+            label = f"🎯 {t['description'][:60]}"
+            btn   = discord.ui.Button(label=label[:80], style=discord.ButtonStyle.primary,
+                                      custom_id=f"task_{t['id']}")
+            async def _cb(inter: discord.Interaction, task=t):
+                if inter.user.id != self.discord_id:
+                    await inter.response.send_message("❌ Bu sizin üçün deyil.", ephemeral=True)
+                    return
+                existing = get_player_active_task(inter.user.id)
+                if existing:
+                    await inter.response.send_message("⚠️ Artıq aktiv tapşırığınız var.", ephemeral=True)
+                    return
+                ok = assign_task_to_player(inter.user.id, task["id"])
+                if ok:
+                    await inter.response.edit_message(
+                        content=f"✅ Tapşırıq qəbul edildi!\n**{task['description']}**\nMükafat: 🪙 **{task['reward_coins']} coin**",
+                        embed=None, view=None)
+                else:
+                    await inter.response.send_message("❌ Bu tapşırıq artıq seçilib.", ephemeral=True)
+            btn.callback = _cb
+            self.add_item(btn)
+
+
+@bot.tree.command(name="gunluk", description="Günlük tapşırıqları göstərir")
+async def gunluk_cmd(interaction: discord.Interaction):
+    refresh_daily_tasks()
+    fail_expired_tasks()
+    tasks   = get_active_daily_tasks()
+    active  = get_player_active_task(interaction.user.id)
+    import time
+
+    if active:
+        import datetime as dt
+        exp = dt.datetime.utcfromtimestamp(active["expires_at"]) + dt.timedelta(hours=4)
+        prog_k = active["kills_progress"]
+        prog_a = active["assists_progress"]
+        pct_k  = min(100, int(prog_k / active["kill_target"] * 100)) if active["kill_target"] else 100
+        pct_a  = min(100, int(prog_a / active["assist_target"] * 100)) if active["assist_target"] else 100
+        embed  = discord.Embed(title="🎯 Aktiv Tapşırığınız", color=discord.Color.orange())
+        embed.add_field(name="Tapşırıq",    value=active["description"],       inline=False)
+        embed.add_field(name="Kill",        value=f"{prog_k}/{active['kill_target']} ({pct_k}%)",   inline=True)
+        embed.add_field(name="Asist",       value=f"{prog_a}/{active['assist_target']} ({pct_a}%)", inline=True)
+        embed.add_field(name="Mükafat",     value=f"🪙 {active['reward_coins']} coin",              inline=True)
+        embed.add_field(name="⏰ Son tarix", value=exp.strftime("%d.%m.%Y %H:%M"),                  inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+        return
+
+    if not tasks:
+        await interaction.response.send_message("⏳ Hazırda aktiv tapşırıq yoxdur, tezliklə yenilənəcək.", ephemeral=True)
+        return
+
+    embed = discord.Embed(title="📋 Günlük Tapşırıqlar", description="Birini seçin:", color=discord.Color.gold())
+    for t in tasks:
+        import datetime as dt
+        exp = dt.datetime.utcfromtimestamp(t["expires_at"]) + dt.timedelta(hours=4)
+        embed.add_field(
+            name=t["description"],
+            value=f"Kill: {t['kill_target']}  Asist: {t['assist_target']}\n🪙 {t['reward_coins']} coin  ·  ⏰ {exp.strftime('%H:%M')}",
+            inline=False
+        )
+    await interaction.response.send_message(embed=embed, view=TaskSelectView(interaction.user.id, tasks), ephemeral=True)
 
 
 @bot.event
@@ -1004,6 +1349,9 @@ async def on_message(message: discord.Message):
 @bot.event
 async def on_ready():
     init_db()
+    get_or_create_current_season()
+    refresh_daily_tasks()
+    fail_expired_tasks()
     print(f"{bot.user} giriş etdi və hazırdır!")
     bot.add_view(MatchmakingView())
     bot.add_view(RegisterView())
@@ -1011,7 +1359,15 @@ async def on_ready():
         check_giveaways.start()
     if not push_backup_task.is_running():
         push_backup_task.start()
+    if not daily_task_refresh.is_running():
+        daily_task_refresh.start()
     await bot.tree.sync()
+
+
+@tasks.loop(hours=6)
+async def daily_task_refresh():
+    refresh_daily_tasks()
+    fail_expired_tasks()
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -1046,9 +1402,15 @@ async def profile(interaction: discord.Interaction):
         if fitem:
             frame_full_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frames", fitem["file"])
 
+    combat = get_combat_stats(discord_id)
+    season = get_or_create_current_season()
+    ss     = get_season_stat(discord_id, season["id"])
+
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
-        banner_full_path, coins, frame_full_path, zm_balance
+        banner_full_path, coins, frame_full_path, zm_balance,
+        combat["kills"], combat["assists"], combat["deaths"],
+        ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"]
     )
 
     boosts = get_all_active_boosts(discord_id)
