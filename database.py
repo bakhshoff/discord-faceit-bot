@@ -1347,31 +1347,15 @@ def fail_expired_tasks():
 
 
 def full_reset():
-    """Hər şeyi sıfırlar. Yalnız hesab adı (nick, so2_id) saxlanır."""
+    """Bazadakı hər şeyi silir. Hamı yenidən qeydiyyatdan keçməlidir."""
     conn = _get_conn()
     cursor = conn.cursor()
 
-    # Oyunçu statistikasını tam sıfırla
-    cursor.execute("""
-        UPDATE players SET
-            elo          = 1000,
-            wins         = 0,
-            losses       = 0,
-            coins        = 0,
-            kills        = 0,
-            assists      = 0,
-            deaths       = 0,
-            zm_balance   = 0,
-            active_banner = NULL,
-            active_frame  = NULL,
-            ai_memory     = NULL
-    """)
-
-    # Bütün tarixçə + envanter cədvəllərini sil
-    for table in ("match_history", "season_stats", "seasons",
+    # Bütün cədvəlləri sil
+    for table in ("players", "match_history", "season_stats", "seasons",
                   "scan_results", "player_tasks", "daily_tasks",
                   "coin_logs", "active_boosts", "chat_history",
-                  "inventory", "skin_inventory", "skins"):
+                  "inventory", "skin_inventory", "skins", "giveaways"):
         cursor.execute(f"DELETE FROM {table}")
 
     # Matç sayacını sıfırla
