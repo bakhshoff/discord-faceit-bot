@@ -43,7 +43,7 @@ from rules_card import generate_rules_card, generate_register_banner
 from market_config import MARKET_ITEMS, get_item_by_id
 import backup
 from ai_chat import ask_groq
-from scan_system import parse_scoreboard, apply_defaults_for_missing
+from scan_system import analyze_with_gemini, match_to_registered, apply_defaults_for_missing
 import requests
 
 load_dotenv()
@@ -1096,106 +1096,193 @@ class MatchmakingView(discord.ui.View):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SCAN SİSTEMİ
+# SCAN SİSTEMİ  (Gemini Vision + Manuel Düzəliş)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class ScanConfirmView(discord.ui.View):
-    def __init__(self, scan_id, match_number, parsed, team_a, team_b, winner_team_label):
-        super().__init__(timeout=300)
-        self.scan_id           = scan_id
-        self.match_number      = match_number
-        self.parsed            = parsed
-        self.team_a            = team_a
-        self.team_b            = team_b
-        self.winner_team_label = winner_team_label
+def _build_scan_embed(match_number, parsed, winner_label):
+    """Scan nəticəsi embedi qurur."""
+    lines = []
+    for key, s in parsed.items():
+        if isinstance(key, int) or (isinstance(key, str) and not key.startswith("unknown_")):
+            mark = "✅"
+        else:
+            mark = "⚠️"
+        g_nick = s.get("gemini_nick", "")
+        arrow  = f" ← *{g_nick}*" if g_nick and g_nick != s["nick"] else ""
+        lines.append(f"{mark} **{s['nick']}**{arrow}  K:{s['kills']} A:{s['assists']} D:{s['deaths']}")
 
-    @discord.ui.button(label="Təsdiqlə", style=discord.ButtonStyle.success, emoji="✅")
+    embed = discord.Embed(
+        title=f"🔍 Matç No{match_number} — Gemini Scan",
+        description="\n".join(lines) or "Heç bir oyunçu tapılmadı.",
+        color=discord.Color.orange()
+    )
+    embed.add_field(name="🏆 Qalib", value=f"Komanda **{winner_label}**", inline=True)
+    embed.set_footer(text="✅ uyğun  ⚠️ tapılmadı (0/0/5 veriləcək)  |  Düzəliş üçün oyunçunu seçin")
+    return embed
+
+
+class StatEditModal(discord.ui.Modal, title="Stat Düzəliş"):
+    kills_inp   = discord.ui.TextInput(label="Kill",   required=True, max_length=4)
+    assists_inp = discord.ui.TextInput(label="Asist",  required=True, max_length=4)
+    deaths_inp  = discord.ui.TextInput(label="Ölüm",   required=True, max_length=4)
+
+    def __init__(self, player_key, player_nick, current, view_ref):
+        super().__init__(title=f"{player_nick[:20]} — Düzəliş")
+        self.player_key = player_key
+        self.view_ref   = view_ref
+        self.kills_inp.default   = str(current["kills"])
+        self.assists_inp.default = str(current["assists"])
+        self.deaths_inp.default  = str(current["deaths"])
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            self.view_ref.parsed[self.player_key]["kills"]   = int(self.kills_inp.value)
+            self.view_ref.parsed[self.player_key]["assists"] = int(self.assists_inp.value)
+            self.view_ref.parsed[self.player_key]["deaths"]  = int(self.deaths_inp.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Rəqəm daxil edin.", ephemeral=True)
+            return
+        embed = _build_scan_embed(self.view_ref.match_number,
+                                  self.view_ref.parsed,
+                                  self.view_ref.winner_label)
+        await interaction.response.edit_message(embed=embed, view=self.view_ref)
+
+
+class ScanEditView(discord.ui.View):
+    def __init__(self, match_number, parsed, winner_label, all_players):
+        super().__init__(timeout=600)
+        self.match_number  = match_number
+        self.parsed        = parsed   # mutable dict
+        self.winner_label  = winner_label
+        self.all_players   = all_players
+
+        # Oyunçu seçimi dropdown
+        options = []
+        for key, s in parsed.items():
+            label = s["nick"][:25]
+            val   = str(key)
+            options.append(discord.SelectOption(label=label, value=val,
+                                                description=f"K:{s['kills']} A:{s['assists']} D:{s['deaths']}"))
+        if options:
+            sel = discord.ui.Select(placeholder="Düzəltmək üçün oyunçu seçin...",
+                                    options=options[:25], min_values=1, max_values=1)
+            sel.callback = self._on_select
+            self.add_item(sel)
+            self.select_menu = sel
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+            return
+        raw_key = self.select_menu.values[0]
+        try:
+            key = int(raw_key)
+        except ValueError:
+            key = raw_key
+        stats = self.parsed.get(key) or self.parsed.get(raw_key)
+        if not stats:
+            await interaction.response.send_message("❌ Tapılmadı.", ephemeral=True)
+            return
+        modal = StatEditModal(key, stats["nick"], stats, self)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="Qalib A", style=discord.ButtonStyle.primary, emoji="🔵", row=1)
+    async def set_winner_a(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        self.winner_label = "A"
+        embed = _build_scan_embed(self.match_number, self.parsed, self.winner_label)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Qalib B", style=discord.ButtonStyle.danger, emoji="🔴", row=1)
+    async def set_winner_b(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        self.winner_label = "B"
+        embed = _build_scan_embed(self.match_number, self.parsed, self.winner_label)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Təsdiqlə ✅", style=discord.ButtonStyle.success, row=2)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
+            await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
             return
-        confirm_scan(self.scan_id)
+        import json
+        scan_json = json.dumps({str(k): v for k, v in self.parsed.items()}, ensure_ascii=False)
+        scan_id   = save_scan_result(self.match_number, scan_json, self.winner_label)
+        confirm_scan(scan_id)
+
         season = get_or_create_current_season()
-        for did, stats in self.parsed.items():
-            if not isinstance(did, int):
+        for key, stats in self.parsed.items():
+            try:
+                did = int(key)
+            except (ValueError, TypeError):
                 continue
             add_combat_stats(did, stats["kills"], stats["assists"], stats["deaths"])
             add_season_stat(did, season["id"],
                             kills=stats["kills"], assists=stats["assists"], deaths=stats["deaths"])
             completed, reward = update_task_progress(did, stats["kills"], stats["assists"])
             if completed and reward:
-                add_coins(did, reward)
-                add_coin_log(did, reward, "Günlük tapşırıq tamamlandı", "earn", get_coins(did))
+                bal = add_coins(did, reward)
+                add_coin_log(did, reward, "Günlük tapşırıq tamamlandı", "earn", bal)
+
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(
-            content=f"✅ **Matç No{self.match_number}** statistikası təsdiqləndi!", view=self)
+            content=f"✅ **Matç No{self.match_number}** statistikası DB-ə yazıldı! Qalib: Komanda **{self.winner_label}**",
+            embed=None, view=self)
 
-    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary, emoji="❌")
+    @discord.ui.button(label="Ləğv et ❌", style=discord.ButtonStyle.secondary, row=2)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(content="❌ Scan ləğv edildi.", view=None)
+        await interaction.response.edit_message(content="❌ Scan ləğv edildi.", embed=None, view=None)
 
 
-class ScanModal(discord.ui.Modal, title="Oyun Skorbordunu Yapışdırın"):
-    scoreboard = discord.ui.TextInput(
-        label="K  A  D  Oyunçu adı (hər sətirdə bir oyunçu)",
-        style=discord.TextStyle.paragraph,
-        placeholder="PlayerName 15 3 2\nPlayerName2 12 5 1\n...",
-        required=True, max_length=2000
-    )
-    winner_team = discord.ui.TextInput(
-        label="Qalib komanda (A və ya B yazın)",
-        placeholder="A",
-        required=True, max_length=1
-    )
-
-    def __init__(self, match_number, team_a, team_b):
-        super().__init__()
-        self.match_number = match_number
-        self.team_a = team_a
-        self.team_b = team_b
-
-    async def on_submit(self, interaction: discord.Interaction):
-        import json
-        registered = {}
-        for p in self.team_a + self.team_b:
-            registered[p["nick"].lower()] = p["discord_id"]
-
-        parsed = parse_scoreboard(str(self.scoreboard), registered)
-        parsed = apply_defaults_for_missing(self.team_a + self.team_b, parsed)
-
-        winner_label = str(self.winner_team).strip().upper()
-        scan_json = json.dumps({str(k): v for k, v in parsed.items()}, ensure_ascii=False)
-        scan_id = save_scan_result(self.match_number, scan_json, winner_label)
-
-        lines = []
-        for did, s in parsed.items():
-            mark = "✅" if s.get("matched") else "⚠️"
-            lines.append(f"{mark} **{s['nick']}** — K:{s['kills']} A:{s['assists']} D:{s['deaths']}")
-
-        embed = discord.Embed(
-            title=f"🔍 Matç No{self.match_number} — Scan Nəticəsi",
-            description="\n".join(lines) or "Heç bir oyunçu tapılmadı.",
-            color=discord.Color.orange()
-        )
-        embed.add_field(name="Qalib komanda", value=f"Komanda **{winner_label}**", inline=True)
-        embed.set_footer(text="✅ = uyğun tapıldı   ⚠️ = avtomatik 0/0/5")
-
-        view = ScanConfirmView(scan_id, self.match_number, parsed, self.team_a, self.team_b, winner_label)
-        await interaction.response.send_message(embed=embed, view=view)
-
-
-@bot.tree.command(name="scan", description="[Admin] Oyun statistikasını scan et")
+@bot.tree.command(name="scan", description="[Admin] Oyun ekran görüntüsünü Gemini ilə scan et")
+@app_commands.describe(ekran="Standoff 2 skor ekranının şəkli", qalib="Qalib komanda (A və ya B)")
 @app_commands.checks.has_permissions(administrator=True)
-async def scan_cmd(interaction: discord.Interaction):
+async def scan_cmd(interaction: discord.Interaction,
+                   ekran: discord.Attachment,
+                   qalib: str = "A"):
     active = get_active_match()
     if not active:
-        await interaction.response.send_message("❌ Hal-hazırda aktiv matç yoxdur.", ephemeral=True)
+        await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
         return
+
+    qalib = qalib.strip().upper()
+    if qalib not in ("A", "B"):
+        await interaction.response.send_message("❌ Qalib A və ya B olmalıdır.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+
+    # Şəkli yüklə
+    try:
+        img_bytes = await ekran.read()
+    except Exception:
+        await interaction.followup.send("❌ Şəkil yüklənmədi.", ephemeral=True)
+        return
+
+    # Gemini Vision analizi
+    await interaction.followup.send("🔍 Gemini Vision analiz edir...", ephemeral=True)
+    try:
+        gemini_results = await asyncio.to_thread(analyze_with_gemini, img_bytes)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Gemini xətası: {e}", ephemeral=True)
+        return
+
+    # Qeydiyyatlı oyunçularla uyğunlaşdır
+    # Aktiv matçın oyunçularını DB-dən al
     match_number = active["match_number"]
-    scan_data = get_scan_result(match_number)
-    # Son bilinen team_a/team_b olmadığından sadə modal açırıq
-    await interaction.response.send_modal(ScanModal(match_number, [], []))
+    all_players  = []
+    for row in get_leaderboard(limit=200):
+        all_players.append({"discord_id": 0, "nick": row[0], "so2_id": row[1]})
+
+    parsed = match_to_registered(gemini_results, all_players)
+    parsed = apply_defaults_for_missing(all_players, parsed)
+
+    embed = _build_scan_embed(match_number, parsed, qalib)
+    view  = ScanEditView(match_number, parsed, qalib, all_players)
+    await interaction.followup.send(embed=embed, view=view)
 
 
 @scan_cmd.error

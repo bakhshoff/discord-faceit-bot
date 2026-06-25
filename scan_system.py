@@ -1,93 +1,139 @@
 """
-Oyun statistika scan sistemi.
-Admin /scan əmri ilə oyun skorbordunu yapışdırır,
-bot oyunçu adlarını + K/A/D-ni parse edir.
+Scan sistemi: Gemini Vision ekran görüntüsündən K/A/D oxuyur.
 """
+import os
+import json
+import base64
 import re
 
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-def parse_scoreboard(text: str, registered: dict) -> dict:
+GEMINI_PROMPT = """Bu bir Standoff 2 oyununun skor ekranıdır.
+Ekrandakı hər oyunçu üçün:
+- oyunçu adı (nick)
+- kill sayı
+- asist sayı
+- ölüm (death) sayı
+
+məlumatlarını tap və YALNIZCA aşağıdakı JSON formatında ver, başqa heç nə yazma:
+[
+  {"nick": "OyuncuAdi1", "kills": 15, "assists": 3, "deaths": 2},
+  {"nick": "OyuncuAdi2", "kills": 8, "assists": 5, "deaths": 4}
+]
+
+Qeydlər:
+- Əgər asist sütunu görünmürsə, assists üçün 0 yaz
+- Oyunçu adını tam olaraq ekranda göründüyü kimi yaz
+- Rəqəmləri dəqiq oxu
+- Yalnız JSON qaytır, izahat yazma
+"""
+
+
+def analyze_with_gemini(image_bytes: bytes) -> list[dict]:
     """
-    text: admin-in yapışdırdığı skor mətni
-    registered: {so2_nick.lower(): discord_id} - qeydiyyatlı oyunçular
-
-    Dəstəklənən formatlar (hər sətirdə oyunçu):
-      PlayerName 15 3 2
-      PlayerName: 15/3/2
-      15 3 2 PlayerName
-      #1 PlayerName 15 3 2
-    Qaytarır: {discord_id: {nick, kills, assists, deaths, matched}}
+    Ekran görüntüsünü Gemini-yə göndərir, K/A/D siyahısı qaytarır.
+    Returns: [{"nick": str, "kills": int, "assists": int, "deaths": int}, ...]
     """
-    results = {}
-    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
-    num_pat  = r'\d+'
-    name_pat = r"[A-Za-z0-9_\[\]\.#\-]{2,24}"
+        img_part = {"mime_type": "image/png",
+                    "data": base64.b64encode(image_bytes).decode()}
 
-    for line in lines:
-        # Rəqəmləri tap
-        nums = re.findall(num_pat, line)
-        if len(nums) < 3:
-            continue
-        # Ad tapılması: rəqəmləri çıxarıb qalan hissəni al
-        name_candidate = re.sub(r'\d+', '', line)
-        name_candidate = re.sub(r'[^A-Za-z0-9_\[\]\.#\-]', ' ', name_candidate).strip()
-        words = [w for w in name_candidate.split() if len(w) >= 2]
-        if not words:
-            continue
-        # Ən uzun sözü ad kimi götür
-        nick = max(words, key=len)
-        kills, assists, deaths = int(nums[0]), int(nums[1]), int(nums[2])
+        response = model.generate_content([GEMINI_PROMPT, img_part])
+        raw = response.text.strip()
 
-        # Qeydiyyatlı oyunçu ilə uyğunlaşdır
-        matched_id = None
-        best_score = 0
-        for reg_nick, did in registered.items():
-            score = _similarity(nick.lower(), reg_nick.lower())
-            if score > best_score and score >= 0.6:
+        # JSON blokunu çıxar (``` bloku ola bilər)
+        match = re.search(r'\[.*\]', raw, re.DOTALL)
+        if match:
+            raw = match.group(0)
+
+        parsed = json.loads(raw)
+        result = []
+        for item in parsed:
+            result.append({
+                "nick":    str(item.get("nick", "")).strip(),
+                "kills":   int(item.get("kills",   0)),
+                "assists": int(item.get("assists",  0)),
+                "deaths":  int(item.get("deaths",   0)),
+            })
+        return result
+    except Exception as e:
+        raise RuntimeError(f"Gemini Vision xətası: {e}")
+
+
+def match_to_registered(gemini_results: list[dict], registered_players: list[dict]) -> dict:
+    """
+    Gemini nəticələrini qeydiyyatlı oyunçularla uyğunlaşdırır.
+    registered_players: [{"discord_id", "nick", "so2_id", ...}]
+    Returns: {discord_id: {"nick", "kills", "assists", "deaths", "matched", "gemini_nick"}}
+    """
+    matched = {}
+    used_ids = set()
+
+    for gr in gemini_results:
+        g_nick = gr["nick"].lower().strip()
+        best_id, best_score = None, 0
+
+        for rp in registered_players:
+            if rp["discord_id"] in used_ids:
+                continue
+            r_nick = rp["nick"].lower().strip()
+            score  = _similarity(g_nick, r_nick)
+            if score > best_score:
                 best_score = score
-                matched_id = did
+                best_id    = rp["discord_id"]
 
-        key = matched_id if matched_id else f"unknown_{nick}"
-        results[key] = {
-            "nick": nick,
-            "kills": kills,
-            "assists": assists,
-            "deaths": deaths,
-            "matched": matched_id is not None,
-        }
+        if best_id and best_score >= 0.55:
+            matched[best_id] = {
+                "nick":        next(p["nick"] for p in registered_players if p["discord_id"] == best_id),
+                "gemini_nick": gr["nick"],
+                "kills":       gr["kills"],
+                "assists":     gr["assists"],
+                "deaths":      gr["deaths"],
+                "matched":     True,
+            }
+            used_ids.add(best_id)
+        else:
+            # Uyğun tapılmadı - unknown olaraq saxla
+            matched[f"unknown_{gr['nick']}"] = {
+                "nick":        gr["nick"],
+                "gemini_nick": gr["nick"],
+                "kills":       gr["kills"],
+                "assists":     gr["assists"],
+                "deaths":      gr["deaths"],
+                "matched":     False,
+            }
 
-    return results
-
-
-def _similarity(a: str, b: str) -> float:
-    """Sadə oxşarlıq: ən uzun ümumi alt-sətir / uzunluq."""
-    if not a or not b:
-        return 0.0
-    if a == b:
-        return 1.0
-    # Prefix/contains check
-    if a in b or b in a:
-        return 0.85
-    # Ortak hərflər
-    common = sum(1 for c in a if c in b)
-    return common / max(len(a), len(b))
+    return matched
 
 
 def apply_defaults_for_missing(team_players: list, scan_results: dict) -> dict:
-    """
-    Scan-da adı çıxmayan qeydiyyatlı oyunçulara 0/0/5 verir.
-    team_players: [{"discord_id", "nick", ...}]
-    scan_results: {discord_id/unknown_xxx: {...}}
-    """
+    """Scan-da adı olmayan qeydiyyatlı oyunçulara 0/0/5 verir."""
     scanned_ids = {k for k in scan_results if isinstance(k, int)}
     for p in team_players:
         if p["discord_id"] not in scanned_ids:
             scan_results[p["discord_id"]] = {
-                "nick": p["nick"],
-                "kills": 0,
-                "assists": 0,
-                "deaths": 5,
-                "matched": True,
+                "nick":        p["nick"],
+                "gemini_nick": "",
+                "kills":       0,
+                "assists":     0,
+                "deaths":      5,
+                "matched":     True,
             }
     return scan_results
+
+
+def _similarity(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    if a in b or b in a:
+        return 0.88
+    longer  = max(a, b, key=len)
+    shorter = min(a, b, key=len)
+    common  = sum(1 for c in shorter if c in longer)
+    return common / len(longer)
