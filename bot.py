@@ -990,7 +990,10 @@ async def _launch_match(match_number, selected_map, team_a, team_b, captain_a_id
         generate_match_card, match_number, selected_map, team_a, team_b,
         captain_a_id, captain_b_id, card_path
     )
-    set_active_match(match_number)
+    import json as _j
+    set_active_match(match_number,
+                     team_a_json=_j.dumps(team_a, ensure_ascii=False),
+                     team_b_json=_j.dumps(team_b, ensure_ascii=False))
     season = get_or_create_current_season()
     for p in team_a + team_b:
         player = get_player(p["discord_id"])
@@ -1352,15 +1355,15 @@ async def scan_test_cmd(interaction: discord.Interaction, ekran: discord.Attachm
 # MANUEL STAT GİRİŞİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class ManuelStatModal(discord.ui.Modal, title="Manuel Stat Girişi"):
-    kills_inp   = discord.ui.TextInput(label="Kill",   placeholder="0", required=True, max_length=3)
-    assists_inp = discord.ui.TextInput(label="Asist",  placeholder="0", required=True, max_length=3)
-    deaths_inp  = discord.ui.TextInput(label="Ölüm",   placeholder="0", required=True, max_length=3)
+class ManuelPlayerStatModal(discord.ui.Modal, title="Stat Giriş"):
+    kills_inp   = discord.ui.TextInput(label="Kill",  placeholder="0", required=True, max_length=3)
+    assists_inp = discord.ui.TextInput(label="Asist", placeholder="0", required=True, max_length=3)
+    deaths_inp  = discord.ui.TextInput(label="Ölüm",  placeholder="0", required=True, max_length=3)
 
-    def __init__(self, target_id: int, target_nick: str):
-        super().__init__(title=f"{target_nick[:20]} — Stat Giriş")
-        self.target_id   = target_id
-        self.target_nick = target_nick
+    def __init__(self, player: dict, view_ref):
+        super().__init__(title=f"{player['nick'][:22]} — Stat")
+        self.player   = player
+        self.view_ref = view_ref
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -1370,73 +1373,240 @@ class ManuelStatModal(discord.ui.Modal, title="Manuel Stat Girişi"):
         except ValueError:
             await interaction.response.send_message("❌ Yalnız rəqəm daxil edin.", ephemeral=True)
             return
+        did = self.player["discord_id"]
+        self.view_ref.stats[did] = {"kills": k, "assists": a, "deaths": d}
+        # Düymənin rəngini dəyiş (✓ işarəsi)
+        for item in self.view_ref.children:
+            if getattr(item, "_player_id", None) == did:
+                item.style = discord.ButtonStyle.success
+                item.label = f"✓ {self.player['nick'][:16]}"
+                break
+        embed = self.view_ref.build_embed()
+        await interaction.response.edit_message(embed=embed, view=self.view_ref)
 
-        add_combat_stats(self.target_id, k, a, d)
+
+class ManuelMatchStatView(discord.ui.View):
+    def __init__(self, match_number: int, team_a: list, team_b: list):
+        super().__init__(timeout=600)
+        self.match_number = match_number
+        self.team_a  = team_a
+        self.team_b  = team_b
+        self.stats   = {}        # {discord_id: {kills, assists, deaths}}
+        self.winner  = None      # "A" veya "B"
+        self.done    = False
+
+        # Oyunçu düymələri — A komandası row 0, B komandası row 1
+        for row_idx, team in enumerate([team_a, team_b]):
+            for p in team:
+                btn = discord.ui.Button(
+                    label=p["nick"][:20],
+                    style=discord.ButtonStyle.secondary,
+                    row=row_idx
+                )
+                btn._player_id = p["discord_id"]
+                async def _cb(inter, player=p):
+                    if not inter.user.guild_permissions.administrator:
+                        await inter.response.send_message("❌", ephemeral=True)
+                        return
+                    await inter.response.send_modal(ManuelPlayerStatModal(player, self))
+                btn.callback = _cb
+                self.add_item(btn)
+
+        # Qalib düymələri — row 2
+        btn_a = discord.ui.Button(label="Qalib: Komanda A", style=discord.ButtonStyle.primary,  emoji="🔵", row=2)
+        btn_b = discord.ui.Button(label="Qalib: Komanda B", style=discord.ButtonStyle.danger,   emoji="🔴", row=2)
+
+        async def _win_a(inter):
+            if not inter.user.guild_permissions.administrator:
+                await inter.response.send_message("❌", ephemeral=True); return
+            self.winner = "A"
+            await inter.response.edit_message(embed=self.build_embed(), view=self)
+        async def _win_b(inter):
+            if not inter.user.guild_permissions.administrator:
+                await inter.response.send_message("❌", ephemeral=True); return
+            self.winner = "B"
+            await inter.response.edit_message(embed=self.build_embed(), view=self)
+
+        btn_a.callback = _win_a
+        btn_b.callback = _win_b
+        self.add_item(btn_a)
+        self.add_item(btn_b)
+
+        # Sisteme ver — row 3
+        btn_submit = discord.ui.Button(label="Sisteme Ver ✅", style=discord.ButtonStyle.success, row=3)
+        btn_cancel = discord.ui.Button(label="Ləğv et ❌",     style=discord.ButtonStyle.secondary, row=3)
+
+        async def _submit(inter):
+            if not inter.user.guild_permissions.administrator:
+                await inter.response.send_message("❌", ephemeral=True); return
+            if self.done:
+                await inter.response.send_message("⚠️ Artıq göndərildi.", ephemeral=True); return
+            if self.winner is None:
+                await inter.response.send_message("❌ Əvvəlcə qalib komandanı seçin.", ephemeral=True); return
+            missing = [p["nick"] for p in self.team_a + self.team_b
+                       if p["discord_id"] not in self.stats]
+            if missing:
+                await inter.response.send_message(
+                    f"⚠️ Bu oyunçuların statı daxil edilməyib: **{', '.join(missing)}**\n"
+                    f"Onlar üçün 0/0/5 verilsin? Evet üçün yenidən Sisteme Ver düyməsinə basın.",
+                    ephemeral=True)
+                for p in self.team_a + self.team_b:
+                    if p["discord_id"] not in self.stats:
+                        self.stats[p["discord_id"]] = {"kills": 0, "assists": 0, "deaths": 5}
+                return
+            await self._finalize(inter)
+
+        async def _cancel(inter):
+            self.done = True
+            for c in self.children:
+                c.disabled = True
+            await inter.response.edit_message(content="❌ Ləğv edildi.", embed=None, view=self)
+
+        btn_submit.callback = _submit
+        btn_cancel.callback = _cancel
+        self.add_item(btn_submit)
+        self.add_item(btn_cancel)
+
+    def build_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"📝 Matç No{self.match_number} — Manuel Stat",
+            color=discord.Color.orange()
+        )
+
+        def fmt_team(team, label):
+            lines = []
+            for p in team:
+                s = self.stats.get(p["discord_id"])
+                if s:
+                    lines.append(f"✅ **{p['nick']}** — K:{s['kills']} A:{s['assists']} D:{s['deaths']}")
+                else:
+                    lines.append(f"⬜ **{p['nick']}** — ?")
+            return "\n".join(lines)
+
+        embed.add_field(name="🔵 Komanda A", value=fmt_team(self.team_a, "A"), inline=True)
+        embed.add_field(name="🔴 Komanda B", value=fmt_team(self.team_b, "B"), inline=True)
+        entered = len(self.stats)
+        total   = len(self.team_a) + len(self.team_b)
+        winner_txt = f"Komanda **{self.winner}**" if self.winner else "Seçilməyib"
+        embed.set_footer(text=f"Stat: {entered}/{total}  |  Qalib: {winner_txt}")
+        return embed
+
+    async def _finalize(self, interaction):
+        self.done = True
+        for c in self.children:
+            c.disabled = True
+
+        winner_team = self.team_a if self.winner == "A" else self.team_b
+        loser_team  = self.team_b if self.winner == "A" else self.team_a
+        winner_label = f"Komanda {self.winner}"
+        loser_label  = f"Komanda {'B' if self.winner == 'A' else 'A'}"
+
+        winner_ids = [p["discord_id"] for p in winner_team]
+        loser_ids  = [p["discord_id"] for p in loser_team]
+
+        results = update_team_elo(winner_ids, loser_ids)
+        if results is None:
+            await interaction.response.edit_message(content="❌ ELO yenilənmədi.", view=self)
+            return
+
+        winner_coins, loser_coins = {}, {}
+        for did in winner_ids:
+            earned = random.randint(5, 10)
+            bal    = add_coins(did, earned)
+            add_coin_log(did, earned, f"Matç No{self.match_number} qələbə", "earn", bal)
+            winner_coins[did] = (earned, bal)
+        for did in loser_ids:
+            earned = random.randint(0, 5)
+            bal    = add_coins(did, earned)
+            add_coin_log(did, earned, f"Matç No{self.match_number} iştirak", "earn", bal)
+            loser_coins[did] = (earned, bal)
+
         season = get_or_create_current_season()
-        add_season_stat(self.target_id, season["id"], kills=k, assists=a, deaths=d)
-        completed, reward = update_task_progress(self.target_id, k, a)
-        if completed and reward:
-            bal = add_coins(self.target_id, reward)
-            add_coin_log(self.target_id, reward, "Günlük tapşırıq tamamlandı", "earn", bal)
+        for p, r in zip(winner_team, results["winners"]):
+            did = p["discord_id"]
+            s   = self.stats[did]
+            add_combat_stats(did, s["kills"], s["assists"], s["deaths"])
+            add_season_stat(did, season["id"], kills=s["kills"], assists=s["assists"],
+                            deaths=s["deaths"], wins=1, elo_gained=max(0, r["new_elo"]-r["old_elo"]))
+            completed, reward = update_task_progress(did, s["kills"], s["assists"])
+            if completed and reward:
+                bal2 = add_coins(did, reward)
+                add_coin_log(did, reward, "Günlük tapşırıq tamamlandı", "earn", bal2)
+        for p, r in zip(loser_team, results["losers"]):
+            did = p["discord_id"]
+            s   = self.stats[did]
+            add_combat_stats(did, s["kills"], s["assists"], s["deaths"])
+            add_season_stat(did, season["id"], kills=s["kills"], assists=s["assists"],
+                            deaths=s["deaths"], losses=1, elo_gained=max(0, r["new_elo"]-r["old_elo"]))
+            completed, reward = update_task_progress(did, s["kills"], s["assists"])
+            if completed and reward:
+                bal2 = add_coins(did, reward)
+                add_coin_log(did, reward, "Günlük tapşırıq tamamlandı", "earn", bal2)
 
+        await asyncio.to_thread(
+            record_match_history, "5v5",
+            winner_ids, loser_ids,
+            [r["old_elo"] for r in results["winners"]],
+            [r["new_elo"] for r in results["winners"]],
+            [r["old_elo"] for r in results["losers"]],
+            [r["new_elo"] for r in results["losers"]],
+            self.match_number
+        )
+        clear_active_match()
         await asyncio.to_thread(backup.export_backup)
 
-        msg = (f"✅ **{self.target_nick}** üçün stat əlavə edildi:\n"
-               f"Kill: **{k}**  Asist: **{a}**  Ölüm: **{d}**")
-        if completed:
-            msg += f"\n🎯 Günlük tapşırıq tamamlandı! +{reward} coin"
-        await interaction.response.send_message(msg, ephemeral=False)
+        now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+        ts  = now.strftime("%d.%m.%Y %H:%M")
 
+        winner_results = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                          for p, r in zip(winner_team, results["winners"])]
+        loser_results  = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                          for p, r in zip(loser_team, results["losers"])]
 
-class ManuelStatSelectView(discord.ui.View):
-    def __init__(self, players: list):
-        super().__init__(timeout=120)
-        options = [
-            discord.SelectOption(
-                label=p["nick"][:25],
-                value=str(p["discord_id"]),
-                description=f"SO2: {p['so2_id']}"
-            )
-            for p in players[:25]
-        ]
-        sel = discord.ui.Select(
-            placeholder="Stat əlavə etmək üçün oyunçu seçin...",
-            options=options,
-            min_values=1, max_values=1
+        result_img = os.path.join(DATA_DIR or ".", f"result_{self.match_number}.png")
+        await asyncio.to_thread(
+            generate_result_card,
+            self.match_number, winner_label, loser_label,
+            winner_team, loser_team,
+            winner_results, loser_results,
+            winner_coins, loser_coins,
+            ts, result_img
         )
-        sel.callback = self._on_select
-        self.add_item(sel)
-        self.select_menu = sel
-        self._players    = {p["discord_id"]: p["nick"] for p in players}
 
-    async def _on_select(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
-            return
-        did  = int(self.select_menu.values[0])
-        nick = self._players.get(did, "?")
-        await interaction.response.send_modal(ManuelStatModal(did, nick))
+        await interaction.response.edit_message(
+            content=f"✅ Matç No{self.match_number} tamamlandı — 🏆 **{winner_label}**",
+            embed=None, view=self
+        )
+        log_ch = bot.get_channel(LOG_CHANNEL_ID)
+        if log_ch:
+            await log_ch.send(file=discord.File(result_img, filename="result.png"))
+
+        if queue_size() >= 10:
+            mm_ch = interaction.channel
+            if mm_ch:
+                await _start_match(mm_ch, interaction.guild)
 
 
-@bot.tree.command(name="manuel_stat", description="[Admin] Oyunçuya manuel K/A/D stat əlavə et")
+@bot.tree.command(name="manuel_stat", description="[Admin] Aktiv matçın statlarını manuel daxil et")
 @app_commands.checks.has_permissions(administrator=True)
 async def manuel_stat_cmd(interaction: discord.Interaction):
-    players = get_all_players(limit=200)
-
-    if not players:
-        await interaction.response.send_message("❌ Qeydiyyatlı oyunçu tapılmadı.", ephemeral=True)
+    active = get_active_match()
+    if not active:
+        await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
         return
 
-    embed = discord.Embed(
-        title="📝 Manuel Stat Giriş",
-        description="Aşağıdan oyunçunu seçin, sonra K/A/D daxil edin.\nHər seçim ayrıca tətbiq edilir — istədiyiniz qədər oyunçu üçün edə bilərsiniz.",
-        color=discord.Color.orange()
-    )
-    await interaction.response.send_message(
-        embed=embed,
-        view=ManuelStatSelectView(players),
-        ephemeral=True
-    )
+    team_a = active.get("team_a", [])
+    team_b = active.get("team_b", [])
+
+    if not team_a or not team_b:
+        await interaction.response.send_message(
+            "❌ Matç oyunçu məlumatları tapılmadı. Yeni matç başladıqda bu funksiya işləyəcək.",
+            ephemeral=True)
+        return
+
+    view  = ManuelMatchStatView(active["match_number"], team_a, team_b)
+    embed = view.build_embed()
+    await interaction.response.send_message(embed=embed, view=view)
 
 
 @manuel_stat_cmd.error

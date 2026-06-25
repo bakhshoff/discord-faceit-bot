@@ -1065,10 +1065,20 @@ def close_season(season_id):
 # AKTİV MATÇ KİLİDİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def set_active_match(match_number):
+def set_active_match(match_number, team_a_json=None, team_b_json=None):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("UPDATE active_match SET match_number=?, status='active' WHERE id=1", (match_number,))
+    # team sütunları mövcud deyilsə əlavə et
+    cursor.execute("PRAGMA table_info(active_match)")
+    cols = [r[1] for r in cursor.fetchall()]
+    if "team_a" not in cols:
+        cursor.execute("ALTER TABLE active_match ADD COLUMN team_a TEXT DEFAULT NULL")
+    if "team_b" not in cols:
+        cursor.execute("ALTER TABLE active_match ADD COLUMN team_b TEXT DEFAULT NULL")
+    cursor.execute(
+        "UPDATE active_match SET match_number=?, status='active', team_a=?, team_b=? WHERE id=1",
+        (match_number, team_a_json, team_b_json)
+    )
     conn.commit()
     conn.close()
 
@@ -1076,20 +1086,35 @@ def set_active_match(match_number):
 def clear_active_match():
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("UPDATE active_match SET match_number=NULL, status=NULL WHERE id=1")
+    cursor.execute("UPDATE active_match SET match_number=NULL, status=NULL, team_a=NULL, team_b=NULL WHERE id=1")
     conn.commit()
     conn.close()
 
 
 def get_active_match():
+    import json as _json
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT match_number, status FROM active_match WHERE id=1")
-    row = cursor.fetchone()
-    conn.close()
-    if not row or row[1] is None:
-        return None
-    return {"match_number": row[0], "status": row[1]}
+    cursor.execute("PRAGMA table_info(active_match)")
+    cols = [r[1] for r in cursor.fetchall()]
+    if "team_a" in cols:
+        cursor.execute("SELECT match_number, status, team_a, team_b FROM active_match WHERE id=1")
+        row = cursor.fetchone()
+        conn.close()
+        if not row or row[1] is None:
+            return None
+        return {
+            "match_number": row[0], "status": row[1],
+            "team_a": _json.loads(row[2]) if row[2] else [],
+            "team_b": _json.loads(row[3]) if row[3] else [],
+        }
+    else:
+        cursor.execute("SELECT match_number, status FROM active_match WHERE id=1")
+        row = cursor.fetchone()
+        conn.close()
+        if not row or row[1] is None:
+            return None
+        return {"match_number": row[0], "status": row[1], "team_a": [], "team_b": []}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
