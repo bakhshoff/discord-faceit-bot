@@ -4,5 +4,4 @@ Pillow
 flask
 requests
 groq
-pytesseract
-# cache-bust-2026-06-25c
+# cache-bust-2026-06-25d
