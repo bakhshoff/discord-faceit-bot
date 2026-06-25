@@ -389,7 +389,23 @@ def get_leaderboard(limit=20):
     return rows
 
 
-queue_list = []  # YaddaÅŸda saxlanÄ±lan mÃ¼vÉ™qqÉ™ti nÃ¶vbÉ™
+queue_list = []      # Müvəqqəti növbə
+_parties   = {}      # {player_id: partner_id} — eyni teama düşmə üçün
+
+
+def form_party(p1_id: int, p2_id: int):
+    _parties[p1_id] = p2_id
+    _parties[p2_id] = p1_id
+
+
+def dissolve_party(player_id: int):
+    partner = _parties.pop(player_id, None)
+    if partner:
+        _parties.pop(partner, None)
+
+
+def get_party_partner(player_id: int):
+    return _parties.get(player_id)
 
 def add_to_queue(discord_id, nick, elo, so2_id=""):
     for p in queue_list:
@@ -423,13 +439,50 @@ def pop_10_and_balance():
     if len(queue_list) < 10:
         return None
     import random
-    players = queue_list[:10]
-    queue_list = queue_list[10:]
 
-    players_sorted = sorted(players, key=lambda p: p["elo"], reverse=True)
+    players    = queue_list[:10]
+    queue_list = queue_list[10:]
+    player_ids = {p["discord_id"] for p in players}
+
+    # Party cütlərini tap
+    pairs, solos, seen = [], [], set()
+    for p in players:
+        if p["discord_id"] in seen:
+            continue
+        partner_id = _parties.get(p["discord_id"])
+        if partner_id and partner_id in player_ids and partner_id not in seen:
+            partner = next(q for q in players if q["discord_id"] == partner_id)
+            pairs.append((p, partner))
+            seen.add(p["discord_id"])
+            seen.add(partner_id)
+        else:
+            solos.append(p)
+            seen.add(p["discord_id"])
+
+    # Pairs ELO ortalamasına görə sırala (yüksəkdən aşağıya)
+    pairs.sort(key=lambda pair: (pair[0]["elo"] + pair[1]["elo"]) / 2, reverse=True)
+    solos.sort(key=lambda p: p["elo"], reverse=True)
+
     team_a, team_b = [], []
-    for i, p in enumerate(players_sorted):
-        if i % 4 in (0, 3):
+
+    # Hər cütü ELO balanslı teamə ver (hər ikisi birlikdə)
+    for pair in pairs:
+        elo_a = sum(p["elo"] for p in team_a)
+        elo_b = sum(p["elo"] for p in team_b)
+        if len(team_a) + 2 <= 5 and (len(team_b) + 2 > 5 or elo_a <= elo_b):
+            team_a.extend(pair)
+        elif len(team_b) + 2 <= 5:
+            team_b.extend(pair)
+        else:
+            # Artıq yer yoxdursa (nadir hal) — ayrılır
+            team_a.append(pair[0])
+            team_b.append(pair[1])
+
+    # Tək oyunçuları ELO balansına görə paylaşdır
+    for p in solos:
+        elo_a = sum(pl["elo"] for pl in team_a)
+        elo_b = sum(pl["elo"] for pl in team_b)
+        if len(team_a) < 5 and (len(team_b) >= 5 or elo_a <= elo_b):
             team_a.append(p)
         else:
             team_b.append(p)
