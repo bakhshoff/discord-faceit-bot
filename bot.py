@@ -2914,7 +2914,7 @@ async def elan_error(interaction, error):
         await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
-@bot.tree.command(name="matc_legv", description="[Admin] Son matçın nəticəsini ləğv et — ELO/coin geri alınır")
+@bot.tree.command(name="matc_legv", description="[Admin] Matç nəticəsini ləğv et — ELO/coin/K/A/D geri alınır")
 @app_commands.describe(matc_no="Ləğv ediləcək matç nömrəsi")
 @app_commands.checks.has_permissions(administrator=True)
 async def matc_legv_cmd(interaction: discord.Interaction, matc_no: int):
@@ -2924,6 +2924,8 @@ async def matc_legv_cmd(interaction: discord.Interaction, matc_no: int):
     from database import _get_conn
     conn   = _get_conn()
     cursor = conn.cursor()
+
+    # Match history yoxla
     cursor.execute(
         "SELECT winner_ids, loser_ids, winner_elo_before, winner_elo_after, "
         "loser_elo_before, loser_elo_after FROM match_history WHERE match_number=? ORDER BY id DESC LIMIT 1",
@@ -2935,38 +2937,67 @@ async def matc_legv_cmd(interaction: discord.Interaction, matc_no: int):
         await interaction.followup.send(f"❌ Matç No{matc_no} tapılmadı.", ephemeral=True)
         return
 
-    winner_ids      = _j.loads(row[0])
-    loser_ids       = _j.loads(row[1])
-    w_elo_before    = _j.loads(row[2])
-    w_elo_after     = _j.loads(row[3])
-    l_elo_before    = _j.loads(row[4])
-    l_elo_after     = _j.loads(row[5])
+    winner_ids   = _j.loads(row[0])
+    loser_ids    = _j.loads(row[1])
+    w_elo_before = _j.loads(row[2])
+    w_elo_after  = _j.loads(row[3])
+    l_elo_before = _j.loads(row[4])
+    l_elo_after  = _j.loads(row[5])
+    all_ids      = winner_ids + loser_ids
+
+    # Scan nəticəsindən K/A/D al
+    cursor.execute(
+        "SELECT scan_data FROM scan_results WHERE match_number=? AND confirmed=1 ORDER BY id DESC LIMIT 1",
+        (matc_no,)
+    )
+    scan_row = cursor.fetchone()
+    kd_map   = {}
+    if scan_row:
+        try:
+            raw = _j.loads(scan_row[0])
+            for k, v in raw.items():
+                try: kd_map[int(k)] = v
+                except: pass
+        except Exception:
+            pass
 
     lines = []
-    # ELO-nu əvvəlki vəziyyətə qaytar
+
+    # ELO + coin + win/loss geri al
     for did, before, after in zip(winner_ids, w_elo_before, w_elo_after):
         diff = after - before
-        cursor.execute("UPDATE players SET elo = elo - ?, wins = MAX(0, wins-1) WHERE discord_id=?", (diff, did))
-        # Qazandığı coini geri al (5-10 arasında idi, 7 götürürük)
-        cursor.execute("UPDATE players SET coins = MAX(0, coins-7) WHERE discord_id=?", (did,))
-        lines.append(f"• {did}: ELO {after}→{before} ({-diff}), -7🪙")
+        cursor.execute("UPDATE players SET elo=elo-?, wins=MAX(0,wins-1), coins=MAX(0,coins-7) WHERE discord_id=?", (diff, did))
+        lines.append(f"<@{did}>: ELO {after}→{before}, -7🪙")
     for did, before, after in zip(loser_ids, l_elo_before, l_elo_after):
         diff = after - before
-        cursor.execute("UPDATE players SET elo = elo - ?, losses = MAX(0, losses-1) WHERE discord_id=?", (diff, did))
-        cursor.execute("UPDATE players SET coins = MAX(0, coins-3) WHERE discord_id=?", (did,))
-        lines.append(f"• {did}: ELO {after}→{before} ({-diff}), -3🪙")
+        cursor.execute("UPDATE players SET elo=elo-?, losses=MAX(0,losses-1), coins=MAX(0,coins-3) WHERE discord_id=?", (diff, did))
+        lines.append(f"<@{did}>: ELO {after}→{before}, -3🪙")
 
-    # Matç qeydini sil
+    # K/A/D geri al
+    for did in all_ids:
+        s = kd_map.get(did, {})
+        k = s.get("kills", 0)
+        a = s.get("assists", 0)
+        d = s.get("deaths", 0)
+        if k or a or d:
+            cursor.execute(
+                "UPDATE players SET kills=MAX(0,kills-?), assists=MAX(0,assists-?), deaths=MAX(0,deaths-?) WHERE discord_id=?",
+                (k, a, d, did)
+            )
+
+    # Qeydləri sil
     cursor.execute("DELETE FROM match_history WHERE match_number=?", (matc_no,))
+    cursor.execute("DELETE FROM scan_results WHERE match_number=?", (matc_no,))
     conn.commit()
     conn.close()
     await asyncio.to_thread(backup.export_backup)
 
     embed = discord.Embed(
-        title=f"✅ Matç No{matc_no} ləğv edildi",
+        title=f"✅ Matç No{matc_no} tam ləğv edildi",
         description="\n".join(lines) or "—",
         color=discord.Color.orange()
     )
+    embed.set_footer(text="ELO · Coin · K/A/D · Match history — hamısı geri alındı")
     await interaction.followup.send(embed=embed, ephemeral=False)
 
 
