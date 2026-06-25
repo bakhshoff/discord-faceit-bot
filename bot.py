@@ -2831,6 +2831,85 @@ class ResetConfirmView(discord.ui.View):
         await interaction.response.edit_message(content="❌ Sıfırlama ləğv edildi.", embed=None, view=None)
 
 
+@bot.tree.command(name="elan", description="[Admin] Yeniliklər + sıfırlama elanı göndər")
+@app_commands.describe(kanal="Elanın göndəriləcəyi kanal (boş = bu kanal)")
+@app_commands.checks.has_permissions(administrator=True)
+async def elan_cmd(interaction: discord.Interaction,
+                   kanal: discord.TextChannel = None):
+    target = kanal or interaction.channel
+    await interaction.response.defer(ephemeral=True)
+
+    now_az = (datetime.datetime.utcnow() + datetime.timedelta(hours=4)).strftime("%d.%m.%Y %H:%M")
+
+    embed = discord.Embed(
+        title="📢 CALESTIFY FACEIT — BÖYÜK YENİLƏMƏ & SİSTEM SIFIRLAMASI",
+        description=(
+            "Salam əziz cəmiyyət üzvləri!\n\n"
+            "Botumuz tam yeniləndi və sistem sıfırlandı.\n"
+            "**Bütün oyunçular yenidən qeydiyyatdan keçməlidir!**"
+        ),
+        color=0xE74C3C
+    )
+
+    embed.add_field(
+        name="⚠️ SİSTEM SIFIRLAMASI",
+        value=(
+            "• Bütün köhnə qeydiyyatlar silindi\n"
+            "• ELO, coin, kill/asist/ölüm — sıfırlandı\n"
+            "• Matç tarixçəsi, sezonlar, inventar — silindi\n\n"
+            "🔴 **Qeydiyyat kanalına gedib yenidən qeydiyyatdan keçin!**"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🆕 YENİ FUNKSİYALAR",
+        value=(
+            "**📊 K/A/D Statistikası** — Hər matçda kill, asist, ölüm izlənir\n"
+            "**⭐ MVP** — K+A ən çox olan oyunçuya +5🪙 +3 ELO\n"
+            "**🌟 Sezon Sistemi** — Aylıq sezonlar, sezon sonu Top 3-ə ekstra mükafat\n"
+            "**🎯 Günlük Tapşırıqlar** — `/gunluk` ilə coin qazanın\n"
+            "**🗺️ Xəritə Səsverməsi** — 10 oyunçu toplandıqda 30s səsvermə\n"
+            "**🤖 AI Scan** — Matç sonu şəkil Claude AI ilə analiz edilir"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ SCAN SİSTEMİ — VACİB",
+        value=(
+            "Qeydiyyatdakı adınız oyundakı adla **tam eyni** olmalıdır!\n"
+            "Böyük/kiçik hərfə qədər dəqiq yazın.\n"
+            "Uyğun gəlməyəndə **0 kill · 0 asist · 5 ölüm** avtomatik veriləcək!\n"
+            "Adınızı `/profile` → **Nick Dəyiş** düyməsi ilə istənilən vaxt yeniləyə bilərsiniz."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📋 ƏSA KOMANDALAR",
+        value=(
+            "`/register` — Qeydiyyat *(ilk addım!)*\n"
+            "`/profile` — Profil, statistika, market\n"
+            "`/sezon` — Cari sezon leaderboard\n"
+            "`/gunluk` — Günlük tapşırıqlar\n"
+            "`/ping` — Bot statusu"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text=f"Calestify Gaming Community  ·  {now_az}")
+
+    await target.send(content="@everyone", embed=embed)
+    await interaction.followup.send(f"✅ Elan **#{target.name}** kanalına göndərildi.", ephemeral=True)
+
+
+@elan_cmd.error
+async def elan_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
 @bot.tree.command(name="tam_sifirla", description="[Admin] Bütün oyunçuların statistikasını sıfırla")
 @app_commands.checks.has_permissions(administrator=True)
 async def tam_sifirla_cmd(interaction: discord.Interaction):
