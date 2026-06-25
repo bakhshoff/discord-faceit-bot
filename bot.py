@@ -910,15 +910,19 @@ class TeamReadyView(discord.ui.View):
         await interaction.response.edit_message(view=self)
 
         if self.team_a_ready and self.team_b_ready:
-            log_embed = discord.Embed(
-                title=f"✅ Matç No{self.match_number} — Hər iki komanda hazır",
-                description="Admin/moderator nəticəni aşağıdaki düymələrlə qeyd etməlidir.",
-                color=discord.Color.blurple()
-            )
             log_channel = bot.get_channel(LOG_CHANNEL_ID)
             if log_channel:
-                result_view = MatchResultView(self.match_number, self.team_a, self.team_b)
-                await log_channel.send(embed=log_embed, view=result_view)
+                await log_channel.send(
+                    embed=discord.Embed(
+                        title=f"✅ Matç No{self.match_number} — Hər iki komanda hazır",
+                        description=(
+                            "Oyun başlayır! Matç bitdikdən sonra:\n"
+                            "1. Kapitan skor şəklini **#results** kanalına göndərir\n"
+                            "2. Rəhbər `/scan` yazır"
+                        ),
+                        color=discord.Color.green()
+                    )
+                )
 
     @discord.ui.button(label="Komanda A Hazır", style=discord.ButtonStyle.primary, custom_id="ready_a")
     async def team_a_ready_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2906,6 +2910,68 @@ async def elan_cmd(interaction: discord.Interaction,
 
 @elan_cmd.error
 async def elan_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="matc_legv", description="[Admin] Son matçın nəticəsini ləğv et — ELO/coin geri alınır")
+@app_commands.describe(matc_no="Ləğv ediləcək matç nömrəsi")
+@app_commands.checks.has_permissions(administrator=True)
+async def matc_legv_cmd(interaction: discord.Interaction, matc_no: int):
+    import json as _j
+    await interaction.response.defer(ephemeral=True)
+
+    from database import _get_conn
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT winner_ids, loser_ids, winner_elo_before, winner_elo_after, "
+        "loser_elo_before, loser_elo_after FROM match_history WHERE match_number=? ORDER BY id DESC LIMIT 1",
+        (matc_no,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        await interaction.followup.send(f"❌ Matç No{matc_no} tapılmadı.", ephemeral=True)
+        return
+
+    winner_ids      = _j.loads(row[0])
+    loser_ids       = _j.loads(row[1])
+    w_elo_before    = _j.loads(row[2])
+    w_elo_after     = _j.loads(row[3])
+    l_elo_before    = _j.loads(row[4])
+    l_elo_after     = _j.loads(row[5])
+
+    lines = []
+    # ELO-nu əvvəlki vəziyyətə qaytar
+    for did, before, after in zip(winner_ids, w_elo_before, w_elo_after):
+        diff = after - before
+        cursor.execute("UPDATE players SET elo = elo - ?, wins = MAX(0, wins-1) WHERE discord_id=?", (diff, did))
+        # Qazandığı coini geri al (5-10 arasında idi, 7 götürürük)
+        cursor.execute("UPDATE players SET coins = MAX(0, coins-7) WHERE discord_id=?", (did,))
+        lines.append(f"• {did}: ELO {after}→{before} ({-diff}), -7🪙")
+    for did, before, after in zip(loser_ids, l_elo_before, l_elo_after):
+        diff = after - before
+        cursor.execute("UPDATE players SET elo = elo - ?, losses = MAX(0, losses-1) WHERE discord_id=?", (diff, did))
+        cursor.execute("UPDATE players SET coins = MAX(0, coins-3) WHERE discord_id=?", (did,))
+        lines.append(f"• {did}: ELO {after}→{before} ({-diff}), -3🪙")
+
+    # Matç qeydini sil
+    cursor.execute("DELETE FROM match_history WHERE match_number=?", (matc_no,))
+    conn.commit()
+    conn.close()
+    await asyncio.to_thread(backup.export_backup)
+
+    embed = discord.Embed(
+        title=f"✅ Matç No{matc_no} ləğv edildi",
+        description="\n".join(lines) or "—",
+        color=discord.Color.orange()
+    )
+    await interaction.followup.send(embed=embed, ephemeral=False)
+
+
+@matc_legv_cmd.error
+async def matc_legv_error(interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
