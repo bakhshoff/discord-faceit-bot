@@ -62,7 +62,7 @@ RESULTS_CHANNEL_ID = int(os.getenv("RESULTS_CHANNEL_ID", "0"))
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
 # Aktiv matç gözləmə siyahısı (matç kilidlənmişkən yığılan komandalar)
-queued_match: dict | None = None
+queued_match = None
 
 LOGO_PATH = "logo.jpg"
 

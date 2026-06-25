@@ -43,7 +43,7 @@ def _preprocess(image_bytes: bytes) -> Image.Image:
     return img
 
 
-def ocr_scoreboard(image_bytes: bytes) -> list[dict]:
+def ocr_scoreboard(image_bytes: bytes) -> list:
     """
     Şəkildən oyunçu adı + K/A/D oxuyur.
     Returns: [{"nick": str, "kills": int, "assists": int, "deaths": int}]
@@ -59,7 +59,7 @@ def ocr_scoreboard(image_bytes: bytes) -> list[dict]:
     return _parse_ocr_text(text)
 
 
-def _parse_ocr_text(text: str) -> list[dict]:
+def _parse_ocr_text(text: str) -> list:
     """
     OCR mətnini parse edib oyunçu siyahısı qaytarır.
 
@@ -106,7 +106,7 @@ def _parse_ocr_text(text: str) -> list[dict]:
     return results
 
 
-def match_to_registered(ocr_results: list[dict], registered_players: list[dict]) -> dict:
+def match_to_registered(ocr_results: list, registered_players: list) -> dict:
     """
     OCR nəticələrini qeydiyyatlı oyunçularla uyğunlaşdırır.
     registered_players: [{"discord_id", "nick", ...}]
