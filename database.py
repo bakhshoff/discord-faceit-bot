@@ -390,7 +390,10 @@ def get_leaderboard(limit=20):
 
 
 queue_list = []      # Müvəqqəti növbə
-_parties   = {}      # {player_id: partner_id} — eyni teama düşmə üçün
+_parties   = {
+    1263121818244616195: 964144436374294609,
+    964144436374294609:  1263121818244616195,
+}
 
 
 def form_party(p1_id: int, p2_id: int):
