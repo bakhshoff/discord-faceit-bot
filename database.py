@@ -364,6 +364,19 @@ def update_elo(winner_id, loser_id):
         "loser_old_elo": loser_elo, "loser_new_elo": new_loser_elo
     }
 
+def get_all_players(limit=500):
+    """discord_id ilə birlikdə bütün oyunçuları qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id, so2_nick, so2_id, elo FROM players ORDER BY elo DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"discord_id": r[0], "nick": r[1], "so2_id": r[2], "elo": r[3]} for r in rows]
+
+
 def get_leaderboard(limit=20):
     conn = _get_conn()
     cursor = conn.cursor()

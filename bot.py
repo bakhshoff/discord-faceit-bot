@@ -33,7 +33,7 @@ try:
         remove_skin_from_inventory, add_coin_log, get_coin_logs,
         get_zm_balance, add_zm, spend_zm, add_boost, get_active_boost, get_all_active_boosts,
         exchange_coins_to_azn,
-        add_combat_stats, get_combat_stats,
+        add_combat_stats, get_combat_stats, get_all_players,
         get_or_create_current_season, get_season_by_number, get_season_leaderboard,
         add_season_stat, get_season_stat, close_season,
         set_active_match, clear_active_match, get_active_match,
@@ -1346,6 +1346,103 @@ async def scan_test_cmd(interaction: discord.Interaction, ekran: discord.Attachm
     )
     embed.set_footer(text=f"{len(ocr_results)} oyunçu oxundu  ·  Data yazılmadı")
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MANUEL STAT GİRİŞİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ManuelStatModal(discord.ui.Modal, title="Manuel Stat Girişi"):
+    kills_inp   = discord.ui.TextInput(label="Kill",   placeholder="0", required=True, max_length=3)
+    assists_inp = discord.ui.TextInput(label="Asist",  placeholder="0", required=True, max_length=3)
+    deaths_inp  = discord.ui.TextInput(label="Ölüm",   placeholder="0", required=True, max_length=3)
+
+    def __init__(self, target_id: int, target_nick: str):
+        super().__init__(title=f"{target_nick[:20]} — Stat Giriş")
+        self.target_id   = target_id
+        self.target_nick = target_nick
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            k = int(self.kills_inp.value)
+            a = int(self.assists_inp.value)
+            d = int(self.deaths_inp.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Yalnız rəqəm daxil edin.", ephemeral=True)
+            return
+
+        add_combat_stats(self.target_id, k, a, d)
+        season = get_or_create_current_season()
+        add_season_stat(self.target_id, season["id"], kills=k, assists=a, deaths=d)
+        completed, reward = update_task_progress(self.target_id, k, a)
+        if completed and reward:
+            bal = add_coins(self.target_id, reward)
+            add_coin_log(self.target_id, reward, "Günlük tapşırıq tamamlandı", "earn", bal)
+
+        await asyncio.to_thread(backup.export_backup)
+
+        msg = (f"✅ **{self.target_nick}** üçün stat əlavə edildi:\n"
+               f"Kill: **{k}**  Asist: **{a}**  Ölüm: **{d}**")
+        if completed:
+            msg += f"\n🎯 Günlük tapşırıq tamamlandı! +{reward} coin"
+        await interaction.response.send_message(msg, ephemeral=False)
+
+
+class ManuelStatSelectView(discord.ui.View):
+    def __init__(self, players: list):
+        super().__init__(timeout=120)
+        options = [
+            discord.SelectOption(
+                label=p["nick"][:25],
+                value=str(p["discord_id"]),
+                description=f"SO2: {p['so2_id']}"
+            )
+            for p in players[:25]
+        ]
+        sel = discord.ui.Select(
+            placeholder="Stat əlavə etmək üçün oyunçu seçin...",
+            options=options,
+            min_values=1, max_values=1
+        )
+        sel.callback = self._on_select
+        self.add_item(sel)
+        self.select_menu = sel
+        self._players    = {p["discord_id"]: p["nick"] for p in players}
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
+            return
+        did  = int(self.select_menu.values[0])
+        nick = self._players.get(did, "?")
+        await interaction.response.send_modal(ManuelStatModal(did, nick))
+
+
+@bot.tree.command(name="manuel_stat", description="[Admin] Oyunçuya manuel K/A/D stat əlavə et")
+@app_commands.checks.has_permissions(administrator=True)
+async def manuel_stat_cmd(interaction: discord.Interaction):
+    players = get_all_players(limit=200)
+
+    if not players:
+        await interaction.response.send_message("❌ Qeydiyyatlı oyunçu tapılmadı.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="📝 Manuel Stat Giriş",
+        description="Aşağıdan oyunçunu seçin, sonra K/A/D daxil edin.\nHər seçim ayrıca tətbiq edilir — istədiyiniz qədər oyunçu üçün edə bilərsiniz.",
+        color=discord.Color.orange()
+    )
+    await interaction.response.send_message(
+        embed=embed,
+        view=ManuelStatSelectView(players),
+        ephemeral=True
+    )
+
+
+@manuel_stat_cmd.error
+async def manuel_stat_error(interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
