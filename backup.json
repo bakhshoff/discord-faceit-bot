@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782500473,
+  "exported_at": 1782502999,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -48,6 +48,22 @@
       "kills": 21,
       "assists": 4,
       "deaths": 13
+    },
+    {
+      "discord_id": 700371111853948968,
+      "so2_nick": "Hurricane",
+      "so2_id": "70969119",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
     },
     {
       "discord_id": 807514987043749919,
@@ -156,7 +172,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Rövanş ruhuna sahib, təcrübə və strategiya axtarır, Rövanş ruhuna sahib, strategiya axtarır, 1016 ELO",
+      "ai_memory": "Rövanş ruhuna sahib, təcrübə və strategiya axtarır, Rövanş ruhuna sahib, strategiya axtarır, 1016 ELO, Rövanş ruhuna sahib, strategiya axtarır, əsasən 1v1 matçlarında oynayır, ELO 1016, məğlubiyyətdən sonra yeni strategiya axtarır",
       "kills": 0,
       "assists": 0,
       "deaths": 5
@@ -268,7 +284,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null,
+      "ai_memory": "0 kill, 0 ölüm, 1 uduş, ELO 984, yeni başlayan, təcrübəsiz",
       "kills": 0,
       "assists": 0,
       "deaths": 0
@@ -288,6 +304,22 @@
       "kills": 40,
       "assists": 2,
       "deaths": 18
+    },
+    {
+      "discord_id": 1423975179419385928,
+      "so2_nick": "tt- Astral Eye",
+      "so2_id": "263969635",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
     },
     {
       "discord_id": 1424104516214849617,
@@ -391,7 +423,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 5
+      "last_number": 6
     }
   ],
   "match_history": [
