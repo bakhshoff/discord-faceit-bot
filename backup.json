@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782504066,
+  "exported_at": 1782505446,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -130,6 +130,22 @@
       "deaths": 0
     },
     {
+      "discord_id": 1060637021565112360,
+      "so2_nick": "ReMo",
+      "so2_id": "52923438",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 1066686022500495420,
       "so2_nick": "Xyro~",
       "so2_id": "144159784",
@@ -144,6 +160,22 @@
       "kills": 103,
       "assists": 18,
       "deaths": 128
+    },
+    {
+      "discord_id": 1102666334157938728,
+      "so2_nick": "the lu",
+      "so2_id": "217198668",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
     },
     {
       "discord_id": 1134288537546674238,
@@ -188,7 +220,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Rövanş ruhuna sahib, təcrübə və strategiya axtarır, Rövanş ruhuna sahib, strategiya axtarır, 1016 ELO, Rövanş ruhuna sahib, strategiya axtarır, əsasən 1v1 matçlarında oynayır, ELO 1016, məğlubiyyətdən sonra yeni strategiya axtarır, Rövanş ruhuna sahib, təcrübə axtarır, 1v1 matçlarında oynayır, məğlubiyyətdən sonra yeni strategiya axtarır, 1016 ELO, 1 qələbə, 1 məğlubiyyət, Standoff 2, 1v1, 5v5, ELO 1016, gülmək, əylənmək",
+      "ai_memory": "Rövanş ruhuna sahib, təcrübə və strategiya axtarır, Rövanş ruhuna sahib, strategiya axtarır, 1016 ELO, Rövanş ruhuna sahib, strategiya axtarır, əsasən 1v1 matçlarında oynayır, ELO 1016, məğlubiyyətdən sonra yeni strategiya axtarır, Rövanş ruhuna sahib, təcrübə axtarır, 1v1 matçlarında oynayır, məğlubiyyətdən sonra yeni strategiya axtarır, 1016 ELO, 1 qələbə, 1 məğlubiyyət, Standoff 2, 1v1, 5v5, ELO 1016, gülmək, əylənmək, sevdiyi silah yoxdur, xoşagəlməz mövqe yoxdur, strategiya axtarır, əylənməyə üstünlük verir, təcrübəsi azdır, əhvalı yaxşıdır, gülməyi sevir, əylənməyi sevir",
       "kills": 3,
       "assists": 3,
       "deaths": 21
@@ -370,6 +402,22 @@
       "deaths": 5
     },
     {
+      "discord_id": 1453750341987209308,
+      "so2_nick": "wànś xxx",
+      "so2_id": "265791212",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 1457800486882382022,
       "so2_nick": "Urka____117",
       "so2_id": "279345596",
@@ -439,7 +487,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 6
+      "last_number": 7
     }
   ],
   "match_history": [
