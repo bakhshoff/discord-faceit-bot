@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782496010,
+  "exported_at": 1782498024,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -274,6 +274,22 @@
       "deaths": 0
     },
     {
+      "discord_id": 1399406331714076693,
+      "so2_nick": "Am1n",
+      "so2_id": "268479827",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 1424104516214849617,
       "so2_nick": "SeeyouSo2",
       "so2_id": "175004314",
@@ -375,7 +391,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 3
+      "last_number": 4
     }
   ],
   "match_history": [
