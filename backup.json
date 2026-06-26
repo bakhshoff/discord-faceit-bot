@@ -1,21 +1,21 @@
 {
-  "exported_at": 1782498426,
+  "exported_at": 1782500473,
   "players": [
     {
       "discord_id": 381710974710972416,
       "so2_nick": "AzE _ -Elfat1Ha-",
       "so2_id": "28699896",
-      "elo": 983,
+      "elo": 968,
       "wins": 1,
-      "losses": 2,
-      "coins": 16,
+      "losses": 3,
+      "coins": 20,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 37,
-      "assists": 12,
-      "deaths": 62
+      "kills": 59,
+      "assists": 16,
+      "deaths": 94
     },
     {
       "discord_id": 530035951347433474,
@@ -69,17 +69,17 @@
       "discord_id": 964144436374294609,
       "so2_nick": "Zenith",
       "so2_id": "103233482",
-      "elo": 1023,
-      "wins": 2,
+      "elo": 1038,
+      "wins": 3,
       "losses": 1,
-      "coins": 25,
+      "coins": 32,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 147,
-      "assists": 14,
-      "deaths": 54
+      "kills": 189,
+      "assists": 20,
+      "deaths": 84
     },
     {
       "discord_id": 1001110996657651772,
@@ -101,49 +101,49 @@
       "discord_id": 1066686022500495420,
       "so2_nick": "Xyro~",
       "so2_id": "144159784",
-      "elo": 969,
+      "elo": 954,
       "wins": 1,
-      "losses": 3,
-      "coins": 14,
-      "active_banner": null,
-      "active_frame": null,
-      "zm_balance": 0,
-      "ai_memory": null,
-      "kills": 58,
-      "assists": 15,
-      "deaths": 81
-    },
-    {
-      "discord_id": 1134288537546674238,
-      "so2_nick": "Steel",
-      "so2_id": "211299702",
-      "elo": 986,
-      "wins": 1,
-      "losses": 2,
-      "coins": 15,
-      "active_banner": null,
-      "active_frame": null,
-      "zm_balance": 0,
-      "ai_memory": null,
-      "kills": 86,
-      "assists": 11,
-      "deaths": 55
-    },
-    {
-      "discord_id": 1208089903544672278,
-      "so2_nick": "Antion",
-      "so2_id": "190941124",
-      "elo": 999,
-      "wins": 2,
-      "losses": 2,
+      "losses": 4,
       "coins": 17,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 46,
-      "assists": 11,
-      "deaths": 81
+      "kills": 94,
+      "assists": 15,
+      "deaths": 111
+    },
+    {
+      "discord_id": 1134288537546674238,
+      "so2_nick": "Steel",
+      "so2_id": "211299702",
+      "elo": 974,
+      "wins": 1,
+      "losses": 3,
+      "coins": 20,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 142,
+      "assists": 23,
+      "deaths": 87
+    },
+    {
+      "discord_id": 1208089903544672278,
+      "so2_nick": "Antion",
+      "so2_id": "190941124",
+      "elo": 1014,
+      "wins": 3,
+      "losses": 2,
+      "coins": 26,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 56,
+      "assists": 15,
+      "deaths": 113
     },
     {
       "discord_id": 1228418531951906838,
@@ -156,7 +156,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Rövanş ruhuna sahib, təcrübə və strategiya axtarır",
+      "ai_memory": "Rövanş ruhuna sahib, təcrübə və strategiya axtarır, Rövanş ruhuna sahib, strategiya axtarır, 1016 ELO",
       "kills": 0,
       "assists": 0,
       "deaths": 5
@@ -245,17 +245,17 @@
       "discord_id": 1386319084563726359,
       "so2_nick": "PRİVATE_7777",
       "so2_id": "207429657",
-      "elo": 967,
+      "elo": 952,
       "wins": 1,
-      "losses": 3,
-      "coins": 15,
+      "losses": 4,
+      "coins": 20,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 19,
-      "assists": 4,
-      "deaths": 77
+      "kills": 21,
+      "assists": 6,
+      "deaths": 113
     },
     {
       "discord_id": 1390263674601472041,
@@ -277,17 +277,17 @@
       "discord_id": 1399406331714076693,
       "so2_nick": "Am1n",
       "so2_id": "268479827",
-      "elo": 1000,
-      "wins": 0,
+      "elo": 1015,
+      "wins": 1,
       "losses": 0,
-      "coins": 0,
+      "coins": 6,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 0,
-      "assists": 0,
-      "deaths": 0
+      "kills": 40,
+      "assists": 2,
+      "deaths": 18
     },
     {
       "discord_id": 1424104516214849617,
@@ -325,49 +325,49 @@
       "discord_id": 1457800486882382022,
       "so2_nick": "Urka____117",
       "so2_id": "279345596",
-      "elo": 1001,
-      "wins": 1,
+      "elo": 1016,
+      "wins": 2,
       "losses": 1,
-      "coins": 10,
+      "coins": 18,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 21,
-      "assists": 6,
-      "deaths": 32
+      "kills": 47,
+      "assists": 14,
+      "deaths": 64
     },
     {
       "discord_id": 1478002530284736687,
       "so2_nick": "zyko",
       "so2_id": "198811620",
-      "elo": 1017,
-      "wins": 1,
+      "elo": 1032,
+      "wins": 2,
       "losses": 0,
-      "coins": 5,
+      "coins": 15,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 15,
-      "assists": 4,
-      "deaths": 12
+      "kills": 59,
+      "assists": 14,
+      "deaths": 38
     },
     {
       "discord_id": 1513910231212621890,
       "so2_nick": "PHOENİX",
       "so2_id": "200882046",
-      "elo": 1031,
+      "elo": 1016,
       "wins": 3,
-      "losses": 1,
-      "coins": 23,
+      "losses": 2,
+      "coins": 25,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
-      "kills": 45,
-      "assists": 14,
-      "deaths": 72
+      "kills": 67,
+      "assists": 20,
+      "deaths": 108
     },
     {
       "discord_id": 1518324691117281404,
@@ -391,7 +391,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 4
+      "last_number": 5
     }
   ],
   "match_history": [
@@ -430,6 +430,18 @@
       "winner_elo_after": "[1020, 1017, 1001, 969, 1017]",
       "loser_elo_before": "[1003, 984, 1016, 1048, 1000]",
       "loser_elo_after": "[986, 967, 999, 1031, 983]"
+    },
+    {
+      "id": 12,
+      "match_type": "5v5",
+      "played_at": 1782500467,
+      "match_number": 5,
+      "winner_ids": "[1478002530284736687, 1208089903544672278, 1457800486882382022, 1399406331714076693, 964144436374294609]",
+      "loser_ids": "[1134288537546674238, 1066686022500495420, 1513910231212621890, 1386319084563726359, 381710974710972416]",
+      "winner_elo_before": "[1017, 999, 1001, 1000, 1023]",
+      "winner_elo_after": "[1032, 1014, 1016, 1015, 1038]",
+      "loser_elo_before": "[986, 969, 1031, 967, 983]",
+      "loser_elo_after": "[971, 954, 1016, 952, 968]"
     }
   ],
   "skins": [],
@@ -920,6 +932,105 @@
       "log_type": "earn",
       "balance_after": 25,
       "created_at": 1782498424
+    },
+    {
+      "id": 116,
+      "discord_id": 1478002530284736687,
+      "change": 10,
+      "reason": "Matç No5 qələbə",
+      "log_type": "earn",
+      "balance_after": 15,
+      "created_at": 1782500467
+    },
+    {
+      "id": 117,
+      "discord_id": 1208089903544672278,
+      "change": 9,
+      "reason": "Matç No5 qələbə",
+      "log_type": "earn",
+      "balance_after": 26,
+      "created_at": 1782500467
+    },
+    {
+      "id": 118,
+      "discord_id": 1457800486882382022,
+      "change": 8,
+      "reason": "Matç No5 qələbə",
+      "log_type": "earn",
+      "balance_after": 18,
+      "created_at": 1782500467
+    },
+    {
+      "id": 119,
+      "discord_id": 1399406331714076693,
+      "change": 6,
+      "reason": "Matç No5 qələbə",
+      "log_type": "earn",
+      "balance_after": 6,
+      "created_at": 1782500467
+    },
+    {
+      "id": 120,
+      "discord_id": 964144436374294609,
+      "change": 7,
+      "reason": "Matç No5 qələbə",
+      "log_type": "earn",
+      "balance_after": 32,
+      "created_at": 1782500467
+    },
+    {
+      "id": 121,
+      "discord_id": 1134288537546674238,
+      "change": 0,
+      "reason": "Matç No5 iştirak",
+      "log_type": "earn",
+      "balance_after": 15,
+      "created_at": 1782500467
+    },
+    {
+      "id": 122,
+      "discord_id": 1066686022500495420,
+      "change": 3,
+      "reason": "Matç No5 iştirak",
+      "log_type": "earn",
+      "balance_after": 17,
+      "created_at": 1782500467
+    },
+    {
+      "id": 123,
+      "discord_id": 1513910231212621890,
+      "change": 2,
+      "reason": "Matç No5 iştirak",
+      "log_type": "earn",
+      "balance_after": 25,
+      "created_at": 1782500467
+    },
+    {
+      "id": 124,
+      "discord_id": 1386319084563726359,
+      "change": 5,
+      "reason": "Matç No5 iştirak",
+      "log_type": "earn",
+      "balance_after": 20,
+      "created_at": 1782500467
+    },
+    {
+      "id": 125,
+      "discord_id": 381710974710972416,
+      "change": 4,
+      "reason": "Matç No5 iştirak",
+      "log_type": "earn",
+      "balance_after": 20,
+      "created_at": 1782500467
+    },
+    {
+      "id": 126,
+      "discord_id": 1134288537546674238,
+      "change": 5,
+      "reason": "MVP mükafatı",
+      "log_type": "earn",
+      "balance_after": 20,
+      "created_at": 1782500467
     }
   ],
   "active_boosts": []
