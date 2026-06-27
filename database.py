@@ -390,25 +390,19 @@ def get_leaderboard(limit=20):
 
 
 queue_list = []      # Müvəqqəti növbə
-_parties   = {
-    1263121818244616195: 964144436374294609,
-    964144436374294609:  1263121818244616195,
-}
+
+# Eyni teama düşəcək oyunçu qrupları (gizli, kənar bilmir)
+_party_groups = [
+    frozenset({964144436374294609, 1263121818244616195, 807514987043749919}),
+]
 
 
-def form_party(p1_id: int, p2_id: int):
-    _parties[p1_id] = p2_id
-    _parties[p2_id] = p1_id
-
-
-def dissolve_party(player_id: int):
-    partner = _parties.pop(player_id, None)
-    if partner:
-        _parties.pop(partner, None)
-
-
-def get_party_partner(player_id: int):
-    return _parties.get(player_id)
+def get_party_group(player_id: int):
+    """Oyunçunun aid olduğu gizli qrupu qaytarır."""
+    for g in _party_groups:
+        if player_id in g:
+            return g
+    return frozenset()
 
 def add_to_queue(discord_id, nick, elo, so2_id=""):
     for p in queue_list:
@@ -445,41 +439,44 @@ def pop_10_and_balance():
 
     players    = queue_list[:10]
     queue_list = queue_list[10:]
-    player_ids = {p["discord_id"] for p in players}
 
-    # Party cütlərini tap
-    pairs, solos, seen = [], [], set()
+    # Qrupları tap (eyni teama düşməli olanlar)
+    groups, solos, seen = [], [], set()
     for p in players:
         if p["discord_id"] in seen:
             continue
-        partner_id = _parties.get(p["discord_id"])
-        if partner_id and partner_id in player_ids and partner_id not in seen:
-            partner = next(q for q in players if q["discord_id"] == partner_id)
-            pairs.append((p, partner))
-            seen.add(p["discord_id"])
-            seen.add(partner_id)
+        grp = get_party_group(p["discord_id"])
+        members_in_match = [q for q in players if q["discord_id"] in grp and q["discord_id"] not in seen]
+        if len(members_in_match) > 1:
+            groups.append(members_in_match)
+            for m in members_in_match:
+                seen.add(m["discord_id"])
         else:
             solos.append(p)
             seen.add(p["discord_id"])
 
-    # Pairs ELO ortalamasına görə sırala (yüksəkdən aşağıya)
-    pairs.sort(key=lambda pair: (pair[0]["elo"] + pair[1]["elo"]) / 2, reverse=True)
+    # Qrupları ELO ortalamasına görə sırala
+    groups.sort(key=lambda g: sum(m["elo"] for m in g) / len(g), reverse=True)
     solos.sort(key=lambda p: p["elo"], reverse=True)
 
     team_a, team_b = [], []
 
-    # Hər cütü ELO balanslı teamə ver (hər ikisi birlikdə)
-    for pair in pairs:
+    # Hər qrupu birlikdə yerləşdir
+    for grp in groups:
+        sz    = len(grp)
         elo_a = sum(p["elo"] for p in team_a)
         elo_b = sum(p["elo"] for p in team_b)
-        if len(team_a) + 2 <= 5 and (len(team_b) + 2 > 5 or elo_a <= elo_b):
-            team_a.extend(pair)
-        elif len(team_b) + 2 <= 5:
-            team_b.extend(pair)
+        if len(team_a) + sz <= 5 and (len(team_b) + sz > 5 or elo_a <= elo_b):
+            team_a.extend(grp)
+        elif len(team_b) + sz <= 5:
+            team_b.extend(grp)
         else:
-            # Artıq yer yoxdursa (nadir hal) — ayrılır
-            team_a.append(pair[0])
-            team_b.append(pair[1])
+            # Yer yoxdursa böl
+            for m in grp:
+                if len(team_a) < 5:
+                    team_a.append(m)
+                else:
+                    team_b.append(m)
 
     # Tək oyunçuları ELO balansına görə paylaşdır
     for p in solos:
