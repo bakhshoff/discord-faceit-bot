@@ -188,6 +188,125 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
     return output_path
 
 
+# ── GÜNDƏLİK TAPŞIRIQLAR ─────────────────────────────────────────────────────
+
+ORANGE = (230, 120, 30)
+CYAN   = (60, 200, 200)
+PURPLE = (160, 90, 255)
+
+
+def _progress_bar(draw, x, y, w, h, pct, color, bg=(40, 38, 48)):
+    draw.rectangle([x, y, x+w, y+h], fill=bg, outline=(60,58,68), width=1)
+    if pct > 0:
+        fill_w = max(4, int(w * min(pct, 1.0)))
+        draw.rectangle([x, y, x+fill_w, y+h], fill=color)
+
+
+def generate_tasks_card(active_task, available_tasks, output_path):
+    """
+    active_task: get_player_active_task() çıxışı (dict) ya da None
+    available_tasks: get_active_daily_tasks() çıxışı (list)
+    """
+    CARD_H  = 160
+    PAD     = 18
+    HEADER  = 70
+    FOOTER  = 34
+
+    n       = 1 if active_task else max(1, len(available_tasks))
+    height  = HEADER + n * (CARD_H + 10) + FOOTER
+
+    img  = _bg(height)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(WIDTH-1,height-1)], outline=BORDER, width=2)
+
+    fb = _font(12, True)
+    ft = _font(22, True)
+    fm = _font(14)
+    fs = _font(12)
+    fx = _font(11)
+
+    draw.text((PAD, 12), "CALESTIFY", font=fb, fill=GOLD)
+    draw.text((PAD, 28), "GÜNDƏLİK TAPŞIRIQLAR", font=ft, fill=WHITE)
+    draw.line([(0, HEADER), (WIDTH, HEADER)], fill=BORDER, width=1)
+
+    y = HEADER + 8
+
+    if active_task:
+        # Aktiv tapşırıq kartı
+        a = active_task
+        kp, kt = a["kills_progress"],  max(a["kill_target"],  1) if a["kill_target"]  else 1
+        ap, at = a["assists_progress"], max(a["assist_target"],1) if a["assist_target"] else 1
+        pct_k  = a["kills_progress"]  / a["kill_target"]  if a["kill_target"]  else 1.0
+        pct_a  = a["assists_progress"] / a["assist_target"] if a["assist_target"] else 1.0
+
+        try:
+            exp_dt = datetime.datetime.utcfromtimestamp(a["expires_at"]) + datetime.timedelta(hours=4)
+            tl_sec = max(0, int(a["expires_at"]) - int(datetime.datetime.utcnow().timestamp()))
+            h_left, m_left = tl_sec // 3600, (tl_sec % 3600) // 60
+            time_str = f"{h_left}s {m_left}dəq qalıb  ·  ⏰ {exp_dt.strftime('%H:%M')}"
+        except Exception:
+            time_str = "—"
+
+        cx, cy, cw, ch = PAD, y, WIDTH - PAD*2, CARD_H
+        draw.rectangle([cx, cy, cx+cw, cy+ch], fill=PANEL, outline=ORANGE, width=2)
+        draw.rectangle([cx, cy, cx+cw, cy+28], fill=(50,30,10))
+        draw.text((cx+10, cy+6), "🎯 AKTİV TAPŞIRIQ", font=fb, fill=ORANGE)
+
+        draw.text((cx+10, cy+36), a["description"][:60], font=fm, fill=WHITE)
+        draw.text((cx+10, cy+58), f"Mükafat: 🪙 {a['reward_coins']} coin", font=fs, fill=GOLD)
+        draw.text((cx+10, cy+76), time_str, font=fx, fill=GRAY)
+
+        bar_w = (cw - 30) // 2
+        # Kill progress
+        if a["kill_target"]:
+            draw.text((cx+10, cy+96), f"Kill: {a['kills_progress']}/{a['kill_target']}", font=fx, fill=GREEN)
+            _progress_bar(draw, cx+10, cy+110, bar_w, 14, pct_k, GREEN)
+        # Asist progress
+        if a["assist_target"]:
+            draw.text((cx+bar_w+20, cy+96), f"Asist: {a['assists_progress']}/{a['assist_target']}", font=fx, fill=CYAN)
+            _progress_bar(draw, cx+bar_w+20, cy+110, bar_w, 14, pct_a, CYAN)
+
+        # Overall progress bar
+        overall = (pct_k + pct_a) / (int(bool(a["kill_target"])) + int(bool(a["assist_target"])) or 1)
+        _progress_bar(draw, cx+10, cy+130, cw-20, 18, overall, ORANGE)
+        pct_txt = f"{int(overall*100)}%"
+        draw.text((cx + cw//2 - _tw(draw, pct_txt, fx)//2, cy+132), pct_txt, font=fx, fill=WHITE)
+
+    else:
+        # Mövcud tapşırıqlar siyahısı
+        colors = [GREEN, CYAN, PURPLE]
+        for i, t in enumerate(available_tasks[:3]):
+            cx, cy, cw, ch = PAD, y + i*(CARD_H+10), WIDTH-PAD*2, CARD_H
+            col = colors[i % len(colors)]
+            draw.rectangle([cx, cy, cx+cw, cy+ch], fill=PANEL, outline=col, width=2)
+            draw.rectangle([cx, cy, cx+cw, cy+28], fill=(10,20,10))
+            draw.text((cx+10, cy+6), f"📋 TAPŞIRIQ {i+1}", font=fb, fill=col)
+
+            draw.text((cx+10, cy+36), t["description"][:58], font=fm, fill=WHITE)
+
+            details = []
+            if t["kill_target"]:  details.append(f"🔫 {t['kill_target']} Kill")
+            if t["assist_target"]: details.append(f"🤝 {t['assist_target']} Asist")
+            draw.text((cx+10, cy+62), "  ".join(details) if details else "Hədəf yoxdur", font=fs, fill=GRAY)
+
+            draw.text((cx+10, cy+86), f"🪙 Mükafat: {t['reward_coins']} coin", font=fs, fill=GOLD)
+
+            try:
+                exp = datetime.datetime.utcfromtimestamp(t["expires_at"]) + datetime.timedelta(hours=4)
+                tl  = max(0, int(t["expires_at"]) - int(datetime.datetime.utcnow().timestamp()))
+                h2, m2 = tl//3600, (tl%3600)//60
+                draw.text((cx+10, cy+108), f"⏰ {exp.strftime('%H:%M')} bitər  ·  {h2}s {m2}dəq qalıb", font=fx, fill=GRAY)
+            except Exception:
+                pass
+
+            # Dekorativ rəngli şerit
+            draw.rectangle([cx, cy+ch-8, cx+cw, cy+ch-2], fill=col)
+
+    draw.text((PAD, height-FOOTER+6), "Calestify Gaming Community  ·  /gunluk", font=fx, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
 # ── iNVENTAR ────────────────────────────────────────────────────────────────
 
 def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, get_item_by_id_fn, output_path):

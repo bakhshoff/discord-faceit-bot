@@ -45,7 +45,7 @@ try:
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
     from profile_card import generate_profile_card
-    from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card
+    from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card, generate_tasks_card
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
@@ -850,38 +850,25 @@ class PlayerProfileView(discord.ui.View):
 
     @discord.ui.button(label="Tapşırıqlar", style=discord.ButtonStyle.success, emoji="🎯", custom_id="profile_tasks", row=2)
     async def open_tasks(self, interaction: discord.Interaction, button: discord.ui.Button):
-        import datetime as _dt
+        await interaction.response.defer(ephemeral=True)
         refresh_daily_tasks()
         fail_expired_tasks()
         active = get_player_active_task(self.discord_id)
         tasks  = get_active_daily_tasks()
 
-        if active:
-            exp = _dt.datetime.utcfromtimestamp(active["expires_at"]) + _dt.timedelta(hours=4)
-            pct_k = min(100, int(active["kills_progress"]  / active["kill_target"]  * 100)) if active["kill_target"]  else 100
-            pct_a = min(100, int(active["assists_progress"] / active["assist_target"] * 100)) if active["assist_target"] else 100
-            embed = discord.Embed(title="🎯 Aktiv Tapşırığınız", color=discord.Color.orange())
-            embed.add_field(name="Tapşırıq",    value=active["description"],                               inline=False)
-            embed.add_field(name="Kill",        value=f"{active['kills_progress']}/{active['kill_target']} ({pct_k}%)",    inline=True)
-            embed.add_field(name="Asist",       value=f"{active['assists_progress']}/{active['assist_target']} ({pct_a}%)", inline=True)
-            embed.add_field(name="Mükafat",     value=f"🪙 {active['reward_coins']} coin",                 inline=True)
-            embed.add_field(name="⏰ Son tarix", value=exp.strftime("%d.%m.%Y %H:%M"),                      inline=True)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+        if not active and not tasks:
+            await interaction.followup.send("⏳ Aktiv tapşırıq yoxdur, tezliklə yenilənir.", ephemeral=True)
             return
 
-        if not tasks:
-            await interaction.response.send_message("⏳ Aktiv tapşırıq yoxdur, yezliklə yenilənir.", ephemeral=True)
-            return
+        path = os.path.join(DATA_DIR or ".", f"tasks_{self.discord_id}.png")
+        await asyncio.to_thread(generate_tasks_card, active, tasks, path)
 
-        embed = discord.Embed(title="📋 Günlük Tapşırıqlar", description="Birini seçin:", color=discord.Color.gold())
-        for t in tasks:
-            exp = _dt.datetime.utcfromtimestamp(t["expires_at"]) + _dt.timedelta(hours=4)
-            embed.add_field(
-                name=t["description"],
-                value=f"Kill: {t['kill_target']}  Asist: {t['assist_target']}\n🪙 {t['reward_coins']} coin  ·  ⏰ {exp.strftime('%H:%M')}",
-                inline=False
-            )
-        await interaction.response.send_message(embed=embed, view=TaskSelectView(self.discord_id, tasks), ephemeral=True)
+        view = TaskSelectView(self.discord_id, tasks) if not active and tasks else None
+        await interaction.followup.send(
+            file=discord.File(path, filename="tasks.png"),
+            view=view,
+            ephemeral=True
+        )
 
 
 class NickChangeModal(discord.ui.Modal, title="Nick Dəyişdir"):
@@ -2117,42 +2104,21 @@ class TaskSelectView(discord.ui.View):
 
 @bot.tree.command(name="gunluk", description="Günlük tapşırıqları göstərir")
 async def gunluk_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     refresh_daily_tasks()
     fail_expired_tasks()
-    tasks   = get_active_daily_tasks()
-    active  = get_player_active_task(interaction.user.id)
-    import time
+    active = get_player_active_task(interaction.user.id)
+    tasks  = get_active_daily_tasks()
 
-    if active:
-        import datetime as dt
-        exp = dt.datetime.utcfromtimestamp(active["expires_at"]) + dt.timedelta(hours=4)
-        prog_k = active["kills_progress"]
-        prog_a = active["assists_progress"]
-        pct_k  = min(100, int(prog_k / active["kill_target"] * 100)) if active["kill_target"] else 100
-        pct_a  = min(100, int(prog_a / active["assist_target"] * 100)) if active["assist_target"] else 100
-        embed  = discord.Embed(title="🎯 Aktiv Tapşırığınız", color=discord.Color.orange())
-        embed.add_field(name="Tapşırıq",    value=active["description"],       inline=False)
-        embed.add_field(name="Kill",        value=f"{prog_k}/{active['kill_target']} ({pct_k}%)",   inline=True)
-        embed.add_field(name="Asist",       value=f"{prog_a}/{active['assist_target']} ({pct_a}%)", inline=True)
-        embed.add_field(name="Mükafat",     value=f"🪙 {active['reward_coins']} coin",              inline=True)
-        embed.add_field(name="⏰ Son tarix", value=exp.strftime("%d.%m.%Y %H:%M"),                  inline=True)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    if not active and not tasks:
+        await interaction.followup.send("⏳ Hazırda aktiv tapşırıq yoxdur.", ephemeral=True)
         return
 
-    if not tasks:
-        await interaction.response.send_message("⏳ Hazırda aktiv tapşırıq yoxdur, tezliklə yenilənəcək.", ephemeral=True)
-        return
+    path = os.path.join(DATA_DIR or ".", f"tasks_{interaction.user.id}.png")
+    await asyncio.to_thread(generate_tasks_card, active, tasks, path)
 
-    embed = discord.Embed(title="📋 Günlük Tapşırıqlar", description="Birini seçin:", color=discord.Color.gold())
-    for t in tasks:
-        import datetime as dt
-        exp = dt.datetime.utcfromtimestamp(t["expires_at"]) + dt.timedelta(hours=4)
-        embed.add_field(
-            name=t["description"],
-            value=f"Kill: {t['kill_target']}  Asist: {t['assist_target']}\n🪙 {t['reward_coins']} coin  ·  ⏰ {exp.strftime('%H:%M')}",
-            inline=False
-        )
-    await interaction.response.send_message(embed=embed, view=TaskSelectView(interaction.user.id, tasks), ephemeral=True)
+    view = TaskSelectView(interaction.user.id, tasks) if not active and tasks else None
+    await interaction.followup.send(file=discord.File(path, filename="tasks.png"), view=view, ephemeral=True)
 
 
 @bot.event

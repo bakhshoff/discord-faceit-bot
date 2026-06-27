@@ -151,7 +151,6 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     zm_text = f"{zm_val:.1f} AZN"
     bbox_zm = draw.textbbox((0,0), zm_text, font=f_coin)
     draw.text((WIDTH-28-(bbox_zm[2]-bbox_zm[0]), 38), zm_text, font=f_coin, fill=(80,200,120))
-    draw.text((WIDTH-28-_tw(draw,"250=0.5 AZN",f_small), 58), "250=0.5 AZN", font=f_small, fill=GRAY)
 
     # ── Avatar ────────────────────────────────────────────────────────────────
     av_size, av_x, av_y = 130, 28, 82
