@@ -1124,16 +1124,22 @@ class MapVoteView(discord.ui.View):
             self.add_item(btn)
 
     async def on_timeout(self):
-        if self.votes:
-            from collections import Counter
-            counts   = Counter(self.votes.values())
-            max_cnt  = max(counts.values())
-            top_maps = [m for m, c in counts.items() if c == max_cnt]
-            selected_map = random.choice(top_maps)   # bərabərlik varsa random
-        else:
-            selected_map = random.choice(MAPS)        # heç kim seçməsə random
-        await _launch_match(self.match_number, selected_map, self.team_a, self.team_b,
-                            self.captain_a_id, self.captain_b_id, self.channel, self.guild)
+        try:
+            if self.votes:
+                from collections import Counter
+                counts   = Counter(self.votes.values())
+                max_cnt  = max(counts.values())
+                top_maps = [m for m, c in counts.items() if c == max_cnt]
+                selected_map = random.choice(top_maps)
+            else:
+                selected_map = random.choice(MAPS)
+        except Exception:
+            selected_map = random.choice(MAPS)
+        try:
+            await _launch_match(self.match_number, selected_map, self.team_a, self.team_b,
+                                self.captain_a_id, self.captain_b_id, self.channel, self.guild)
+        except Exception as e:
+            print(f"[MapVote] _launch_match xətası: {e}", flush=True)
 
 
 async def _start_match(channel, guild):
