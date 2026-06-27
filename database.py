@@ -1227,32 +1227,50 @@ def confirm_scan(scan_id):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def refresh_daily_tasks():
-    """Vaxtı keçmiş tapşırıqları silir, 3 aktiv tapşırıq olmasını təmin edir."""
+    """Vaxtı keçmiş tapşırıqları silir, 3 unikal aktiv tapşırıq yaradır."""
     import time, random as rnd
     TASK_POOL = [
-        ("24 saat ərzində 35 kill əldə et",    35, 0,  80),
-        ("24 saat ərzində 20 kill əldə et",    20, 0,  45),
-        ("24 saat ərzində 10 asist et",          0, 10, 35),
-        ("24 saat ərzində 50 kill əldə et",    50, 0, 120),
-        ("24 saat ərzində 30 kill + 5 asist",  30, 5,  90),
-        ("24 saat ərzində 15 kill + 10 asist", 15, 10, 65),
-        ("24 saat ərzində 25 kill əldə et",    25, 0,  55),
-        ("24 saat ərzində 40 kill əldə et",    40, 0, 100),
-        ("24 saat ərzində 8 asist et",           0, 8,  30),
-        ("24 saat ərzində 45 kill + 3 asist",  45, 3, 110),
+        ("35 kill əldə et",          35, 0,  80),
+        ("20 kill əldə et",          20, 0,  45),
+        ("10 asist et",               0, 10, 35),
+        ("50 kill əldə et",          50, 0, 120),
+        ("30 kill + 5 asist",        30, 5,  90),
+        ("15 kill + 10 asist",       15, 10, 65),
+        ("25 kill əldə et",          25, 0,  55),
+        ("40 kill əldə et",          40, 0, 100),
+        ("8 asist et",                0, 8,  30),
+        ("45 kill + 3 asist",        45, 3, 110),
+        ("10 kill + 8 asist",        10, 8,  60),
+        ("60 kill əldə et",          60, 0, 150),
+        ("5 asist et",                0, 5,  25),
+        ("20 kill + 5 asist",        20, 5,  70),
+        ("12 asist et",               0, 12, 45),
     ]
     conn = _get_conn()
     cursor = conn.cursor()
     now = int(time.time())
     cursor.execute("DELETE FROM daily_tasks WHERE expires_at <= ?", (now,))
+
+    # Hal-hazırda aktiv olan tapşırıqların açıqlamasını al (təkrar olmasın)
+    cursor.execute("SELECT description FROM daily_tasks WHERE active=1 AND expires_at > ?", (now,))
+    existing_descs = {r[0] for r in cursor.fetchall()}
+
     cursor.execute("SELECT COUNT(*) FROM daily_tasks WHERE active=1 AND expires_at > ?", (now,))
-    count = cursor.fetchone()[0]
+    count  = cursor.fetchone()[0]
     needed = 3 - count
-    exp = now + 86400
-    for _ in range(needed):
-        desc, kt, at, rc = rnd.choice(TASK_POOL)
-        cursor.execute("INSERT INTO daily_tasks (description, kill_target, assist_target, reward_coins, active, expires_at) VALUES (?,?,?,?,1,?)",
-                       (desc, kt, at, rc, exp))
+
+    # Mövcud olanlardan fərqli tapşırıqları seç
+    available = [t for t in TASK_POOL if t[0] not in existing_descs]
+    if len(available) < needed:
+        available = TASK_POOL  # Çatmasa bütün pooldan seç
+
+    chosen = rnd.sample(available, min(needed, len(available)))
+    exp    = now + 86400
+    for desc, kt, at, rc in chosen:
+        cursor.execute(
+            "INSERT INTO daily_tasks (description, kill_target, assist_target, reward_coins, active, expires_at) VALUES (?,?,?,?,1,?)",
+            (desc, kt, at, rc, exp)
+        )
     conn.commit()
     conn.close()
 

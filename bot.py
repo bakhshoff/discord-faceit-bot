@@ -848,6 +848,41 @@ class PlayerProfileView(discord.ui.View):
         current_nick = player[1] if player else ""
         await interaction.response.send_modal(NickChangeModal(self.discord_id, current_nick))
 
+    @discord.ui.button(label="Tapşırıqlar", style=discord.ButtonStyle.success, emoji="🎯", custom_id="profile_tasks", row=2)
+    async def open_tasks(self, interaction: discord.Interaction, button: discord.ui.Button):
+        import datetime as _dt
+        refresh_daily_tasks()
+        fail_expired_tasks()
+        active = get_player_active_task(self.discord_id)
+        tasks  = get_active_daily_tasks()
+
+        if active:
+            exp = _dt.datetime.utcfromtimestamp(active["expires_at"]) + _dt.timedelta(hours=4)
+            pct_k = min(100, int(active["kills_progress"]  / active["kill_target"]  * 100)) if active["kill_target"]  else 100
+            pct_a = min(100, int(active["assists_progress"] / active["assist_target"] * 100)) if active["assist_target"] else 100
+            embed = discord.Embed(title="🎯 Aktiv Tapşırığınız", color=discord.Color.orange())
+            embed.add_field(name="Tapşırıq",    value=active["description"],                               inline=False)
+            embed.add_field(name="Kill",        value=f"{active['kills_progress']}/{active['kill_target']} ({pct_k}%)",    inline=True)
+            embed.add_field(name="Asist",       value=f"{active['assists_progress']}/{active['assist_target']} ({pct_a}%)", inline=True)
+            embed.add_field(name="Mükafat",     value=f"🪙 {active['reward_coins']} coin",                 inline=True)
+            embed.add_field(name="⏰ Son tarix", value=exp.strftime("%d.%m.%Y %H:%M"),                      inline=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if not tasks:
+            await interaction.response.send_message("⏳ Aktiv tapşırıq yoxdur, yezliklə yenilənir.", ephemeral=True)
+            return
+
+        embed = discord.Embed(title="📋 Günlük Tapşırıqlar", description="Birini seçin:", color=discord.Color.gold())
+        for t in tasks:
+            exp = _dt.datetime.utcfromtimestamp(t["expires_at"]) + _dt.timedelta(hours=4)
+            embed.add_field(
+                name=t["description"],
+                value=f"Kill: {t['kill_target']}  Asist: {t['assist_target']}\n🪙 {t['reward_coins']} coin  ·  ⏰ {exp.strftime('%H:%M')}",
+                inline=False
+            )
+        await interaction.response.send_message(embed=embed, view=TaskSelectView(self.discord_id, tasks), ephemeral=True)
+
 
 class NickChangeModal(discord.ui.Modal, title="Nick Dəyişdir"):
     new_nick = discord.ui.TextInput(
@@ -1089,11 +1124,14 @@ class MapVoteView(discord.ui.View):
             self.add_item(btn)
 
     async def on_timeout(self):
-        selected_map = max(self.votes, key=lambda k: list(self.votes.values()).count(self.votes[k]), default=None)
-        if selected_map:
-            selected_map = self.votes[selected_map]
+        if self.votes:
+            from collections import Counter
+            counts   = Counter(self.votes.values())
+            max_cnt  = max(counts.values())
+            top_maps = [m for m, c in counts.items() if c == max_cnt]
+            selected_map = random.choice(top_maps)   # bərabərlik varsa random
         else:
-            selected_map = random.choice(MAPS)
+            selected_map = random.choice(MAPS)        # heç kim seçməsə random
         await _launch_match(self.match_number, selected_map, self.team_a, self.team_b,
                             self.captain_a_id, self.captain_b_id, self.channel, self.guild)
 
