@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782583522,
+  "exported_at": 1782587563,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -76,7 +76,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, məqsədi yoxdur, sevdiyi silah yoxdur, oyun stili yoxdur",
+      "ai_memory": "adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, məqsədi yoxdur, sevdiyi silah yoxdur, oyun stili yoxdur, istifadəçi əyləncə sevən, azərbaycan dilində danışan, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, Faceit-dəki görevi var, 40 kill almali, Faceit-dəki görevi var, 40 kill almali, 100% öldürməyə nail olmaq istəyir",
       "kills": 189,
       "assists": 19,
       "deaths": 70
@@ -348,7 +348,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Ciddi və qaynar xarakter, könüllü, cəmiyyətə bağlı, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı yoxdur, yaşı yoxdur, könüllü, cəmiyyətə bağlı, aura istəyi, coin toplamaq istəyi, strategiya barədə fikirləşmək istəyi, Sevdiyi aura=14-cü aura, oyun stili=əsəbi, məqsədi=aura almaq",
+      "ai_memory": "yun stili, 14-cü auranı sevir, qaynar xarakter, strategiya barədə fikirləşmək istəyi, Sevdiyi aura=14-cü aura, oyun stili=əsəbi, məqsədi=aura almaq, qaynar xarakter, LORD AİZEN, əsəbi oyun stili, 14-cü auranı sevir, qaynar xarakter, strategiya barədə fikirləşmək istəyi, sevdiyi aura=14-cü aura, oyun stili=əsəbi, məqsədi=aura almaq, qaynar xarakter, adı=LORD AİZEN, könüllü, cəmiyyətə bağlı, aura istəyi, coin toplamaq istəyi, strategiya barədə fikirləşmək istəyi, sevdiyi aura=14-cü aura, oyun stili=əsəbi, məqsədi=aura almaq, qaynar xarakter, könüllü, cəmiyyətə bağlı, aura istəyi, coin toplamaq istəyi, strategiya barədə fikirləşmək istəyi, adı=LORD AİZEN, ELO=1016, Wins=2, Losses=1, Win Rate=66.7%, Coins=15, sevdiyi aura=14-cü aura, oyun stili=əsəbi, məqsədi=aura almaq, qaynar xarakter, LORD AİZEN, əsəbi oyun stili, 14-cü auranı sevir, qaynar xarakter, strategiya barədə fikirləşmək istəyi, LORD AİZEN, cəmiyyətə bağlı, aura istəyi, coin toplamaq istəyi, strategiya barədə fikirləşmək istəyi",
       "kills": 27,
       "assists": 5,
       "deaths": 55
@@ -482,6 +482,22 @@
       "deaths": 85
     },
     {
+      "discord_id": 1476543366438191174,
+      "so2_nick": "ichigo",
+      "so2_id": "136982105",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 1478002530284736687,
       "so2_nick": "zyko",
       "so2_id": "198811620",
@@ -561,7 +577,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 7
+      "last_number": 8
     }
   ],
   "match_history": [
