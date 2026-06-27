@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782507822,
+  "exported_at": 1782567201,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -332,7 +332,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "Ciddi və qaynar xarakter, könüllü, cəmiyyətə bağlı, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı yoxdur, yaşı yoxdur, könüllü, cəmiyyətə bağlı",
+      "ai_memory": "Ciddi və qaynar xarakter, könüllü, cəmiyyətə bağlı, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı yoxdur, yaşı yoxdur, könüllü, cəmiyyətə bağlı, aura istəyi, coin toplamaq istəyi, strategiya barədə fikirləşmək istəyi, Sevdiyi aura=14-cü aura, oyun stili=əsəbi, məqsədi=aura almaq",
       "kills": 27,
       "assists": 5,
       "deaths": 55
@@ -480,6 +480,22 @@
       "kills": 69,
       "assists": 17,
       "deaths": 58
+    },
+    {
+      "discord_id": 1482470627397865743,
+      "so2_nick": "Teeth",
+      "so2_id": "223866931",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
     },
     {
       "discord_id": 1513910231212621890,
