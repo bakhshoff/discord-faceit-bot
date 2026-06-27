@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782567201,
+  "exported_at": 1782583522,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -82,6 +82,22 @@
       "deaths": 70
     },
     {
+      "discord_id": 855719280086876161,
+      "so2_nick": "私sham1l",
+      "so2_id": "161200602",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
+    },
+    {
       "discord_id": 964144436374294609,
       "so2_nick": "Zenith",
       "so2_id": "103233482",
@@ -92,7 +108,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null,
+      "ai_memory": "Nick=Zenith, ELO=1038, Wins=4, Losses=2, Win Rate=66.7%, Coins=142",
       "kills": 243,
       "assists": 28,
       "deaths": 114
@@ -531,7 +547,17 @@
     }
   ],
   "inventory": [],
-  "giveaways": [],
+  "giveaways": [
+    {
+      "id": 11,
+      "mukafat": "1000 Gold",
+      "end_unix": 1782643688,
+      "winner_id": 1482198313251110984,
+      "channel_id": 1517459829268938792,
+      "message_id": 1520470803173474346,
+      "finished": 0
+    }
+  ],
   "match_counter": [
     {
       "id": 1,
