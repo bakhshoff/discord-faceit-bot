@@ -1189,7 +1189,8 @@ def _apply_mvp(all_players: list, stats: dict):
     return None, 0
 
 
-def _build_match_active_embed(match_number, selected_map, team_a, team_b):
+def _build_match_active_embed(match_number, selected_map, team_a, team_b,
+                               captain_a_id=None, captain_b_id=None):
     """Aktiv matç embedi — logs kanalına göndərilir."""
     embed = discord.Embed(
         title=f"🎮 MATÇ No{match_number} — DAVAM EDİR",
@@ -1199,11 +1200,16 @@ def _build_match_active_embed(match_number, selected_map, team_a, team_b):
     embed.add_field(name="⏱️ Status", value="🟡 Oyun davam edir...", inline=True)
     embed.add_field(name="​", value="​", inline=True)
 
-    a_lines = "\n".join(f"▸ {p['nick']} — `{p['elo']} ELO`" for p in team_a)
-    b_lines = "\n".join(f"▸ {p['nick']} — `{p['elo']} ELO`" for p in team_b)
-    embed.add_field(name="🔵 KOMANDA A", value=a_lines or "—", inline=True)
-    embed.add_field(name="🔴 KOMANDA B", value=b_lines or "—", inline=True)
-    embed.set_footer(text="Matç bitdikdən sonra kapitan nəticəni #results kanalına göndərsin.")
+    def fmt(team, cap_id):
+        lines = []
+        for p in team:
+            prefix = "⭐" if p["discord_id"] == cap_id else "▸"
+            lines.append(f"{prefix} {p['nick']} — `{p['elo']} ELO`")
+        return "\n".join(lines)
+
+    embed.add_field(name="🔵 KOMANDA A", value=fmt(team_a, captain_a_id) or "—", inline=True)
+    embed.add_field(name="🔴 KOMANDA B", value=fmt(team_b, captain_b_id) or "—", inline=True)
+    embed.set_footer(text="⭐ = Kapitan  ·  Matç bitdikdən sonra kapitan nəticəni #results kanalına göndərsin.")
     return embed
 
 
@@ -1293,7 +1299,8 @@ async def _launch_match(match_number, selected_map, team_a, team_b, captain_a_id
     log_ch     = bot.get_channel(LOG_CHANNEL_ID)
     log_msg_id = None
     if log_ch:
-        active_embed = _build_match_active_embed(match_number, selected_map, team_a, team_b)
+        active_embed = _build_match_active_embed(match_number, selected_map, team_a, team_b,
+                                                  captain_a_id, captain_b_id)
         log_msg = await log_ch.send(
             content=mentions,
             embed=active_embed,
