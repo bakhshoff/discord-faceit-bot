@@ -391,19 +391,6 @@ def get_leaderboard(limit=20):
 
 queue_list = []      # Müvəqqəti növbə
 
-# Eyni teama düşəcək oyunçu qrupları (gizli, kənar bilmir)
-_party_groups = [
-    frozenset({964144436374294609, 1263121818244616195, 807514987043749919}),
-]
-
-
-def get_party_group(player_id: int):
-    """Oyunçunun aid olduğu gizli qrupu qaytarır."""
-    for g in _party_groups:
-        if player_id in g:
-            return g
-    return frozenset()
-
 def add_to_queue(discord_id, nick, elo, so2_id=""):
     for p in queue_list:
         if p["discord_id"] == discord_id:
@@ -440,49 +427,11 @@ def pop_10_and_balance():
     players    = queue_list[:10]
     queue_list = queue_list[10:]
 
-    # Qrupları tap (eyni teama düşməli olanlar)
-    groups, solos, seen = [], [], set()
-    for p in players:
-        if p["discord_id"] in seen:
-            continue
-        grp = get_party_group(p["discord_id"])
-        members_in_match = [q for q in players if q["discord_id"] in grp and q["discord_id"] not in seen]
-        if len(members_in_match) > 1:
-            groups.append(members_in_match)
-            for m in members_in_match:
-                seen.add(m["discord_id"])
-        else:
-            solos.append(p)
-            seen.add(p["discord_id"])
-
-    # Qrupları ELO ortalamasına görə sırala
-    groups.sort(key=lambda g: sum(m["elo"] for m in g) / len(g), reverse=True)
-    solos.sort(key=lambda p: p["elo"], reverse=True)
-
+    # Saf ELO balansı — yüksəkdən aşağıya sırala, snake draft
+    players_sorted = sorted(players, key=lambda p: p["elo"], reverse=True)
     team_a, team_b = [], []
-
-    # Hər qrupu birlikdə yerləşdir
-    for grp in groups:
-        sz    = len(grp)
-        elo_a = sum(p["elo"] for p in team_a)
-        elo_b = sum(p["elo"] for p in team_b)
-        if len(team_a) + sz <= 5 and (len(team_b) + sz > 5 or elo_a <= elo_b):
-            team_a.extend(grp)
-        elif len(team_b) + sz <= 5:
-            team_b.extend(grp)
-        else:
-            # Yer yoxdursa böl
-            for m in grp:
-                if len(team_a) < 5:
-                    team_a.append(m)
-                else:
-                    team_b.append(m)
-
-    # Tək oyunçuları ELO balansına görə paylaşdır
-    for p in solos:
-        elo_a = sum(pl["elo"] for pl in team_a)
-        elo_b = sum(pl["elo"] for pl in team_b)
-        if len(team_a) < 5 and (len(team_b) >= 5 or elo_a <= elo_b):
+    for i, p in enumerate(players_sorted):
+        if i % 4 in (0, 3):
             team_a.append(p)
         else:
             team_b.append(p)
