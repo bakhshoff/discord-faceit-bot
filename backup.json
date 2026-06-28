@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782591127,
+  "exported_at": 1782648000,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -80,6 +80,22 @@
       "kills": 239,
       "assists": 23,
       "deaths": 81
+    },
+    {
+      "discord_id": 820700268446482442,
+      "so2_nick": "Wice",
+      "so2_id": "128975686",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0
     },
     {
       "discord_id": 855719280086876161,
@@ -587,7 +603,7 @@
       "winner_id": 1482198313251110984,
       "channel_id": 1517459829268938792,
       "message_id": 1520470803173474346,
-      "finished": 0
+      "finished": 1
     }
   ],
   "match_counter": [
