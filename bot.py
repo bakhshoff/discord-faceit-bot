@@ -3517,132 +3517,116 @@ async def elan_cmd(interaction: discord.Interaction,
 
     # ── Əsas elan embedi ──────────────────────────────────────────────────────
     embed = discord.Embed(
-        title="📢 CALESTIFY FACEIT — YENİLİKLƏR",
+        title="📢 CALESTIFY FACEIT — TAM YENİLƏMƏ",
         description=(
-            "Salam **Calestify** cəmiyyəti! 🎮\n\n"
-            "Botumuz ciddi şəkildə yeniləndi. Çoxlu yeni funksiya, vizual sistem "
-            "və oyun mexanikası əlavə edildi. Aşağıda hamısını oxuyun!"
+            "Salam **Calestify** cəmiyyəti!\n\n"
+            "Bot sistemimiz köklü şəkildə yeniləndi — yeni funksiyalar, vizual kartlar, "
+            "rəqabət mexanizmləri və daha çox. Aşağıda hamısını oxuyun!"
         ),
         color=0x5865F2
     )
 
     embed.add_field(
+        name="🗺️ XƏRİTƏ VETO SİSTEMİ",
+        value=(
+            "Artıq random xəritə seçilmir — **kapitanlar növbə ilə ban edir!**\n"
+            "7 xəritədən 6-sı ban edilir, 1-i qalır.\n"
+            "Kapitan A banlar → Kapitan B banlar → növbəylə...\n"
+            "_120 saniyə timeout-da qalan xəritələrdən random seçilir._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📊 OYUNÇU MÜQAYİSƏSİ",
+        value=(
+            "`/muqayise @oyuncu1 @oyuncu2` — İki oyunçunun statistikası yan-yana:\n"
+            "ELO · Pik ELO · Win% · K/D · Kill · Asist · Streak\n"
+            "_Üstün olan yaşıl, aşağı olan qırmızı rənglə göstərilir._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📈 ELO QRAFİK + PİK ELO",
+        value=(
+            "`/elo_grafik` — ELO-nuzun zaman üzrə dəyişimini vizual qrafik şəklində görün.\n"
+            "Hər matçdan sonra ELO avtomatik qeydə alınır.\n"
+            "**Pik ELO** — Tarixi ən yüksək ELO profildə ayrıca göstərilir."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="💸 COİN TRANSFER",
+        value=(
+            "`/gonder @oyuncu miktar` — Başqa oyunçuya coin göndərin.\n"
+            "• Göndərəndən tam məbləğ çıxır\n"
+            "• Alan oyunçu **80%** alır (20% komissiya tutulur)\n"
+            "_Göndərməzdən əvvəl təsdiq paneli açılır._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
         name="🔥 SERIYA BONUSU (WIN STREAK)",
         value=(
-            "Art-arda qazandığınız matçlara görə **bonus coin + bonus ELO** qazanırsınız:\n"
-            "🔥 3 ardıcıl qələbə → **+5🪙 +1 ELO**\n"
-            "💥 5 ardıcıl qələbə → **+10🪙 +2 ELO**\n"
-            "⚡ 7 ardıcıl qələbə → **+15🪙 +3 ELO**\n"
-            "👑 10 ardıcıl qələbə → **+20🪙 +5 ELO**\n"
-            "_Məğlubiyyətdə seriya sıfırlanır. Max seriya profildə görünür._"
+            "Art-arda qazandığınız matçlara görə **bonus coin + ELO** qazanırsınız:\n"
+            "3 qələbə → +5 coin +1 ELO  ·  5 qələbə → +10 coin +2 ELO\n"
+            "7 qələbə → +15 coin +3 ELO  ·  10 qələbə → +20 coin +5 ELO\n"
+            "_Məğlubiyyətdə seriya sıfırlanır._"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="💎 RANK SİSTEMİ",
+        name="💎 RANK + NAİLİYYƏT SİSTEMİ",
         value=(
-            "ELO-nuzdan asılı olaraq avtomatik rank alırsınız:\n"
-            "🩶 **Gümüş** — 0–1099 ELO\n"
-            "🥇 **Qızıl** — 1100–1199 ELO\n"
-            "💎 **Almaz** — 1200–1349 ELO\n"
-            "👑 **Elite** — 1500–1699 ELO\n"
-            "🌟 **Master** — 1700+ ELO\n"
-            "_`/stats` ilə özünüzün və ya başqasının rankını görə bilərsiniz._"
+            "**Rank:** ELO-ya görə avtomatik — Gümüş → Qızıl → Almaz → Elite → Master\n"
+            "**Nailiyyətlər:** 15 fərqli badge — ilk matç, kill, MVP, streak, ELO hədəfləri\n"
+            "`/nailiyyetler` — Kartınızı görün · `/stats` — Tam vizual statistika"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="🏅 NAİLİYYƏTLƏR (ACHIEVEMENTS)",
+        name="🎲 MATÇ MƏRCİ + GÜNLÜK TAPŞIRIQLAR",
         value=(
-            "15 fərqli nailiyyət var — matçda, tapşırıqlarda, ELO-da irəlilədikcə **avtomatik açılır**:\n"
-            "🎮 İlk Matç  ·  🏆 10/50 Qələbə  ·  🔫 50/100/500 Kill\n"
-            "⭐ 3/10 dəfə MVP  ·  🔥 Streak 3/5/10  ·  🗡️ KD 2.0+\n"
-            "💎 1200 ELO  ·  👑 1500 ELO  ·  🎯 10 tapşırıq\n"
-            "_`/nailiyyetler` ilə nailiyyət kartınıza baxın._"
+            "**Mərc:** `/merc` — Matç qalibi üçün coin mərc et, düz tapsan **2x** qazanırsan\n"
+            "**Tapşırıqlar:** `/gunluk` — 24 saatlıq kill/asist tapşırıqları, coin mükafatı\n"
+            "_Tapşırıq progressi profildə vizual kart şəklində görünür._"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="🎲 MATÇ MƏRCİ",
+        name="📋 FƏALİYYƏT + SEZON",
         value=(
-            "Hər matçdan əvvəl **Komanda A** ya **Komanda B** üçün coin mərc edə bilərsiniz!\n"
-            "• Düz tapırsanız: **2x** geri alırsınız\n"
-            "• Yanlış tapırsanız: mərc itirilir\n"
-            "_`/merc` komasını istifadə edin. Matç başladıqdan sonra mərc bağlanır._"
+            "`/ferealiyyet` — Son N gündə matç sayı, ən aktiv oyunçular, toplam kill\n"
+            "`/sezon` — Cari sezon leaderboard (ELO qazancı + K/D)\n"
+            "**Sezon sonu:** Top 3 avtomatik +500/300/150 coin mükafatı alır"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="⚠️ XƏBƏRDARLIQ / BAN SİSTEMİ",
+        name="⚠️ VACİB — SCAN + QEYDIYYAT",
         value=(
-            "Qaydaları pozan oyunçulara admin tərəfindən xəbərdarlıq verilir:\n"
-            "• **3 xəbərdarlıq** → Avtomatik ban (queue-ya girə bilməz)\n"
-            "• Banlanmış oyunçu sıraya qoşula bilmir\n"
-            "• `/xeberdarliqlar @oyuncu` ilə xəbərdarlıq tarixçəsini görə bilərsiniz"
+            "**Scan sistemi:** Matç sonunda skor şəkli **Claude AI** ilə oxunur.\n"
+            "Qeydiyyatdakı adınız oyundakı adla **tam eyni** olmalıdır!\n"
+            "Uyğun gəlməsə → **0 kill · 0 asist · 5 ölüm** avtomatik yazılır.\n"
+            "`/profile` → **Nick Dəyiş** düyməsi ilə istənilən vaxt yeniləyin."
         ),
         inline=False
     )
 
     embed.add_field(
-        name="📊 /STATS KOMANDASı",
+        name="📋 KOMANDALAR",
         value=(
-            "`/stats` — Vizual statistika kartı açır:\n"
-            "• Rank, ELO, Win%, K/D, seriya\n"
-            "• Qazanılmış nailiyyətlər\n"
-            "`/stats @oyuncu` — Başqasının statistikasına bax\n"
-            "_Profil kartına əlavə olaraq daha ətraflı məlumat verir._"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🌟 SEZON SONU AVTOMATIK MÜKAFATI",
-        value=(
-            "Hər ayın sonunda sezon **avtomatik** bağlanır:\n"
-            "• 🥇 1-ci yer → **+500🪙**\n"
-            "• 🥈 2-ci yer → **+300🪙**\n"
-            "• 🥉 3-cü yer → **+150🪙**\n"
-            "_`/sezon` ilə cari sezon leaderboard-una baxın._"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🔔 8/10 BİLDİRİŞİ",
-        value=(
-            "Sırada **8 oyunçu** toplandıqda bu kanalda **avtomatik bildiriş** göndərilir:\n"
-            "*\"Sırada 8/10 oyunçu var! 2 nəfər daha lazımdır!\"*\n"
-            "_Bu bildirişlə tez bir zamanda matç başlaya bilər._"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="⚠️ VACİB — SCAN SİSTEMİ",
-        value=(
-            "Matç sonunda skor şəkli **Claude AI** ilə analiz edilir.\n"
-            "Bot oyundakı adınızla qeydiyyat adınızı **müqayisə edir**.\n"
-            "**Ad eyni olmazsa → 0 kill · 0 asist · 5 ölüm** avtomatik veriləcək!\n"
-            "Adınızı `/profile` → **Nick Dəyiş** düyməsi ilə istənilən vaxt dəyişin."
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="📋 BÜTÜn KOMANDALAR",
-        value=(
-            "`/register` — Qeydiyyat\n"
-            "`/profile` — Profil, market, tapşırıqlar, nailiyyətlər\n"
-            "`/stats` — Vizual statistika kartı\n"
-            "`/nailiyyetler` — Nailiyyətlər kartı\n"
-            "`/sezon` — Sezon leaderboard\n"
-            "`/gunluk` — Günlük tapşırıqlar\n"
-            "`/merc` — Matç mərci\n"
-            "`/ping` — Bot statusu"
+            "`/register` · `/profile` · `/stats [@oyuncu]`\n"
+            "`/muqayise @p1 @p2` · `/elo_grafik` · `/nailiyyetler`\n"
+            "`/gunluk` · `/merc` · `/gonder @oyuncu miktar`\n"
+            "`/sezon [N]` · `/ferealiyyet` · `/ping`"
         ),
         inline=False
     )
