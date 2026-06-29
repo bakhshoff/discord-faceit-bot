@@ -2708,27 +2708,30 @@ async def season_end_check():
     get_or_create_current_season()
 
 
-@tasks.loop(hours=168)  # 7 gün
+TOP3_CHANNEL_ID = 1519835276124360785
+
+
+@tasks.loop(minutes=30)
 async def weekly_stats_task():
-    """Həftəlik Top 3 elanı — logs kanalına."""
-    log_ch = bot.get_channel(LOG_CHANNEL_ID)
-    if not log_ch:
+    """Hər 30 dəqiqədə Top 3 ELO xatırlatması."""
+    ch = bot.get_channel(TOP3_CHANNEL_ID)
+    if not ch:
         return
     rows = get_leaderboard(limit=3)
     if not rows:
         return
+    import datetime as _dt
     embed = discord.Embed(
-        title="📊 HƏFTƏLİK TOP 3 — ELO",
-        color=discord.Color.blurple()
+        title="TOP 3 — ELO SIRALAMA",
+        color=discord.Color.gold()
     )
-    medals = ["🥇", "🥈", "🥉"]
+    medals = ["1.", "2.", "3."]
     for i, r in enumerate(rows[:3]):
-        nick, so2_id, elo = r[0], r[1], r[2]
+        nick, elo = r[0], r[2]
         kd = round(r[6]/max(r[7],1), 2) if len(r) > 7 else 0
         embed.add_field(name=f"{medals[i]} {nick}", value=f"ELO: {elo}  ·  K/D: {kd}", inline=False)
-    import datetime as _dt
-    embed.set_footer(text=f"Həftəlik statistika · {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y')}")
-    await log_ch.send(embed=embed)
+    embed.set_footer(text=f"Calestify FACEIT  ·  {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y %H:%M')}")
+    await ch.send(embed=embed)
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
