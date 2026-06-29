@@ -3266,58 +3266,133 @@ async def elan_cmd(interaction: discord.Interaction,
 
     now_az = (datetime.datetime.utcnow() + datetime.timedelta(hours=4)).strftime("%d.%m.%Y %H:%M")
 
+    # ── Əsas elan embedi ──────────────────────────────────────────────────────
     embed = discord.Embed(
-        title="📢 CALESTIFY FACEIT — BÖYÜK YENİLƏMƏ & SİSTEM SIFIRLAMASI",
+        title="📢 CALESTIFY FACEIT — YENİLİKLƏR",
         description=(
-            "Salam əziz cəmiyyət üzvləri!\n\n"
-            "Botumuz tam yeniləndi və sistem sıfırlandı.\n"
-            "**Bütün oyunçular yenidən qeydiyyatdan keçməlidir!**"
+            "Salam **Calestify** cəmiyyəti! 🎮\n\n"
+            "Botumuz ciddi şəkildə yeniləndi. Çoxlu yeni funksiya, vizual sistem "
+            "və oyun mexanikası əlavə edildi. Aşağıda hamısını oxuyun!"
         ),
-        color=0xE74C3C
+        color=0x5865F2
     )
 
     embed.add_field(
-        name="⚠️ SİSTEM SIFIRLAMASI",
+        name="🔥 SERIYA BONUSU (WIN STREAK)",
         value=(
-            "• Bütün köhnə qeydiyyatlar silindi\n"
-            "• ELO, coin, kill/asist/ölüm — sıfırlandı\n"
-            "• Matç tarixçəsi, sezonlar, inventar — silindi\n\n"
-            "🔴 **Qeydiyyat kanalına gedib yenidən qeydiyyatdan keçin!**"
-        ),
-        inline=False
-    )
-
-    embed.add_field(
-        name="🆕 YENİ FUNKSİYALAR",
-        value=(
-            "**📊 K/A/D Statistikası** — Hər matçda kill, asist, ölüm izlənir\n"
-            "**⭐ MVP** — K+A ən çox olan oyunçuya +5🪙 +3 ELO\n"
-            "**🌟 Sezon Sistemi** — Aylıq sezonlar, sezon sonu Top 3-ə ekstra mükafat\n"
-            "**🎯 Günlük Tapşırıqlar** — `/gunluk` ilə coin qazanın\n"
-            "**🗺️ Xəritə Səsverməsi** — 10 oyunçu toplandıqda 30s səsvermə\n"
-            "**🤖 AI Scan** — Matç sonu şəkil Claude AI ilə analiz edilir"
+            "Art-arda qazandığınız matçlara görə **bonus coin + bonus ELO** qazanırsınız:\n"
+            "🔥 3 ardıcıl qələbə → **+5🪙 +1 ELO**\n"
+            "💥 5 ardıcıl qələbə → **+10🪙 +2 ELO**\n"
+            "⚡ 7 ardıcıl qələbə → **+15🪙 +3 ELO**\n"
+            "👑 10 ardıcıl qələbə → **+20🪙 +5 ELO**\n"
+            "_Məğlubiyyətdə seriya sıfırlanır. Max seriya profildə görünür._"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="⚠️ SCAN SİSTEMİ — VACİB",
+        name="💎 RANK SİSTEMİ",
         value=(
-            "Qeydiyyatdakı adınız oyundakı adla **tam eyni** olmalıdır!\n"
-            "Böyük/kiçik hərfə qədər dəqiq yazın.\n"
-            "Uyğun gəlməyəndə **0 kill · 0 asist · 5 ölüm** avtomatik veriləcək!\n"
-            "Adınızı `/profile` → **Nick Dəyiş** düyməsi ilə istənilən vaxt yeniləyə bilərsiniz."
+            "ELO-nuzdan asılı olaraq avtomatik rank alırsınız:\n"
+            "🩶 **Gümüş** — 0–1099 ELO\n"
+            "🥇 **Qızıl** — 1100–1199 ELO\n"
+            "💎 **Almaz** — 1200–1349 ELO\n"
+            "👑 **Elite** — 1500–1699 ELO\n"
+            "🌟 **Master** — 1700+ ELO\n"
+            "_`/stats` ilə özünüzün və ya başqasının rankını görə bilərsiniz._"
         ),
         inline=False
     )
 
     embed.add_field(
-        name="📋 ƏSA KOMANDALAR",
+        name="🏅 NAİLİYYƏTLƏR (ACHIEVEMENTS)",
         value=(
-            "`/register` — Qeydiyyat *(ilk addım!)*\n"
-            "`/profile` — Profil, statistika, market\n"
-            "`/sezon` — Cari sezon leaderboard\n"
+            "15 fərqli nailiyyət var — matçda, tapşırıqlarda, ELO-da irəlilədikcə **avtomatik açılır**:\n"
+            "🎮 İlk Matç  ·  🏆 10/50 Qələbə  ·  🔫 50/100/500 Kill\n"
+            "⭐ 3/10 dəfə MVP  ·  🔥 Streak 3/5/10  ·  🗡️ KD 2.0+\n"
+            "💎 1200 ELO  ·  👑 1500 ELO  ·  🎯 10 tapşırıq\n"
+            "_`/nailiyyetler` ilə nailiyyət kartınıza baxın._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🎲 MATÇ MƏRCİ",
+        value=(
+            "Hər matçdan əvvəl **Komanda A** ya **Komanda B** üçün coin mərc edə bilərsiniz!\n"
+            "• Düz tapırsanız: **2x** geri alırsınız\n"
+            "• Yanlış tapırsanız: mərc itirilir\n"
+            "_`/merc` komasını istifadə edin. Matç başladıqdan sonra mərc bağlanır._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ XƏBƏRDARLIQ / BAN SİSTEMİ",
+        value=(
+            "Qaydaları pozan oyunçulara admin tərəfindən xəbərdarlıq verilir:\n"
+            "• **3 xəbərdarlıq** → Avtomatik ban (queue-ya girə bilməz)\n"
+            "• Banlanmış oyunçu sıraya qoşula bilmir\n"
+            "• `/xeberdarliqlar @oyuncu` ilə xəbərdarlıq tarixçəsini görə bilərsiniz"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📊 /STATS KOMANDASı",
+        value=(
+            "`/stats` — Vizual statistika kartı açır:\n"
+            "• Rank, ELO, Win%, K/D, seriya\n"
+            "• Qazanılmış nailiyyətlər\n"
+            "`/stats @oyuncu` — Başqasının statistikasına bax\n"
+            "_Profil kartına əlavə olaraq daha ətraflı məlumat verir._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🌟 SEZON SONU AVTOMATIK MÜKAFATI",
+        value=(
+            "Hər ayın sonunda sezon **avtomatik** bağlanır:\n"
+            "• 🥇 1-ci yer → **+500🪙**\n"
+            "• 🥈 2-ci yer → **+300🪙**\n"
+            "• 🥉 3-cü yer → **+150🪙**\n"
+            "_`/sezon` ilə cari sezon leaderboard-una baxın._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔔 8/10 BİLDİRİŞİ",
+        value=(
+            "Sırada **8 oyunçu** toplandıqda bu kanalda **avtomatik bildiriş** göndərilir:\n"
+            "*\"Sırada 8/10 oyunçu var! 2 nəfər daha lazımdır!\"*\n"
+            "_Bu bildirişlə tez bir zamanda matç başlaya bilər._"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="⚠️ VACİB — SCAN SİSTEMİ",
+        value=(
+            "Matç sonunda skor şəkli **Claude AI** ilə analiz edilir.\n"
+            "Bot oyundakı adınızla qeydiyyat adınızı **müqayisə edir**.\n"
+            "**Ad eyni olmazsa → 0 kill · 0 asist · 5 ölüm** avtomatik veriləcək!\n"
+            "Adınızı `/profile` → **Nick Dəyiş** düyməsi ilə istənilən vaxt dəyişin."
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="📋 BÜTÜn KOMANDALAR",
+        value=(
+            "`/register` — Qeydiyyat\n"
+            "`/profile` — Profil, market, tapşırıqlar, nailiyyətlər\n"
+            "`/stats` — Vizual statistika kartı\n"
+            "`/nailiyyetler` — Nailiyyətlər kartı\n"
+            "`/sezon` — Sezon leaderboard\n"
             "`/gunluk` — Günlük tapşırıqlar\n"
+            "`/merc` — Matç mərci\n"
             "`/ping` — Bot statusu"
         ),
         inline=False
