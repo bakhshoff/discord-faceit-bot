@@ -2237,46 +2237,37 @@ async def profile(interaction: discord.Interaction):
         ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"]
     )
 
-    # Aktiv tapşırıq + boost-ları bir embeddə birləşdir
     active_task = get_player_active_task(discord_id)
     boosts      = get_all_active_boosts(discord_id)
 
-    extra_embed = None
-    if active_task or boosts:
-        extra_embed = discord.Embed(color=discord.Color.orange())
-
-        if active_task:
-            at = active_task
-            kp, kt = at["kills_progress"], at["kill_target"]
-            ap, aas = at["assists_progress"], at["assist_target"]
-            pct = 0
-            parts = []
-            if kt:  parts.append(f"Kill: {kp}/{kt}")
-            if aas: parts.append(f"Asist: {ap}/{aas}")
-            if kt or aas:
-                total = ((kp/kt if kt else 1) + (ap/aas if aas else 1)) / (int(bool(kt)) + int(bool(aas)) or 1)
-                pct   = int(total * 100)
-            exp = datetime.datetime.utcfromtimestamp(at["expires_at"]) + datetime.timedelta(hours=4)
-            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
-            extra_embed.add_field(
-                name=f"🎯 Aktiv Tapşırıq — {pct}%",
-                value=f"**{at['description']}**\n{bar} `{pct}%`\n"
-                      f"{'  '.join(parts)}  ·  🪙 {at['reward_coins']} coin\n⏰ {exp.strftime('%H:%M')} bitir",
-                inline=False
-            )
-
+    # Profil kartını göndər
+    boost_embed = None
+    if boosts:
+        boost_embed = discord.Embed(title="⚡ Aktiv Güclənmələr", color=discord.Color.purple())
         for b in boosts:
             tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
             h, mn = tl // 3600, (tl % 3600) // 60
-            bn = "🛡 ELO Qoruma" if b["boost_type"] == "protection" else ("🚀 50% Boost" if b["boost_type"] == "boost_50" else "⚡ 100% Boost")
+            bn  = "🛡 ELO Qoruma" if b["boost_type"] == "protection" else ("🚀 50% Boost" if b["boost_type"] == "boost_50" else "⚡ 100% Boost")
             edt = datetime.datetime.utcfromtimestamp(b["expires_at"]) + datetime.timedelta(hours=4)
-            extra_embed.add_field(name=bn, value=f"{h}s {mn}dəq  ·  {edt.strftime('%H:%M')}", inline=True)
+            boost_embed.add_field(name=bn, value=f"{h}s {mn}dəq  ·  {edt.strftime('%H:%M')}", inline=True)
 
     await interaction.followup.send(
         file=discord.File(card_path, filename="profile.png"),
-        embed=extra_embed,
+        embed=boost_embed,
         view=PlayerProfileView(discord_id)
     )
+
+    # Aktiv tapşırıq varsa vizual kart ayrıca göndər
+    if active_task:
+        task_path = os.path.join(DATA_DIR or ".", f"tasks_{discord_id}.png")
+        try:
+            await asyncio.to_thread(generate_tasks_card, active_task, [], task_path)
+            await interaction.followup.send(
+                file=discord.File(task_path, filename="active_task.png"),
+                ephemeral=False
+            )
+        except Exception:
+            pass
 
 
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")
