@@ -45,7 +45,9 @@ try:
         add_warning, get_warnings, clear_warnings, ban_player, unban_player, is_banned,
         check_and_grant_achievements, get_player_achievements,
         place_prediction, resolve_predictions, get_predictions,
-        get_season_leaderboard
+        get_season_leaderboard,
+        record_elo_history, get_elo_history, get_peak_elo,
+        transfer_coins, get_activity_stats
     )
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -53,7 +55,9 @@ try:
     from visual_cards import (generate_match_history_card, generate_coin_logs_card,
                                generate_inventory_card, generate_tasks_card,
                                generate_stats_card, generate_warnings_card,
-                               generate_achievements_card, get_rank)
+                               generate_achievements_card, get_rank,
+                               generate_compare_card, generate_elo_graph,
+                               generate_activity_card)
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
@@ -1169,11 +1173,10 @@ async def update_queue_status_message():
         pass
 
 
-class MapVoteView(discord.ui.View):
-    """30 saniyəlik xəritə səsverməsi. Yalnız seçilmiş 10 oyunçu iştirak edir."""
-    def __init__(self, allowed_ids: set, match_number: int, team_a, team_b, captain_a_id, captain_b_id, channel, guild):
-        super().__init__(timeout=30)
-        self.allowed_ids   = allowed_ids
+class VetoView(discord.ui.View):
+    """Xəritə Veto: kapitanlar növbə ilə ban edir, 1 xəritə qalır."""
+    def __init__(self, match_number, team_a, team_b, captain_a_id, captain_b_id, channel, guild):
+        super().__init__(timeout=120)
         self.match_number  = match_number
         self.team_a        = team_a
         self.team_b        = team_b
@@ -1181,35 +1184,60 @@ class MapVoteView(discord.ui.View):
         self.captain_b_id  = captain_b_id
         self.channel       = channel
         self.guild         = guild
-        self.votes: dict   = {}
-        for m in MAPS:
-            btn = discord.ui.Button(label=m, style=discord.ButtonStyle.secondary)
+        self.remaining     = list(MAPS)      # qalan xəritələr
+        self.turn          = 0               # 0=A banlar, 1=B banlar
+        self._build_buttons()
+
+    def _build_buttons(self):
+        self.clear_items()
+        for m in self.remaining:
+            btn = discord.ui.Button(label=m, style=discord.ButtonStyle.danger)
             async def _cb(inter: discord.Interaction, map_name=m):
-                if inter.user.id not in self.allowed_ids:
-                    await inter.response.send_message("❌ Yalnız matça seçilmiş oyunçular səs verə bilər.", ephemeral=True)
-                    return
-                self.votes[inter.user.id] = map_name
-                await inter.response.send_message(f"✅ **{map_name}** üçün səs verdiniz.", ephemeral=True)
+                await self._handle_ban(inter, map_name)
             btn.callback = _cb
             self.add_item(btn)
 
+    async def _handle_ban(self, interaction: discord.Interaction, map_name: str):
+        expected = self.captain_a_id if self.turn % 2 == 0 else self.captain_b_id
+        cap_label = "A" if self.turn % 2 == 0 else "B"
+        if interaction.user.id != expected:
+            await interaction.response.send_message(
+                f"❌ İndi Kapitan {cap_label}-nin növbəsidir.", ephemeral=True)
+            return
+        self.remaining.remove(map_name)
+        self.turn += 1
+
+        if len(self.remaining) == 1:
+            # 1 xəritə qaldı — seçildi
+            selected = self.remaining[0]
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(
+                content=f"🗺️ **{selected}** seçildi! Matç başlayır...",
+                view=self
+            )
+            try:
+                await _launch_match(self.match_number, selected, self.team_a, self.team_b,
+                                    self.captain_a_id, self.captain_b_id, self.channel, self.guild)
+            except Exception as e:
+                print(f"[Veto] _launch_match xetasi: {e}", flush=True)
+        else:
+            next_cap = "A" if self.turn % 2 == 0 else "B"
+            self._build_buttons()
+            bans_done = len(MAPS) - len(self.remaining)
+            await interaction.response.edit_message(
+                content=(f"🗺️ **{map_name}** ban edildi! ({bans_done}/{len(MAPS)-1} ban)\n"
+                         f"Sıra: Kapitan **{next_cap}** ban edir."),
+                view=self
+            )
+
     async def on_timeout(self):
+        selected = random.choice(self.remaining) if self.remaining else random.choice(MAPS)
         try:
-            if self.votes:
-                from collections import Counter
-                counts   = Counter(self.votes.values())
-                max_cnt  = max(counts.values())
-                top_maps = [m for m, c in counts.items() if c == max_cnt]
-                selected_map = random.choice(top_maps)
-            else:
-                selected_map = random.choice(MAPS)
-        except Exception:
-            selected_map = random.choice(MAPS)
-        try:
-            await _launch_match(self.match_number, selected_map, self.team_a, self.team_b,
+            await _launch_match(self.match_number, selected, self.team_a, self.team_b,
                                 self.captain_a_id, self.captain_b_id, self.channel, self.guild)
         except Exception as e:
-            print(f"[MapVote] _launch_match xətası: {e}", flush=True)
+            print(f"[Veto] timeout _launch_match xetasi: {e}", flush=True)
 
 
 async def _start_match(channel, guild):
@@ -1222,14 +1250,19 @@ async def _start_match(channel, guild):
     all_ids = {p["discord_id"] for p in team_a + team_b}
     mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
 
-    vote_embed = discord.Embed(
-        title=f"🗺️ Matç No{match_number} — Xəritə Seçimi",
-        description=f"**30 saniyə** ərzində xəritəni seçin!\nYalnız matça seçilmiş oyunçular səs verə bilər.",
-        color=discord.Color.blurple()
+    veto_embed = discord.Embed(
+        title=f"Matc No{match_number} — Xerite Veto",
+        description=(
+            f"Kapitanlar novbe ile xeriteni BAN edir.\n"
+            f"7 xeriteden 6 ban edilir, 1 qalir.\n\n"
+            f"Ilk ban: Kapitan A (<@{captain_a['discord_id']}>)\n"
+            f"Sonra: Kapitan B, sonra A... novbe ile."
+        ),
+        color=discord.Color.red()
     )
-    vote_view = MapVoteView(all_ids, match_number, team_a, team_b,
-                            captain_a["discord_id"], captain_b["discord_id"], channel, guild)
-    await channel.send(content=mentions, embed=vote_embed, view=vote_view)
+    veto_view = VetoView(match_number, team_a, team_b,
+                         captain_a["discord_id"], captain_b["discord_id"], channel, guild)
+    await channel.send(content=mentions, embed=veto_embed, view=veto_view)
 
 
 def _apply_mvp(all_players: list, stats: dict):
@@ -1664,6 +1697,7 @@ class ScanEditView(discord.ui.View):
                 add_coin_log(did, earned, f"Matç No{self.match_number} qələbə" + (f" (streak {streak})" if s_coins else ""), "earn", bal)
                 winner_coins[did] = (earned, bal)
                 add_season_stat(did, season["id"], wins=1, elo_gained=max(0, r["new_elo"]-r["old_elo"]))
+                record_elo_history(did, r["new_elo"])
                 check_and_grant_achievements(did)
             for p, r in zip(loser_team, results["losers"]):
                 did    = p["discord_id"]
@@ -1674,6 +1708,8 @@ class ScanEditView(discord.ui.View):
                 loser_coins[did] = (earned, bal)
                 add_season_stat(did, season["id"], losses=1,
                                 elo_gained=max(0, r["new_elo"] - r["old_elo"]))
+                record_elo_history(did, r["new_elo"])
+                check_and_grant_achievements(did)
 
             winner_results = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
                               for p, r in zip(winner_team, results["winners"])]
@@ -2449,6 +2485,144 @@ async def merc_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=PredictionView(active["match_number"]), ephemeral=True)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# /MUQAYİSƏ  /ELO_GRAFİK  /GONDER  /FƏALİYYƏT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="muqayise", description="İki oyunçunun statistikasını müqayisə et")
+@app_commands.describe(oyuncu1="Birinci oyunçu", oyuncu2="İkinci oyunçu")
+async def muqayise_cmd(interaction: discord.Interaction,
+                       oyuncu1: discord.Member, oyuncu2: discord.Member):
+    await interaction.response.defer()
+
+    def _pdata(p):
+        if not p: return None
+        kd = round(p[11]/max(p[13],1), 2) if len(p) > 13 else 0
+        return {
+            "nick":       p[1], "so2_id": p[2], "elo": p[3],
+            "wins":       p[4], "losses": p[5],
+            "kills":      p[11] if len(p)>11 else 0,
+            "assists":    p[12] if len(p)>12 else 0,
+            "deaths":     p[13] if len(p)>13 else 0,
+            "win_streak": p[14] if len(p)>14 else 0,
+            "peak_elo":   p[16] if len(p)>16 else p[3],
+        }
+
+    p1 = _pdata(get_player(oyuncu1.id))
+    p2 = _pdata(get_player(oyuncu2.id))
+
+    if not p1 or not p2:
+        await interaction.followup.send("❌ Hər iki oyunçu qeydiyyatda olmalıdır.", ephemeral=True)
+        return
+
+    path = os.path.join(DATA_DIR or ".", f"compare_{oyuncu1.id}_{oyuncu2.id}.png")
+    try:
+        await asyncio.to_thread(generate_compare_card, p1, p2, path)
+        await interaction.followup.send(file=discord.File(path, filename="compare.png"))
+    except Exception as e:
+        await interaction.followup.send(f"❌ Kart yaradıla bilmədi: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="elo_grafik", description="ELO dəyişim qrafikini göstər")
+@app_commands.describe(uzv="Oyunçu (boş = özünüz)")
+async def elo_grafik_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    target = uzv or interaction.user
+    await interaction.response.defer(ephemeral=True)
+    player = get_player(target.id)
+    if not player:
+        await interaction.followup.send("❌ Qeydiyyat yoxdur.", ephemeral=True); return
+    history  = get_elo_history(target.id, limit=30)
+    peak     = get_peak_elo(target.id)
+    path     = os.path.join(DATA_DIR or ".", f"elo_graph_{target.id}.png")
+    try:
+        await asyncio.to_thread(generate_elo_graph, player[1], history, peak, path)
+        await interaction.followup.send(file=discord.File(path, filename="elo_graph.png"), ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Qrafik yaradıla bilmədi: {e}", ephemeral=True)
+
+
+@bot.tree.command(name="gonder", description="Başqa oyunçuya coin göndər (20% komissiya)")
+@app_commands.describe(uzv="Göndəriləcək oyunçu", miktar="Coin miqdarı")
+async def gonder_cmd(interaction: discord.Interaction, uzv: discord.Member, miktar: int):
+    if uzv.id == interaction.user.id:
+        await interaction.response.send_message("❌ Özünüzə göndərə bilməzsiniz.", ephemeral=True)
+        return
+    if miktar < 1:
+        await interaction.response.send_message("❌ Miqdar ən az 1 olmalıdır.", ephemeral=True)
+        return
+
+    commission = int(miktar * 0.20)
+    receiver   = miktar - commission
+
+    embed = discord.Embed(
+        title="💸 Coin Transfer — Təsdiq",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="Göndərən",    value=f"{interaction.user.display_name}", inline=True)
+    embed.add_field(name="Alan",        value=f"{uzv.display_name}", inline=True)
+    embed.add_field(name="​",           value="​", inline=True)
+    embed.add_field(name="Sizdən çıxır", value=f"🪙 {miktar}", inline=True)
+    embed.add_field(name="Komissiya (20%)", value=f"🪙 {commission}", inline=True)
+    embed.add_field(name="Alan alır",   value=f"🪙 {receiver}", inline=True)
+
+    view = _GonderConfirmView(interaction.user.id, uzv.id, miktar, receiver, commission)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class _GonderConfirmView(discord.ui.View):
+    def __init__(self, from_id, to_id, amount, receiver, commission):
+        super().__init__(timeout=60)
+        self.from_id    = from_id
+        self.to_id      = to_id
+        self.amount     = amount
+        self.receiver   = receiver
+        self.commission = commission
+
+    @discord.ui.button(label="Gondər ✅", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.from_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        ok, msg, comm, recv = transfer_coins(self.from_id, self.to_id, self.amount)
+        if not ok:
+            await interaction.response.edit_message(content=f"❌ {msg}", embed=None, view=None)
+            return
+        add_coin_log(self.from_id, -self.amount,  f"Transfer -> <@{self.to_id}>", "spend", get_coins(self.from_id))
+        add_coin_log(self.to_id,    recv,          f"Transfer <- <@{self.from_id}>", "earn",  get_coins(self.to_id))
+        await asyncio.to_thread(backup.export_backup)
+        await interaction.response.edit_message(
+            content=f"✅ **{recv} coin** <@{self.to_id}>-yə göndərildi. (Komissiya: {comm} coin)",
+            embed=None, view=None)
+
+    @discord.ui.button(label="Legv et ❌", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Transfer ləğv edildi.", embed=None, view=None)
+
+
+@bot.tree.command(name="ferealiyyet", description="[Admin] Son 7 günün fəaliyyət paneli")
+@app_commands.describe(gun="Analiz dövri (gün, default 7)")
+@app_commands.checks.has_permissions(administrator=True)
+async def ferealiyyet_cmd(interaction: discord.Interaction, gun: int = 7):
+    await interaction.response.defer(ephemeral=True)
+    stats = await asyncio.to_thread(get_activity_stats, gun)
+    path  = os.path.join(DATA_DIR or ".", "activity.png")
+    try:
+        await asyncio.to_thread(generate_activity_card, stats, path)
+        await interaction.followup.send(file=discord.File(path, filename="activity.png"), ephemeral=True)
+    except Exception as e:
+        embed = discord.Embed(title=f"Son {gun} gun fealiyyeti", color=discord.Color.blurple())
+        embed.add_field(name="Matc", value=str(stats["match_count"]), inline=True)
+        embed.add_field(name="Oyuncu", value=str(stats["player_count"]), inline=True)
+        for nick, cnt in stats.get("top_active", [])[:5]:
+            embed.add_field(name=nick, value=f"{cnt} matc", inline=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@ferealiyyet_cmd.error
+async def ferealiyyet_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
@@ -2602,15 +2776,18 @@ async def profile(interaction: discord.Interaction):
 
     active_task = get_player_active_task(discord_id)
     boosts      = get_all_active_boosts(discord_id)
+    peak_elo    = get_peak_elo(discord_id)
 
     # Profil kartını göndər
     boost_embed = None
-    if boosts:
-        boost_embed = discord.Embed(title="⚡ Aktiv Güclənmələr", color=discord.Color.purple())
+    if boosts or peak_elo > elo:
+        boost_embed = discord.Embed(color=discord.Color.purple())
+        if peak_elo > elo:
+            boost_embed.add_field(name="Pik ELO", value=f"**{peak_elo}**", inline=True)
         for b in boosts:
             tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
             h, mn = tl // 3600, (tl % 3600) // 60
-            bn  = "🛡 ELO Qoruma" if b["boost_type"] == "protection" else ("🚀 50% Boost" if b["boost_type"] == "boost_50" else "⚡ 100% Boost")
+            bn  = "ELO Qoruma" if b["boost_type"] == "protection" else ("50% Boost" if b["boost_type"] == "boost_50" else "100% Boost")
             edt = datetime.datetime.utcfromtimestamp(b["expires_at"]) + datetime.timedelta(hours=4)
             boost_embed.add_field(name=bn, value=f"{h}s {mn}dəq  ·  {edt.strftime('%H:%M')}", inline=True)
 

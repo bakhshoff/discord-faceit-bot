@@ -50,6 +50,18 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN max_streak INTEGER DEFAULT 0")
     if "is_banned" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN is_banned INTEGER DEFAULT 0")
+    if "peak_elo" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER DEFAULT 1000")
+
+    # ── ELO History ───────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS elo_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            elo INTEGER NOT NULL,
+            recorded_at INTEGER NOT NULL
+        )
+    """)
 
     # ── Warnings ─────────────────────────────────────────────────────────────
     cursor.execute("""
@@ -1613,6 +1625,111 @@ def get_predictions(match_number):
     rows = cursor.fetchall()
     conn.close()
     return [{"discord_id": r[0], "team": r[1], "bet": r[2], "result": r[3]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ELO TARİXÇƏSİ + PİK ELO
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def record_elo_history(discord_id: int, elo: int):
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO elo_history (discord_id, elo, recorded_at) VALUES (?,?,?)",
+                   (discord_id, elo, int(time.time())))
+    cursor.execute("UPDATE players SET peak_elo=MAX(peak_elo, ?) WHERE discord_id=?", (elo, discord_id))
+    conn.commit(); conn.close()
+
+
+def get_elo_history(discord_id: int, limit=30):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT elo, recorded_at FROM elo_history WHERE discord_id=? ORDER BY recorded_at DESC LIMIT ?",
+                   (discord_id, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return list(reversed(rows))  # köhnədən yeniyə
+
+
+def get_peak_elo(discord_id: int):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT peak_elo FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 1000
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# COİN TRANSFER
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def transfer_coins(from_id: int, to_id: int, amount: int, commission_pct: float = 0.20):
+    """Coin köçürmə. Göndərən amount ödəyir, alan (1-commission)*amount alır."""
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT coins FROM players WHERE discord_id=?", (from_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < amount:
+        conn.close(); return False, "Kifayət qədər coin yoxdur.", 0, 0
+    commission   = int(amount * commission_pct)
+    receiver_amt = amount - commission
+    cursor.execute("UPDATE players SET coins=coins-? WHERE discord_id=?", (amount, from_id))
+    cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?", (receiver_amt, to_id))
+    conn.commit(); conn.close()
+    return True, "OK", commission, receiver_amt
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FƏALİYYƏT PANELİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_activity_stats(days=7):
+    import time
+    since  = int(time.time()) - days * 86400
+    conn   = _get_conn()
+    cursor = conn.cursor()
+
+    # Matç sayı
+    cursor.execute("SELECT COUNT(*) FROM match_history WHERE played_at >= ?", (since,))
+    match_count = cursor.fetchone()[0]
+
+    # Aktiv oyunçular (matçlara iştirak etmiş)
+    cursor.execute("""
+        SELECT p.so2_nick, COUNT(*) as cnt
+        FROM match_history mh
+        JOIN players p ON (mh.winner_ids LIKE '%'||p.discord_id||'%'
+                        OR mh.loser_ids  LIKE '%'||p.discord_id||'%')
+        WHERE mh.played_at >= ?
+        GROUP BY p.discord_id ORDER BY cnt DESC LIMIT 5
+    """, (since,))
+    top_active = cursor.fetchall()
+
+    # Ümumi kills bu dövrdə
+    cursor.execute("""
+        SELECT COALESCE(SUM(k), 0) FROM (
+            SELECT SUM(CAST(json_each.value AS INTEGER)) as k
+            FROM scan_results sr, json_each(json_extract(sr.scan_data, '$[*].kills'))
+            WHERE sr.confirmed=1 AND sr.created_at >= ?
+        )
+    """, (since,))
+    try:
+        total_kills = cursor.fetchone()[0] or 0
+    except Exception:
+        total_kills = 0
+
+    # Qeydiyyat sayı
+    cursor.execute("SELECT COUNT(*) FROM players WHERE rowid IN (SELECT rowid FROM players ORDER BY rowid DESC LIMIT 1000)")
+    player_count = cursor.fetchone()[0]
+
+    conn.close()
+    return {
+        "days": days,
+        "match_count": match_count,
+        "top_active": top_active,
+        "total_kills": total_kills,
+        "player_count": player_count,
+    }
 
 
 def fail_expired_tasks():

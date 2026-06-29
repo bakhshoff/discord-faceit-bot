@@ -512,6 +512,187 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str):
     return output_path
 
 
+# ── OYUNCU MUQAYİSƏ KARTI ────────────────────────────────────────────────────
+def generate_compare_card(p1: dict, p2: dict, output_path: str):
+    """p1, p2: {nick, elo, wins, losses, kills, deaths, assists, win_streak, peak_elo}"""
+    W, H = 860, 400
+    PAD  = 20
+    img  = Image.new("RGB", (W, H), BG_TOP)
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y/H
+        c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
+        draw.line([(0,y),(W,y)], fill=c)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=GOLD, width=2)
+
+    fb = _font(13, True); ft = _font(22, True)
+    fm = _font(15, True); fs = _font(13); fx = _font(11)
+
+    draw.text((PAD, 12), "CALESTIFY", font=fb, fill=GOLD)
+    draw.text((PAD, 28), "OYUNCU MUQAYİSƏSİ", font=ft, fill=WHITE)
+    draw.line([(0,70),(W,70)], fill=BORDER, width=1)
+
+    # Orta xətt
+    mid = W // 2
+    draw.line([(mid, 70),(mid, H-30)], fill=BORDER, width=2)
+
+    # Nick-lər
+    draw.text((mid//2, 80), p1["nick"][:16], font=fm, fill=BLUE, anchor="mm")
+    draw.text((mid + mid//2, 80), p2["nick"][:16], font=fm, fill=RED, anchor="mm")
+
+    STATS = [
+        ("ELO",    "elo",        False),
+        ("Pik ELO","peak_elo",   False),
+        ("Win %",  None,         False),
+        ("K/D",    None,         False),
+        ("Kill",   "kills",      False),
+        ("Asist",  "assists",    False),
+        ("Olum",   "deaths",     True),   # az yaxshidır (reverse)
+        ("Streak", "win_streak", False),
+        ("Qelebə", "wins",       False),
+    ]
+
+    y = 108
+    for lbl, key, reverse in STATS:
+        if key:
+            v1 = p1.get(key, 0)
+            v2 = p2.get(key, 0)
+        elif lbl == "Win %":
+            m1 = p1.get("wins",0)+p1.get("losses",0)
+            m2 = p2.get("wins",0)+p2.get("losses",0)
+            v1 = round(p1.get("wins",0)/max(m1,1)*100,1)
+            v2 = round(p2.get("wins",0)/max(m2,1)*100,1)
+        else:  # K/D
+            v1 = round(p1.get("kills",0)/max(p1.get("deaths",1),1),2)
+            v2 = round(p2.get("kills",0)/max(p2.get("deaths",1),1),2)
+
+        # Rəng: üstün olan yaşıl
+        if v1 != v2:
+            c1 = GREEN if (v1 > v2) != reverse else RED
+            c2 = GREEN if (v2 > v1) != reverse else RED
+        else:
+            c1 = c2 = GRAY
+
+        draw.text((mid//2,   y), str(v1), font=fs, fill=c1, anchor="mm")
+        draw.text((mid,      y), lbl,     font=fx, fill=GRAY, anchor="mm")
+        draw.text((mid+mid//2, y), str(v2), font=fs, fill=c2, anchor="mm")
+        draw.line([(PAD, y+12),(W-PAD, y+12)], fill=(35,33,42), width=1)
+        y += 28
+
+    draw.text((PAD, H-24), "Calestify Gaming Community", font=fx, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
+# ── ELO QRAFİK KARTI ──────────────────────────────────────────────────────────
+def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str):
+    """
+    history: [(elo, recorded_at), ...] köhnədən yeniyə
+    """
+    W, H    = 820, 340
+    PAD     = 50
+    GW      = W - PAD*2
+    GH      = H - PAD - 60
+
+    img  = Image.new("RGB", (W, H), BG_TOP)
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y/H
+        c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
+        draw.line([(0,y),(W,y)], fill=c)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+
+    fb = _font(13, True); ft = _font(20, True); fx = _font(10)
+
+    draw.text((PAD, 12), "CALESTIFY", font=fb, fill=GOLD)
+    draw.text((PAD, 28), f"{nick} — ELO Tarixi  |  Pik: {peak_elo}", font=ft, fill=WHITE)
+
+    if len(history) < 2:
+        draw.text((W//2, H//2), "Kifayet data yoxdur", font=fb, fill=GRAY, anchor="mm")
+        img.save(output_path)
+        return output_path
+
+    elos = [h[0] for h in history]
+    mn, mx = min(elos), max(elos)
+    if mn == mx:
+        mn -= 50; mx += 50
+    rang = mx - mn
+
+    # Qrafik çərçivəsi
+    ox, oy = PAD, 60
+    draw.rectangle([(ox, oy),(ox+GW, oy+GH)], outline=(50,48,58), width=1)
+
+    # Y xətləri
+    for step in range(0, 5):
+        yval = mn + rang * step / 4
+        ypos = oy + GH - int(GH * step / 4)
+        draw.line([(ox, ypos),(ox+GW, ypos)], fill=(40,38,50), width=1)
+        draw.text((ox-5, ypos), str(int(yval)), font=fx, fill=GRAY, anchor="rm")
+
+    # Qrafik xətti
+    pts = []
+    for i, (elo, _) in enumerate(history):
+        px = ox + int(GW * i / (len(history)-1))
+        py = oy + GH - int(GH * (elo - mn) / rang)
+        pts.append((px, py))
+
+    for i in range(len(pts)-1):
+        col = GREEN if pts[i+1][1] <= pts[i][1] else RED
+        draw.line([pts[i], pts[i+1]], fill=col, width=2)
+
+    # Başlanğıc + Son nöqtə
+    draw.ellipse([(pts[0][0]-4, pts[0][1]-4),(pts[0][0]+4, pts[0][1]+4)], fill=GRAY)
+    draw.ellipse([(pts[-1][0]-5, pts[-1][1]-5),(pts[-1][0]+5, pts[-1][1]+5)], fill=GOLD)
+    draw.text((pts[-1][0]+8, pts[-1][1]), str(elos[-1]), font=fx, fill=GOLD)
+
+    draw.text((PAD, H-24), "Calestify Gaming Community", font=fx, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
+# ── FƏALİYYƏT PANELİ KARTI ────────────────────────────────────────────────────
+def generate_activity_card(stats: dict, output_path: str):
+    W, H = 720, 320
+    img  = Image.new("RGB", (W, H), BG_TOP)
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y/H
+        c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
+        draw.line([(0,y),(W,y)], fill=c)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=GOLD, width=2)
+
+    fb = _font(13, True); ft = _font(22, True); fm = _font(15); fs = _font(13); fx = _font(11)
+
+    days = stats["days"]
+    draw.text((20, 12), "CALESTIFY", font=fb, fill=GOLD)
+    draw.text((20, 28), f"FEALIYYET PANELİ — Son {days} Gun", font=ft, fill=WHITE)
+    draw.line([(0,70),(W,70)], fill=BORDER, width=1)
+
+    # Böyük rəqəmlər
+    boxes = [
+        (stats["match_count"], "Matc"),
+        (stats["player_count"], "Oyuncu"),
+        (stats["total_kills"], "Kill"),
+    ]
+    bw = (W - 40) // 3
+    for i, (val, lbl) in enumerate(boxes):
+        x = 20 + i * bw
+        draw.rectangle([x+4, 80, x+bw-4, 160], fill=PANEL, outline=BORDER, width=1)
+        draw.text((x+bw//2, 110), str(val), font=_font(28, True), fill=GOLD, anchor="mm")
+        draw.text((x+bw//2, 148), lbl, font=_font(11, True), fill=GRAY, anchor="mm")
+
+    # Top aktiv oyunçular
+    draw.text((20, 175), "Ən aktiv oyunçular:", font=fb, fill=WHITE)
+    medals = ["1.", "2.", "3.", "4.", "5."]
+    for i, (nick, cnt) in enumerate(stats.get("top_active", [])[:5]):
+        draw.text((20, 198 + i*22), f"{medals[i]} {nick[:20]}", font=fs, fill=WHITE)
+        draw.text((280, 198 + i*22), f"{cnt} matc", font=fs, fill=GRAY)
+
+    draw.text((20, H-24), "Calestify Gaming Community", font=fx, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
 # ── iNVENTAR ────────────────────────────────────────────────────────────────
 
 def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, get_item_by_id_fn, output_path):
