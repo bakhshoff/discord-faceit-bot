@@ -861,14 +861,41 @@ class PlayerProfileView(discord.ui.View):
             return
 
         path = os.path.join(DATA_DIR or ".", f"tasks_{self.discord_id}.png")
-        await asyncio.to_thread(generate_tasks_card, active, tasks, path)
+        card_ok = False
+        try:
+            await asyncio.to_thread(generate_tasks_card, active, tasks, path)
+            card_ok = True
+        except Exception:
+            pass
 
         view = TaskSelectView(self.discord_id, tasks) if not active and tasks else None
-        await interaction.followup.send(
-            file=discord.File(path, filename="tasks.png"),
-            view=view,
-            ephemeral=True
-        )
+
+        if card_ok:
+            await interaction.followup.send(
+                file=discord.File(path, filename="tasks.png"),
+                view=view, ephemeral=True
+            )
+        else:
+            # Embed fallback
+            import datetime as _dt
+            if active:
+                exp = _dt.datetime.utcfromtimestamp(active["expires_at"]) + _dt.timedelta(hours=4)
+                kp, kt = active["kills_progress"], active["kill_target"]
+                ap, at = active["assists_progress"], active["assist_target"]
+                embed = discord.Embed(title="🎯 Aktiv Tapşırıq", color=discord.Color.orange())
+                embed.add_field(name="Tapşırıq", value=active["description"], inline=False)
+                if kt: embed.add_field(name="Kill",  value=f"{kp}/{kt}", inline=True)
+                if at: embed.add_field(name="Asist", value=f"{ap}/{at}", inline=True)
+                embed.add_field(name="🪙", value=f"{active['reward_coins']} coin", inline=True)
+                embed.set_footer(text=f"Bitmə: {exp.strftime('%H:%M')}")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                embed = discord.Embed(title="📋 Günlük Tapşırıqlar", color=discord.Color.gold())
+                for t in tasks:
+                    embed.add_field(name=t["description"],
+                                    value=f"Kill: {t['kill_target']}  Asist: {t['assist_target']}  🪙 {t['reward_coins']}",
+                                    inline=False)
+                await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
 class NickChangeModal(discord.ui.Modal, title="Nick Dəyişdir"):
@@ -2208,23 +2235,46 @@ async def profile(interaction: discord.Interaction):
         ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"]
     )
 
-    boosts = get_all_active_boosts(discord_id)
-    if boosts:
-        boost_embed = discord.Embed(title="⚡ Aktiv Güclənmələr", color=discord.Color.orange())
+    # Aktiv tapşırıq + boost-ları bir embeddə birləşdir
+    active_task = get_player_active_task(discord_id)
+    boosts      = get_all_active_boosts(discord_id)
+
+    extra_embed = None
+    if active_task or boosts:
+        extra_embed = discord.Embed(color=discord.Color.orange())
+
+        if active_task:
+            at = active_task
+            kp, kt = at["kills_progress"], at["kill_target"]
+            ap, aas = at["assists_progress"], at["assist_target"]
+            pct = 0
+            parts = []
+            if kt:  parts.append(f"Kill: {kp}/{kt}")
+            if aas: parts.append(f"Asist: {ap}/{aas}")
+            if kt or aas:
+                total = ((kp/kt if kt else 1) + (ap/aas if aas else 1)) / (int(bool(kt)) + int(bool(aas)) or 1)
+                pct   = int(total * 100)
+            exp = datetime.datetime.utcfromtimestamp(at["expires_at"]) + datetime.timedelta(hours=4)
+            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+            extra_embed.add_field(
+                name=f"🎯 Aktiv Tapşırıq — {pct}%",
+                value=f"**{at['description']}**\n{bar} `{pct}%`\n"
+                      f"{'  '.join(parts)}  ·  🪙 {at['reward_coins']} coin\n⏰ {exp.strftime('%H:%M')} bitir",
+                inline=False
+            )
+
         for b in boosts:
             tl = max(0, b["expires_at"] - int(datetime.datetime.utcnow().timestamp()))
             h, mn = tl // 3600, (tl % 3600) // 60
-            if b["boost_type"] == "protection":
-                bn = "🛡 ELO Qoruma"
-            elif b["boost_type"] == "boost_50":
-                bn = "🚀 50% ELO Boost"
-            else:
-                bn = "⚡ 100% ELO Boost"
+            bn = "🛡 ELO Qoruma" if b["boost_type"] == "protection" else ("🚀 50% Boost" if b["boost_type"] == "boost_50" else "⚡ 100% Boost")
             edt = datetime.datetime.utcfromtimestamp(b["expires_at"]) + datetime.timedelta(hours=4)
-            boost_embed.add_field(name=bn, value=f"{h} saat {mn} dəq qalıb\n⏰ {edt.strftime('%d.%m.%Y %H:%M')}", inline=True)
-        await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), embed=boost_embed, view=PlayerProfileView(discord_id))
-    else:
-        await interaction.followup.send(file=discord.File(card_path, filename="profile.png"), view=PlayerProfileView(discord_id))
+            extra_embed.add_field(name=bn, value=f"{h}s {mn}dəq  ·  {edt.strftime('%H:%M')}", inline=True)
+
+    await interaction.followup.send(
+        file=discord.File(card_path, filename="profile.png"),
+        embed=extra_embed,
+        view=PlayerProfileView(discord_id)
+    )
 
 
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")
