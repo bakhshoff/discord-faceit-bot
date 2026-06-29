@@ -307,6 +307,208 @@ def generate_tasks_card(active_task, available_tasks, output_path):
     return output_path
 
 
+# ── RANK HESABLAYİCİSİ ────────────────────────────────────────────────────────
+RANKS = [
+    (0,    900,  "Gümüş I",   (150, 150, 160), "🩶"),
+    (900,  1000, "Gümüş II",  (180, 180, 190), "🩶"),
+    (1000, 1100, "Qızıl I",   (200, 160, 50),  "🥇"),
+    (1100, 1200, "Qızıl II",  (220, 180, 60),  "🥇"),
+    (1200, 1350, "Almaz I",   (80,  180, 255),  "💎"),
+    (1350, 1500, "Almaz II",  (100, 200, 255),  "💎"),
+    (1500, 1700, "Elite",     (160, 90,  255),  "👑"),
+    (1700, 9999, "Master",    (255, 200, 0),   "🌟"),
+]
+
+def get_rank(elo: int) -> tuple:
+    for lo, hi, name, color, emoji in RANKS:
+        if lo <= elo < hi:
+            return name, color, emoji
+    return RANKS[-1][2], RANKS[-1][3], RANKS[-1][4]
+
+
+# ── OYUNÇU STATS KARTI (/stats @oyuncu) ──────────────────────────────────────
+def generate_stats_card(player_data: dict, achievements: list, output_path: str):
+    """
+    player_data: {nick, so2_id, elo, wins, losses, kills, assists, deaths,
+                  win_streak, max_streak, coins, zm_balance}
+    achievements: list of {icon, name}
+    """
+    W, H  = 820, 420
+    PAD   = 20
+    img   = Image.new("RGB", (W, H), BG_TOP)
+    draw  = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y/H
+        c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
+        draw.line([(0,y),(W,y)], fill=c)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+
+    fb  = _font(13, True)
+    ft  = _font(26, True)
+    fm  = _font(16, True)
+    fs  = _font(14)
+    fx2 = _font(12)
+    fxi = _font(11)
+
+    nick   = player_data.get("nick", "?")
+    so2_id = player_data.get("so2_id", "?")
+    elo    = player_data.get("elo", 1000)
+    wins   = player_data.get("wins", 0)
+    losses = player_data.get("losses", 0)
+    kills  = player_data.get("kills", 0)
+    deaths = player_data.get("deaths", 0)
+    assists= player_data.get("assists", 0)
+    streak = player_data.get("win_streak", 0)
+    max_s  = player_data.get("max_streak", 0)
+    kd     = round(kills/max(deaths,1), 2)
+    wr     = round(wins/max(wins+losses,1)*100, 1)
+
+    rank_name, rank_color, rank_emoji = get_rank(elo)
+
+    # Header
+    draw.text((PAD, 14), "CALESTIFY", font=fb, fill=GOLD)
+    draw.text((PAD, 30), f"OYUNÇU STATİSTİKASI", font=ft, fill=WHITE)
+    draw.line([(0,72),(W,72)], fill=BORDER, width=1)
+
+    # Sol: nick + rank
+    draw.text((PAD, 82), nick[:22], font=_font(28, True), fill=WHITE)
+    draw.text((PAD, 118), f"SO2 ID: {so2_id}", font=fs, fill=GRAY)
+    rc = rank_color
+    draw.rectangle([PAD, 140, PAD+160, 168], fill=tuple(c//4 for c in rc), outline=rc, width=2)
+    draw.text((PAD+8, 144), f"{rank_emoji} {rank_name}", font=fx2, fill=rc)
+
+    # Streak
+    streak_col = (255,140,0) if streak >= 3 else GRAY
+    draw.text((PAD, 178), f"🔥 Streak: {streak}  |  Max: {max_s}", font=fs, fill=streak_col)
+
+    # Sağ: ELO böyük
+    draw.text((W-180, 82), "ELO", font=_font(14, True), fill=GRAY)
+    draw.text((W-180, 98), str(elo), font=_font(46, True), fill=GOLD)
+
+    # Stats blokları
+    bw, bh, by = (W-PAD*2)//5, 80, 210
+    stats = [
+        ("MATÇ",    wins+losses, WHITE),
+        ("QƏLƏBƏ",  wins,        GREEN),
+        ("KİLL",    kills,       (100, 220, 255)),
+        ("K/D",     kd,          GOLD),
+        ("WIN %",   f"{wr}%",   GREEN),
+    ]
+    for i,(lbl,val,col) in enumerate(stats):
+        x = PAD + i*bw
+        draw.rectangle([x+2, by, x+bw-2, by+bh], fill=PANEL, outline=BORDER, width=1)
+        draw.text((x+bw//2, by+bh//2-12), str(val), font=_font(22, True), fill=col, anchor="mm")
+        draw.text((x+bw//2, by+bh-14),     lbl,       font=_font(10, True), fill=GRAY, anchor="mm")
+
+    # Nailiyyətlər
+    ay = 310
+    draw.text((PAD, ay), "🏅 Nailiyyətlər:", font=_font(13, True), fill=GOLD)
+    if achievements:
+        ax = PAD
+        for ach in achievements[:10]:
+            txt = f"{ach['icon']} {ach['name']}"
+            draw.text((ax, ay+22), txt, font=fxi, fill=WHITE)
+            ax += _font(11).getlength(txt) + 16
+            if ax > W - 100:
+                break
+    else:
+        draw.text((PAD+120, ay+22), "Hələ yoxdur", font=fxi, fill=GRAY)
+
+    draw.text((PAD, H-24), "Calestify Gaming Community", font=fxi, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
+# ── XƏBƏRDARLIQ KARTI ────────────────────────────────────────────────────────
+def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_path: str):
+    ROW_H  = 52
+    HEADER = 80
+    FOOTER = 30
+    n      = max(1, len(warnings))
+    H      = HEADER + n * ROW_H + FOOTER + 20
+
+    img  = Image.new("RGB", (800, H), BG_TOP)
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y/H
+        c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
+        draw.line([(0,y),(800,y)], fill=c)
+    draw.rectangle([(0,0),(799,H-1)], outline=RED if is_banned else BORDER, width=2)
+
+    fb = _font(13, True)
+    ft = _font(22, True)
+    fs = _font(14)
+    fx = _font(12)
+
+    status = "🔴 BANLANDI" if is_banned else f"⚠️ {len(warnings)} Xəbərdarlıq"
+    draw.text((20, 12), "CALESTIFY  ·  ADMIN PANEL", font=fb, fill=GOLD)
+    draw.text((20, 28), f"{nick} — {status}", font=ft, fill=RED if is_banned else (255,180,0))
+    draw.line([(0,72),(800,72)], fill=BORDER, width=1)
+
+    y = 82
+    if not warnings:
+        draw.text((20, y+10), "Heç bir xəbərdarlıq yoxdur.", font=fs, fill=GRAY)
+    else:
+        for i, w in enumerate(warnings):
+            bg = (35,20,20) if i%2==0 else PANEL
+            draw.rectangle([(0,y),(800,y+ROW_H)], fill=bg)
+            dt = datetime.datetime.utcfromtimestamp(w["created_at"]) + datetime.timedelta(hours=4)
+            draw.text((20, y+6),  f"#{i+1} — {w['reason'][:60]}", font=fs, fill=WHITE)
+            draw.text((20, y+28), dt.strftime("%d.%m.%Y %H:%M"), font=fx, fill=GRAY)
+            y += ROW_H
+
+    draw.text((20, H-24), "Calestify Gaming Community", font=fx, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
+# ── NAİLİYYƏTLƏR KARTI ───────────────────────────────────────────────────────
+def generate_achievements_card(nick: str, achievements: list, output_path: str):
+    COLS   = 3
+    CELL_H = 70
+    HEADER = 72
+    FOOTER = 30
+    rows   = max(1, (len(achievements) + COLS - 1) // COLS)
+    H      = HEADER + rows * CELL_H + FOOTER
+    W      = 800
+
+    img  = Image.new("RGB", (W, H), BG_TOP)
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y/H
+        c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
+        draw.line([(0,y),(W,y)], fill=c)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=GOLD, width=2)
+
+    fb = _font(13, True)
+    ft = _font(22, True)
+    fs = _font(13)
+    fx = _font(11)
+
+    draw.text((20, 12), "CALESTIFY", font=fb, fill=GOLD)
+    draw.text((20, 28), f"{nick} — Nailiyyətlər ({len(achievements)})", font=ft, fill=WHITE)
+    draw.line([(0,68),(W,68)], fill=BORDER, width=1)
+
+    CW = W // COLS
+    for idx, ach in enumerate(achievements):
+        row, col = divmod(idx, COLS)
+        cx = col * CW
+        cy = HEADER + row * CELL_H
+        bg = (24,22,30) if (row+col)%2==0 else PANEL
+        draw.rectangle([(cx, cy),(cx+CW, cy+CELL_H)], fill=bg, outline=BORDER, width=1)
+        draw.text((cx+10, cy+8),  f"{ach['icon']} {ach['name']}", font=fs, fill=GOLD)
+        draw.text((cx+10, cy+30), ach.get("description","")[:35], font=fx, fill=GRAY)
+        dt = datetime.datetime.utcfromtimestamp(ach["earned_at"]) + datetime.timedelta(hours=4)
+        draw.text((cx+10, cy+48), dt.strftime("%d.%m.%Y"), font=fx, fill=(80,80,100))
+
+    if not achievements:
+        draw.text((20, HEADER+10), "Hələ heç bir nailiyyət yoxdur.", font=fs, fill=GRAY)
+
+    draw.text((20, H-24), "Calestify Gaming Community", font=fx, fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
 # ── iNVENTAR ────────────────────────────────────────────────────────────────
 
 def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, get_item_by_id_fn, output_path):

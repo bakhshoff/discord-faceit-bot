@@ -40,12 +40,20 @@ try:
         refresh_daily_tasks, get_active_daily_tasks,
         get_player_active_task, assign_task_to_player,
         update_task_progress, fail_expired_tasks,
-        full_reset
+        full_reset,
+        update_streak, get_streak_bonus,
+        add_warning, get_warnings, clear_warnings, ban_player, unban_player, is_banned,
+        check_and_grant_achievements, get_player_achievements,
+        place_prediction, resolve_predictions, get_predictions,
+        get_season_leaderboard
     )
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
     from profile_card import generate_profile_card
-    from visual_cards import generate_match_history_card, generate_coin_logs_card, generate_inventory_card, generate_tasks_card
+    from visual_cards import (generate_match_history_card, generate_coin_logs_card,
+                               generate_inventory_card, generate_tasks_card,
+                               generate_stats_card, generate_warnings_card,
+                               generate_achievements_card, get_rank)
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
@@ -1389,6 +1397,13 @@ class MatchmakingView(discord.ui.View):
             return
 
         discord_id, nick, so2_id, elo, wins, losses, coins, active_banner, active_frame, zm_balance, *_ = player
+
+        # Ban yoxlaması
+        if is_banned(discord_id):
+            await interaction.response.send_message(
+                "🔴 Siz banlanmısınız. Rəhbərliylə əlaqə saxlayın.", ephemeral=True)
+            return
+
         added = add_to_queue(discord_id, nick, elo, so2_id)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
@@ -1405,6 +1420,15 @@ class MatchmakingView(discord.ui.View):
             return
 
         await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/10)", ephemeral=True)
+
+        # 8/10 bildirişi
+        if size == 8:
+            general_ch = bot.get_channel(GENERAL_CHAT_ID)
+            if general_ch:
+                await general_ch.send(
+                    "🎮 **Sırada 8/10 oyunçu var!** 2 nəfər daha lazımdır — `#matchmaking` kanalına keçin!"
+                )
+
         await update_queue_status_message()
 
         if size >= 10:
@@ -1581,18 +1605,28 @@ class ScanEditView(discord.ui.View):
 
         if results:
             for p, r in zip(winner_team, results["winners"]):
-                earned = random.randint(5, 10)
-                bal    = add_coins(p["discord_id"], earned)
-                add_coin_log(p["discord_id"], earned, f"Matç No{self.match_number} qələbə", "earn", bal)
-                winner_coins[p["discord_id"]] = (earned, bal)
-                add_season_stat(p["discord_id"], season["id"], wins=1,
-                                elo_gained=max(0, r["new_elo"] - r["old_elo"]))
+                did    = p["discord_id"]
+                streak, _ = update_streak(did, True)
+                s_coins, s_elo = get_streak_bonus(streak)
+                earned = random.randint(5, 10) + s_coins
+                if s_elo:
+                    from database import _get_conn as _gc2
+                    _c2 = _gc2(); _cur2 = _c2.cursor()
+                    _cur2.execute("UPDATE players SET elo=elo+? WHERE discord_id=?", (s_elo, did))
+                    _c2.commit(); _c2.close()
+                bal    = add_coins(did, earned)
+                add_coin_log(did, earned, f"Matç No{self.match_number} qələbə" + (f" (streak {streak})" if s_coins else ""), "earn", bal)
+                winner_coins[did] = (earned, bal)
+                add_season_stat(did, season["id"], wins=1, elo_gained=max(0, r["new_elo"]-r["old_elo"]))
+                check_and_grant_achievements(did)
             for p, r in zip(loser_team, results["losers"]):
+                did    = p["discord_id"]
+                update_streak(did, False)
                 earned = random.randint(0, 5)
-                bal    = add_coins(p["discord_id"], earned)
-                add_coin_log(p["discord_id"], earned, f"Matç No{self.match_number} iştirak", "earn", bal)
-                loser_coins[p["discord_id"]] = (earned, bal)
-                add_season_stat(p["discord_id"], season["id"], losses=1,
+                bal    = add_coins(did, earned)
+                add_coin_log(did, earned, f"Matç No{self.match_number} iştirak", "earn", bal)
+                loser_coins[did] = (earned, bal)
+                add_season_stat(did, season["id"], losses=1,
                                 elo_gained=max(0, r["new_elo"] - r["old_elo"]))
 
             winner_results = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
@@ -2150,6 +2184,207 @@ async def gunluk_cmd(interaction: discord.Interaction):
     await interaction.followup.send(file=discord.File(path, filename="tasks.png"), view=view, ephemeral=True)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# XƏBƏRDARLIQ / BAN SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="warn", description="[Admin] Oyunçuya xəbərdarlıq ver")
+@app_commands.describe(uzv="Xəbərdarlıq veriləcək üzv", sebeb="Xəbərdarlıq səbəbi")
+@app_commands.checks.has_permissions(administrator=True)
+async def warn_cmd(interaction: discord.Interaction, uzv: discord.Member, sebeb: str):
+    await interaction.response.defer(ephemeral=True)
+    count = add_warning(uzv.id, sebeb, interaction.user.id)
+    warns = get_warnings(uzv.id)
+    banned = is_banned(uzv.id)
+    path  = os.path.join(DATA_DIR or ".", f"warns_{uzv.id}.png")
+    await asyncio.to_thread(generate_warnings_card, uzv.display_name, warns, banned, path)
+    try:
+        await uzv.send(f"⚠️ **Calestify FACEIT** — Xəbərdarlıq #{count}\n**Səbəb:** {sebeb}")
+    except discord.Forbidden:
+        pass
+    if count >= 3 and not banned:
+        ban_player(uzv.id, "3 xəbərdarlıq avtomatik ban", interaction.user.id)
+        await interaction.followup.send(
+            f"🔴 {uzv.mention} **avtomatik banlandı** (3 xəbərdarlıq tamamlandı).",
+            file=discord.File(path, filename="warns.png"), ephemeral=False)
+    else:
+        await interaction.followup.send(
+            f"⚠️ {uzv.mention} xəbərdarlıq #{count} verildi.",
+            file=discord.File(path, filename="warns.png"), ephemeral=False)
+
+
+@warn_cmd.error
+async def warn_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="ban", description="[Admin] Oyunçunu banla (queue-ya qoşula bilməz)")
+@app_commands.describe(uzv="Banlanacaq üzv", sebeb="Ban səbəbi")
+@app_commands.checks.has_permissions(administrator=True)
+async def ban_cmd(interaction: discord.Interaction, uzv: discord.Member, sebeb: str):
+    ban_player(uzv.id, sebeb, interaction.user.id)
+    remove_from_queue(uzv.id)
+    try:
+        await uzv.send(f"🔴 **Calestify FACEIT** — Siz banlandınız.\n**Səbəb:** {sebeb}")
+    except discord.Forbidden:
+        pass
+    await interaction.response.send_message(f"🔴 {uzv.mention} banlandı. Səbəb: {sebeb}", ephemeral=False)
+
+
+@ban_cmd.error
+async def ban_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="unban", description="[Admin] Oyunçunun banını aç")
+@app_commands.describe(uzv="Banı açılacaq üzv")
+@app_commands.checks.has_permissions(administrator=True)
+async def unban_cmd(interaction: discord.Interaction, uzv: discord.Member):
+    unban_player(uzv.id)
+    clear_warnings(uzv.id)
+    try:
+        await uzv.send("✅ **Calestify FACEIT** — Banınız açıldı, yenidən qoşula bilərsiniz.")
+    except discord.Forbidden:
+        pass
+    await interaction.response.send_message(f"✅ {uzv.mention} banı açıldı, xəbərdarlıqlar silindi.", ephemeral=False)
+
+
+@unban_cmd.error
+async def unban_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="xeberdarliqlar", description="Oyunçunun xəbərdarlıqlarını göstər")
+@app_commands.describe(uzv="Üzv (boş = özünüz)")
+@app_commands.checks.has_permissions(administrator=True)
+async def warns_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    target = uzv or interaction.user
+    await interaction.response.defer(ephemeral=True)
+    warns  = get_warnings(target.id)
+    banned = is_banned(target.id)
+    path   = os.path.join(DATA_DIR or ".", f"warns_{target.id}.png")
+    await asyncio.to_thread(generate_warnings_card, target.display_name, warns, banned, path)
+    await interaction.followup.send(file=discord.File(path, filename="warns.png"), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# /STATS — BAŞQASININ STATİSTİKASI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="stats", description="Oyunçunun statistikasını vizual göstər")
+@app_commands.describe(uzv="Oyunçu (boş = özünüz)")
+async def stats_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    target = uzv or interaction.user
+    await interaction.response.defer()
+    player = get_player(target.id)
+    if not player:
+        await interaction.followup.send("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    p = player
+    player_data = {
+        "nick": p[1], "so2_id": p[2], "elo": p[3], "wins": p[4], "losses": p[5],
+        "coins": p[6], "zm_balance": p[9] if len(p) > 9 else 0,
+        "kills": p[10] if len(p) > 10 else 0,
+        "assists": p[11] if len(p) > 11 else 0,
+        "deaths": p[12] if len(p) > 12 else 0,
+        "win_streak": p[13] if len(p) > 13 else 0,
+        "max_streak": p[14] if len(p) > 14 else 0,
+    }
+    achs  = get_player_achievements(target.id)
+    path  = os.path.join(DATA_DIR or ".", f"stats_{target.id}.png")
+    await asyncio.to_thread(generate_stats_card, player_data, achs, path)
+    await interaction.followup.send(file=discord.File(path, filename="stats.png"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NAİLİYYƏTLƏR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="nailiyyetler", description="Nailiyyətlərinizi vizual görün")
+@app_commands.describe(uzv="Oyunçu (boş = özünüz)")
+async def nailiyyetler_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    target = uzv or interaction.user
+    await interaction.response.defer(ephemeral=True)
+    player = get_player(target.id)
+    if not player:
+        await interaction.followup.send("❌ Qeydiyyat yoxdur.", ephemeral=True)
+        return
+    achs = get_player_achievements(target.id)
+    path = os.path.join(DATA_DIR or ".", f"achievements_{target.id}.png")
+    await asyncio.to_thread(generate_achievements_card, player[1], achs, path)
+    await interaction.followup.send(file=discord.File(path, filename="achievements.png"), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MATÇ MƏRCİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class PredictionView(discord.ui.View):
+    def __init__(self, match_number: int):
+        super().__init__(timeout=60)
+        self.match_number = match_number
+
+    @discord.ui.button(label="Komanda A 🔵", style=discord.ButtonStyle.primary)
+    async def bet_a(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._show_bet_modal(interaction, "Komanda A")
+
+    @discord.ui.button(label="Komanda B 🔴", style=discord.ButtonStyle.danger)
+    async def bet_b(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._show_bet_modal(interaction, "Komanda B")
+
+    async def _show_bet_modal(self, interaction: discord.Interaction, team: str):
+        modal = BetModal(self.match_number, team)
+        await interaction.response.send_modal(modal)
+
+
+class BetModal(discord.ui.Modal):
+    amount = discord.ui.TextInput(label="Mərc miqdarı (coin)", placeholder="50", required=True, max_length=5)
+
+    def __init__(self, match_number, team):
+        super().__init__(title=f"{team} üçün mərc")
+        self.match_number = match_number
+        self.team         = team
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            bet = int(self.amount.value)
+            if bet < 1:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ Düzgün məbləğ daxil edin.", ephemeral=True)
+            return
+        ok, msg = place_prediction(interaction.user.id, self.match_number, self.team, bet)
+        color = discord.Color.green() if ok else discord.Color.red()
+        embed = discord.Embed(description=f"{'✅' if ok else '❌'} {msg}", color=color)
+        if ok:
+            embed.add_field(name="Komanda", value=self.team, inline=True)
+            embed.add_field(name="Mərc",   value=f"🪙 {bet}", inline=True)
+            embed.set_footer(text="Düz tapsan 2x qazanırsan!")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="merc", description="Aktiv matçın qalibi üçün coin mərc et")
+async def merc_cmd(interaction: discord.Interaction):
+    active = get_active_match()
+    if not active:
+        await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
+        return
+    player = get_player(interaction.user.id)
+    if not player:
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisən.", ephemeral=True)
+        return
+    coins = get_coins(interaction.user.id)
+    embed = discord.Embed(
+        title=f"🎲 Matç No{active['match_number']} — Mərc",
+        description=f"Qalibə mərc et, düz tapsan **2x** qazanırsın!\n\n🪙 Balansınız: **{coins} coin**",
+        color=discord.Color.gold()
+    )
+    await interaction.response.send_message(embed=embed, view=PredictionView(active["match_number"]), ephemeral=True)
+
+
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
@@ -2185,6 +2420,10 @@ async def on_ready():
         push_backup_task.start()
     if not daily_task_refresh.is_running():
         daily_task_refresh.start()
+    if not season_end_check.is_running():
+        season_end_check.start()
+    if not weekly_stats_task.is_running():
+        weekly_stats_task.start()
     await bot.tree.sync()
 
 
@@ -2192,6 +2431,66 @@ async def on_ready():
 async def daily_task_refresh():
     refresh_daily_tasks()
     fail_expired_tasks()
+
+
+@tasks.loop(hours=12)
+async def season_end_check():
+    """Sezon bitibsə mükafatları paylayır, yeni sezon açır."""
+    import datetime as _dt
+    season = get_or_create_current_season()
+    try:
+        end_dt = _dt.datetime.strptime(season["end_date"], "%Y-%m-%d")
+    except Exception:
+        return
+    if _dt.datetime.utcnow() < end_dt:
+        return
+
+    # Sezon bitti — mükafat paylaması
+    log_ch = bot.get_channel(LOG_CHANNEL_ID)
+    rows   = get_season_leaderboard(season["id"], limit=3)
+
+    if rows and log_ch:
+        embed = discord.Embed(
+            title=f"🏆 SEZON {season['season_number']} TAMAMLANDI!",
+            description="Ən çox ELO qazanan ilk 3 oyunçu mükafatlandırıldı!",
+            color=discord.Color.gold()
+        )
+        medals = ["🥇", "🥈", "🥉"]
+        rewards = [500, 300, 150]
+        for i, r in enumerate(rows[:3]):
+            nick, _, elo_gained = r[0], r[1], r[2]
+            did = next((p["discord_id"] for p in get_all_players(200) if p["nick"] == nick), None)
+            if did:
+                bal = add_coins(did, rewards[i])
+                add_coin_log(did, rewards[i], f"Sezon {season['season_number']} Top {i+1}", "earn", bal)
+            embed.add_field(name=f"{medals[i]} {nick}", value=f"+{elo_gained} ELO  ·  +{rewards[i]}🪙", inline=False)
+        await log_ch.send(embed=embed)
+
+    close_season(season["id"])
+    get_or_create_current_season()
+
+
+@tasks.loop(hours=168)  # 7 gün
+async def weekly_stats_task():
+    """Həftəlik Top 3 elanı — logs kanalına."""
+    log_ch = bot.get_channel(LOG_CHANNEL_ID)
+    if not log_ch:
+        return
+    rows = get_leaderboard(limit=3)
+    if not rows:
+        return
+    embed = discord.Embed(
+        title="📊 HƏFTƏLİK TOP 3 — ELO",
+        color=discord.Color.blurple()
+    )
+    medals = ["🥇", "🥈", "🥉"]
+    for i, r in enumerate(rows[:3]):
+        nick, so2_id, elo = r[0], r[1], r[2]
+        kd = round(r[6]/max(r[7],1), 2) if len(r) > 7 else 0
+        embed.add_field(name=f"{medals[i]} {nick}", value=f"ELO: {elo}  ·  K/D: {kd}", inline=False)
+    import datetime as _dt
+    embed.set_footer(text=f"Həftəlik statistika · {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y')}")
+    await log_ch.send(embed=embed)
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -2773,7 +3072,51 @@ class AdminPanelView(discord.ui.View):
         deaths  = player[12] if len(player) > 12 else 0
         await interaction.response.send_modal(AdminEditModal(self.discord_id, "deaths", deaths, "Ölüm dəyiş"))
 
-    @discord.ui.button(label="🔫 Skin Envanteri", style=discord.ButtonStyle.danger, row=3)
+    @discord.ui.button(label="⚠️ Warn ver", style=discord.ButtonStyle.danger, row=3)
+    async def give_warn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        modal = WarnReasonModal(self.discord_id)
+        await interaction.response.send_modal(modal)
+
+    @discord.ui.button(label="🔴 Ban", style=discord.ButtonStyle.danger, row=3)
+    async def ban_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        ban_player(self.discord_id, "Admin paneldən ban", interaction.user.id)
+        remove_from_queue(self.discord_id)
+        await interaction.response.send_message(f"🔴 <@{self.discord_id}> banlandı.", ephemeral=False)
+
+    @discord.ui.button(label="✅ Unban", style=discord.ButtonStyle.success, row=3)
+    async def unban_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        unban_player(self.discord_id)
+        clear_warnings(self.discord_id)
+        await interaction.response.send_message(f"✅ <@{self.discord_id}> banı açıldı.", ephemeral=False)
+
+    @discord.ui.button(label="📊 Stats", style=discord.ButtonStyle.secondary, row=3)
+    async def view_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.discord_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+        p = player
+        player_data = {
+            "nick": p[1], "so2_id": p[2], "elo": p[3], "wins": p[4], "losses": p[5],
+            "coins": p[6], "zm_balance": p[9] if len(p) > 9 else 0,
+            "kills": p[10] if len(p) > 10 else 0,
+            "assists": p[11] if len(p) > 11 else 0,
+            "deaths": p[12] if len(p) > 12 else 0,
+            "win_streak": p[13] if len(p) > 13 else 0,
+            "max_streak": p[14] if len(p) > 14 else 0,
+        }
+        achs = get_player_achievements(self.discord_id)
+        path = os.path.join(DATA_DIR or ".", f"stats_{self.discord_id}.png")
+        await asyncio.to_thread(generate_stats_card, player_data, achs, path)
+        await interaction.followup.send(file=discord.File(path, filename="stats.png"), ephemeral=True)
+
+    @discord.ui.button(label="🔫 Skin Envanteri", style=discord.ButtonStyle.danger, row=4)
     async def manage_skins(self, interaction: discord.Interaction, button: discord.ui.Button):
         skin_inv = get_skin_inventory(self.discord_id)
         if not skin_inv:
@@ -2786,6 +3129,24 @@ class AdminPanelView(discord.ui.View):
         embed = discord.Embed(title="🔫 Oyunçunun Skin Envanteri", description="\n".join(lines), color=discord.Color.orange())
         embed.set_footer(text="Oyunda təhvil verdikdən sonra aşağıdakı düymə ilə silin.")
         await interaction.response.send_message(embed=embed, view=SkinDeleteView(self.discord_id, interaction.user.id), ephemeral=True)
+
+
+class WarnReasonModal(discord.ui.Modal, title="Xəbərdarlıq Səbəbi"):
+    reason = discord.ui.TextInput(label="Səbəb", required=True, max_length=200)
+
+    def __init__(self, discord_id):
+        super().__init__()
+        self.discord_id = discord_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        count = add_warning(self.discord_id, str(self.reason), interaction.user.id)
+        await interaction.response.send_message(
+            f"⚠️ <@{self.discord_id}> — Xəbərdarlıq #{count}: {self.reason}",
+            ephemeral=False
+        )
+        if count >= 3:
+            ban_player(self.discord_id, "3 xəbərdarlıq", interaction.user.id)
+            await interaction.followup.send(f"🔴 <@{self.discord_id}> 3 warn — avtomatik ban.", ephemeral=False)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

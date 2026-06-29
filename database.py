@@ -44,6 +44,60 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN assists INTEGER DEFAULT 0")
     if "deaths" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN deaths INTEGER DEFAULT 0")
+    if "win_streak" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN win_streak INTEGER DEFAULT 0")
+    if "max_streak" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN max_streak INTEGER DEFAULT 0")
+    if "is_banned" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN is_banned INTEGER DEFAULT 0")
+
+    # ── Warnings ─────────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS warnings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            admin_id INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+
+    # ── Achievements ──────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS achievements (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            icon TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS player_achievements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            achievement_id TEXT NOT NULL,
+            earned_at INTEGER NOT NULL,
+            UNIQUE(discord_id, achievement_id)
+        )
+    """)
+
+    # ── Match predictions ──────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS match_predictions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            match_number INTEGER NOT NULL,
+            discord_id INTEGER NOT NULL,
+            predicted_team TEXT NOT NULL,
+            bet_coins INTEGER NOT NULL,
+            result TEXT DEFAULT NULL,
+            paid INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            UNIQUE(match_number, discord_id)
+        )
+    """)
+
+    # Achievements seed data
+    _seed_achievements(cursor)
 
     # ── Seasons ──────────────────────────────────────────────────────────────
     cursor.execute("""
@@ -1300,6 +1354,267 @@ def update_task_progress(discord_id, kills=0, assists=0):
     return completed, reward
 
 
+def _seed_achievements(cursor):
+    ACHIEVEMENTS = [
+        ("first_match",   "İlk Matç",        "İlk matçını oynadın",                "🎮"),
+        ("win_10",        "10 Qələbə",        "10 matç qazandın",                   "🏆"),
+        ("win_50",        "50 Qələbə",        "50 matç qazandın",                   "👑"),
+        ("kill_50",       "50 Kill",          "Cəmi 50 kill etdin",                 "🔫"),
+        ("kill_100",      "100 Kill",         "Cəmi 100 kill etdin",                "💀"),
+        ("kill_500",      "500 Kill",         "Cəmi 500 kill etdin",                "🎯"),
+        ("mvp_3",         "Üçlü MVP",         "3 dəfə MVP seçildin",                "⭐"),
+        ("mvp_10",        "MVP Ustası",       "10 dəfə MVP seçildin",               "🌟"),
+        ("streak_3",      "Seriya 3",         "3 qələbə sıraı",                     "🔥"),
+        ("streak_5",      "Seriya 5",         "5 qələbə sıraı",                     "💥"),
+        ("streak_10",     "Seriya 10",        "10 qələbə sıraı",                    "⚡"),
+        ("kd_2",          "KD 2.0+",          "K/D nisbətin 2.0-ı keçdi",           "🗡️"),
+        ("task_10",       "Tapşırıq Qəhrəmanı","10 günlük tapşırıq tamamladın",     "🎯"),
+        ("elo_1200",      "Elite Oyunçu",     "1200 ELO-ya çatdın",                 "💎"),
+        ("elo_1500",      "Master",           "1500 ELO-ya çatdın",                 "👑"),
+    ]
+    for ach_id, name, desc, icon in ACHIEVEMENTS:
+        cursor.execute(
+            "INSERT OR IGNORE INTO achievements (id, name, description, icon) VALUES (?,?,?,?)",
+            (ach_id, name, desc, icon)
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# WIN STREAK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def update_streak(discord_id, won: bool):
+    """Qələbədə streak artır, məğlubiyyətdə sıfırlanır. (streak, max_streak) qaytarır."""
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT win_streak, max_streak FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close(); return 0, 0
+    streak, max_s = row
+    if won:
+        streak += 1
+        max_s = max(max_s, streak)
+    else:
+        streak = 0
+    cursor.execute("UPDATE players SET win_streak=?, max_streak=? WHERE discord_id=?",
+                   (streak, max_s, discord_id))
+    conn.commit(); conn.close()
+    return streak, max_s
+
+
+def get_streak_bonus(streak: int) -> tuple:
+    """(bonus_coins, bonus_elo) qaytarır."""
+    if streak >= 10: return 20, 5
+    if streak >= 7:  return 15, 3
+    if streak >= 5:  return 10, 2
+    if streak >= 3:  return 5,  1
+    return 0, 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# XƏBƏRDARLIQ / BAN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def add_warning(discord_id, reason, admin_id):
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO warnings (discord_id, reason, admin_id, created_at) VALUES (?,?,?,?)",
+                   (discord_id, reason, admin_id, int(time.time())))
+    conn.commit()
+    cursor.execute("SELECT COUNT(*) FROM warnings WHERE discord_id=?", (discord_id,))
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_warnings(discord_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, reason, admin_id, created_at FROM warnings WHERE discord_id=? ORDER BY created_at DESC",
+                   (discord_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "reason": r[1], "admin_id": r[2], "created_at": r[3]} for r in rows]
+
+
+def clear_warnings(discord_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM warnings WHERE discord_id=?", (discord_id,))
+    conn.commit(); conn.close()
+
+
+def ban_player(discord_id, reason, admin_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET is_banned=1 WHERE discord_id=?", (discord_id,))
+    conn.commit(); conn.close()
+    add_warning(discord_id, f"[BAN] {reason}", admin_id)
+
+
+def unban_player(discord_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET is_banned=0 WHERE discord_id=?", (discord_id,))
+    conn.commit(); conn.close()
+
+
+def is_banned(discord_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT is_banned FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NAİLİYYƏTLƏR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def check_and_grant_achievements(discord_id) -> list:
+    """Yeni qazanılan nailiyyətləri qaytarır."""
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT wins, kills, win_streak, max_streak, elo FROM players WHERE discord_id=?",
+        (discord_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close(); return []
+    wins, kills, streak, max_s, elo = row
+
+    cursor.execute("SELECT achievement_id FROM player_achievements WHERE discord_id=?", (discord_id,))
+    owned = {r[0] for r in cursor.fetchall()}
+
+    cursor.execute("SELECT COUNT(*) FROM player_tasks WHERE discord_id=? AND completed=1", (discord_id,))
+    tasks_done = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM scan_results sr "
+                   "JOIN match_history mh ON mh.match_number=sr.match_number "
+                   "WHERE sr.confirmed=1", ())
+    # MVP sayı ayrıca coin log-dan bax
+    cursor.execute("SELECT COUNT(*) FROM coin_logs WHERE discord_id=? AND reason='MVP mükafatı'",
+                   (discord_id,))
+    mvp_count = cursor.fetchone()[0]
+
+    kd_val = 0.0
+    cursor.execute("SELECT kills, deaths FROM players WHERE discord_id=?", (discord_id,))
+    kd_row = cursor.fetchone()
+    if kd_row:
+        kd_val = kd_row[0] / max(kd_row[1], 1)
+
+    candidates = {
+        "first_match": wins >= 1,
+        "win_10":      wins >= 10,
+        "win_50":      wins >= 50,
+        "kill_50":     kills >= 50,
+        "kill_100":    kills >= 100,
+        "kill_500":    kills >= 500,
+        "mvp_3":       mvp_count >= 3,
+        "mvp_10":      mvp_count >= 10,
+        "streak_3":    max_s >= 3,
+        "streak_5":    max_s >= 5,
+        "streak_10":   max_s >= 10,
+        "kd_2":        kd_val >= 2.0,
+        "task_10":     tasks_done >= 10,
+        "elo_1200":    elo >= 1200,
+        "elo_1500":    elo >= 1500,
+    }
+
+    now = int(time.time())
+    new_ones = []
+    for ach_id, condition in candidates.items():
+        if condition and ach_id not in owned:
+            cursor.execute(
+                "INSERT OR IGNORE INTO player_achievements (discord_id, achievement_id, earned_at) VALUES (?,?,?)",
+                (discord_id, ach_id, now)
+            )
+            if cursor.rowcount:
+                cursor.execute("SELECT name, icon FROM achievements WHERE id=?", (ach_id,))
+                ach = cursor.fetchone()
+                if ach:
+                    new_ones.append({"id": ach_id, "name": ach[0], "icon": ach[1]})
+
+    conn.commit(); conn.close()
+    return new_ones
+
+
+def get_player_achievements(discord_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""SELECT a.id, a.name, a.description, a.icon, pa.earned_at
+                      FROM player_achievements pa
+                      JOIN achievements a ON a.id=pa.achievement_id
+                      WHERE pa.discord_id=? ORDER BY pa.earned_at DESC""", (discord_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "description": r[2], "icon": r[3], "earned_at": r[4]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MATÇ MƏRCİ (PREDICTION)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def place_prediction(discord_id, match_number, predicted_team, bet_coins):
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT coins FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < bet_coins:
+        conn.close(); return False, "Kifayət qədər coin yoxdur."
+    cursor.execute("SELECT id FROM match_predictions WHERE match_number=? AND discord_id=?",
+                   (match_number, discord_id))
+    if cursor.fetchone():
+        conn.close(); return False, "Artıq mərc etmisiniz."
+    cursor.execute("UPDATE players SET coins=coins-? WHERE discord_id=?", (bet_coins, discord_id))
+    cursor.execute(
+        "INSERT INTO match_predictions (match_number, discord_id, predicted_team, bet_coins, created_at) VALUES (?,?,?,?,?)",
+        (match_number, discord_id, predicted_team, bet_coins, int(time.time()))
+    )
+    conn.commit(); conn.close()
+    return True, "Mərc qəbul edildi."
+
+
+def resolve_predictions(match_number, winner_label):
+    """Qalib labeli 'Komanda A' / 'Komanda B'. Düz tapanlar 2x qazanır."""
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, discord_id, predicted_team, bet_coins FROM match_predictions WHERE match_number=? AND paid=0",
+        (match_number,)
+    )
+    preds = cursor.fetchall()
+    winners = []
+    for pred_id, did, pred_team, bet in preds:
+        won = pred_team == winner_label
+        result = "win" if won else "loss"
+        cursor.execute("UPDATE match_predictions SET result=?, paid=1 WHERE id=?", (result, pred_id))
+        if won:
+            payout = bet * 2
+            cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?", (payout, did))
+            winners.append({"discord_id": did, "bet": bet, "payout": payout})
+    conn.commit(); conn.close()
+    return winners
+
+
+def get_predictions(match_number):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id, predicted_team, bet_coins, result FROM match_predictions WHERE match_number=?",
+        (match_number,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"discord_id": r[0], "team": r[1], "bet": r[2], "result": r[3]} for r in rows]
+
+
 def fail_expired_tasks():
     import time
     conn = _get_conn()
@@ -1319,7 +1634,8 @@ def full_reset():
     for table in ("players", "match_history", "season_stats", "seasons",
                   "scan_results", "player_tasks", "daily_tasks",
                   "coin_logs", "active_boosts", "chat_history",
-                  "inventory", "skin_inventory", "skins", "giveaways"):
+                  "inventory", "skin_inventory", "skins", "giveaways",
+                  "warnings", "player_achievements", "match_predictions"):
         cursor.execute(f"DELETE FROM {table}")
 
     # Matç sayacını sıfırla
