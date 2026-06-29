@@ -236,8 +236,8 @@ def generate_tasks_card(active_task, available_tasks, output_path):
         a = active_task
         kp, kt = a["kills_progress"],  max(a["kill_target"],  1) if a["kill_target"]  else 1
         ap, at = a["assists_progress"], max(a["assist_target"],1) if a["assist_target"] else 1
-        pct_k  = a["kills_progress"]  / a["kill_target"]  if a["kill_target"]  else 1.0
-        pct_a  = a["assists_progress"] / a["assist_target"] if a["assist_target"] else 1.0
+        pct_k  = (a["kills_progress"]  / a["kill_target"])  if a["kill_target"]  else None
+        pct_a  = (a["assists_progress"] / a["assist_target"]) if a["assist_target"] else None
 
         try:
             exp_dt = datetime.datetime.utcfromtimestamp(a["expires_at"]) + datetime.timedelta(hours=4)
@@ -258,18 +258,18 @@ def generate_tasks_card(active_task, available_tasks, output_path):
 
         bar_w = (cw - 30) // 2
         # Kill progress
-        if a["kill_target"]:
+        if pct_k is not None:
             draw.text((cx+10, cy+96), f"Kill: {a['kills_progress']}/{a['kill_target']}", font=fx, fill=GREEN)
             _progress_bar(draw, cx+10, cy+110, bar_w, 14, pct_k, GREEN)
-        # Asist progress
-        if a["assist_target"]:
+        if pct_a is not None:
             draw.text((cx+bar_w+20, cy+96), f"Asist: {a['assists_progress']}/{a['assist_target']}", font=fx, fill=CYAN)
             _progress_bar(draw, cx+bar_w+20, cy+110, bar_w, 14, pct_a, CYAN)
 
-        # Overall progress bar
-        overall = (pct_k + pct_a) / (int(bool(a["kill_target"])) + int(bool(a["assist_target"])) or 1)
+        # Overall — yalnız mövcud hədəflərin ortalaması
+        active_pcts = [p for p in [pct_k, pct_a] if p is not None]
+        overall     = sum(active_pcts) / len(active_pcts) if active_pcts else 0.0
         _progress_bar(draw, cx+10, cy+130, cw-20, 18, overall, ORANGE)
-        pct_txt = f"{int(overall*100)}%"
+        pct_txt = f"{int(overall * 100)}%"
         draw.text((cx + cw//2 - _tw(draw, pct_txt, fx)//2, cy+132), pct_txt, font=fx, fill=WHITE)
 
     else:
