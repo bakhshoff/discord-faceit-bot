@@ -329,10 +329,12 @@ class MarketItemDetailView(discord.ui.View):
 
 
 class MarketItemView(discord.ui.View):
-    def __init__(self, discord_id):
+    def __init__(self, discord_id, item_type=None):
+        """item_type: None = hamısı, 'banner' = yalnız bannerlər, 'avatar_frame' = yalnız çərçivələr"""
         super().__init__(timeout=120)
         self.discord_id = discord_id
-        for item in MARKET_ITEMS:
+        items = [i for i in MARKET_ITEMS if item_type is None or i.get("type") == item_type]
+        for item in items:
             owned = owns_item(discord_id, item["id"])
             label = f"👁 {item['name']} — {item['price']} 🪙" if not owned else f"{item['name']} (Sahibsiniz)"
             style = discord.ButtonStyle.primary if not owned else discord.ButtonStyle.secondary
@@ -664,7 +666,7 @@ class DizaynMarketView(discord.ui.View):
         lines = [f"**{i['name']}**" + (" ✅" if owns_item(self.discord_id, i["id"]) else f" — 🪙 {i['price']}") for i in banners]
         embed = discord.Embed(title="🖼️ Avatar Bannerlər", description="\n".join(lines), color=discord.Color.gold())
         embed.set_footer(text=f"Balansınız: 🪙 {coins}")
-        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id, item_type="banner"), ephemeral=True)
 
     @discord.ui.button(label="Çərçivə", style=discord.ButtonStyle.secondary, emoji="🔲", row=0)
     async def open_frames(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -673,7 +675,7 @@ class DizaynMarketView(discord.ui.View):
         lines = [f"**{i['name']}**" + (" ✅" if owns_item(self.discord_id, i["id"]) else f" — 🪙 {i['price']}") for i in frames]
         embed = discord.Embed(title="🔲 Çərçivələr", description="\n".join(lines), color=discord.Color.blurple())
         embed.set_footer(text=f"Balansınız: 🪙 {coins}")
-        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id), ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id, item_type="avatar_frame"), ephemeral=True)
 
 
 # ── Market ana alt-menüsü ─────────────────────────────────────────────────────
