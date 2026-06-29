@@ -163,7 +163,7 @@ def generate_result_card(match_number, winner_label, loser_label,
     # ── Header ────────────────────────────────────────────────────────────────
     draw.text((30, 18), "CALESTIFY", font=brand_font, fill=GOLD)
     draw.text((30, 36), f"MATÇ No{match_number}  —  NƏTİCƏ", font=title_font, fill=WHITE)
-    draw.text((30, 78), f"🏆  Qalib: {winner_label}   ·   {timestamp_str}", font=sub_font, fill=GRAY)
+    draw.text((30, 78), f"Qalib: {winner_label}   ·   {timestamp_str}", font=sub_font, fill=GRAY)
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=BORDER, width=2)
 
     col_w = WIDTH // 2
@@ -172,12 +172,12 @@ def generate_result_card(match_number, winner_label, loser_label,
     # Winner (green tint)
     draw.rectangle([(0, HEADER_HEIGHT), (col_w, HEADER_HEIGHT + TEAM_HEADER_HEIGHT)],
                    fill=(18, 42, 22))
-    draw.text((30, HEADER_HEIGHT + 9), f"🏆  {winner_label}", font=team_header_font, fill=GREEN)
+    draw.text((30, HEADER_HEIGHT + 9), f">> {winner_label} <<", font=team_header_font, fill=GREEN)
 
     # Loser (red tint)
     draw.rectangle([(col_w, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT + TEAM_HEADER_HEIGHT)],
                    fill=(46, 22, 22))
-    draw.text((col_w + 30, HEADER_HEIGHT + 9), f"❌  {loser_label}", font=team_header_font, fill=RED_TEAM)
+    draw.text((col_w + 30, HEADER_HEIGHT + 9), f"X  {loser_label}", font=team_header_font, fill=RED_TEAM)
 
     draw.line([(col_w, HEADER_HEIGHT), (col_w, height - FOOTER_HEIGHT)], fill=BORDER, width=2)
 

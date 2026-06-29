@@ -243,7 +243,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
             exp_dt = datetime.datetime.utcfromtimestamp(a["expires_at"]) + datetime.timedelta(hours=4)
             tl_sec = max(0, int(a["expires_at"]) - int(datetime.datetime.utcnow().timestamp()))
             h_left, m_left = tl_sec // 3600, (tl_sec % 3600) // 60
-            time_str = f"{h_left}s {m_left}dəq qalıb  ·  ⏰ {exp_dt.strftime('%H:%M')}"
+            time_str = f"{h_left}s {m_left}deq qalıb  ·  {exp_dt.strftime('%H:%M')}"
         except Exception:
             time_str = "—"
 
@@ -280,13 +280,13 @@ def generate_tasks_card(active_task, available_tasks, output_path):
             col = colors[i % len(colors)]
             draw.rectangle([cx, cy, cx+cw, cy+ch], fill=PANEL, outline=col, width=2)
             draw.rectangle([cx, cy, cx+cw, cy+28], fill=(10,20,10))
-            draw.text((cx+10, cy+6), f"📋 TAPŞIRIQ {i+1}", font=fb, fill=col)
+            draw.text((cx+10, cy+6), f"[ TAPSIRIQ {i+1} ]", font=fb, fill=col)
 
             draw.text((cx+10, cy+36), t["description"][:58], font=fm, fill=WHITE)
 
             details = []
-            if t["kill_target"]:  details.append(f"🔫 {t['kill_target']} Kill")
-            if t["assist_target"]: details.append(f"🤝 {t['assist_target']} Asist")
+            if t["kill_target"]:  details.append(f"Kill: {t['kill_target']}")
+            if t["assist_target"]: details.append(f"Asist: {t['assist_target']}")
             draw.text((cx+10, cy+62), "  ".join(details) if details else "Hədəf yoxdur", font=fs, fill=GRAY)
 
             draw.text((cx+10, cy+86), f"Mukafat: {t['reward_coins']} coin", font=fs, fill=GOLD)
@@ -295,7 +295,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
                 exp = datetime.datetime.utcfromtimestamp(t["expires_at"]) + datetime.timedelta(hours=4)
                 tl  = max(0, int(t["expires_at"]) - int(datetime.datetime.utcnow().timestamp()))
                 h2, m2 = tl//3600, (tl%3600)//60
-                draw.text((cx+10, cy+108), f"⏰ {exp.strftime('%H:%M')} bitər  ·  {h2}s {m2}dəq qalıb", font=fx, fill=GRAY)
+                draw.text((cx+10, cy+108), f"{exp.strftime('%H:%M')} biter  ·  {h2}s {m2}deq qalıb", font=fx, fill=GRAY)
             except Exception:
                 pass
 
@@ -375,7 +375,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
     draw.text((PAD, 118), f"SO2 ID: {so2_id}", font=fs, fill=GRAY)
     rc = rank_color
     draw.rectangle([PAD, 140, PAD+160, 168], fill=tuple(c//4 for c in rc), outline=rc, width=2)
-    draw.text((PAD+8, 144), f"{rank_emoji} {rank_name}", font=fx2, fill=rc)
+    draw.text((PAD+8, 144), rank_name, font=fx2, fill=rc)
 
     # Streak
     streak_col = (255,140,0) if streak >= 3 else GRAY
@@ -402,17 +402,20 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
 
     # Nailiyyətlər
     ay = 310
-    draw.text((PAD, ay), "🏅 Nailiyyətlər:", font=_font(13, True), fill=GOLD)
+    draw.text((PAD, ay), "Nailiyyetler:", font=_font(13, True), fill=GOLD)
     if achievements:
         ax = PAD
         for ach in achievements[:10]:
-            txt = f"{ach['icon']} {ach['name']}"
+            txt = ach['name']  # Emoji-siz yalnız ad
             draw.text((ax, ay+22), txt, font=fxi, fill=WHITE)
-            ax += _font(11).getlength(txt) + 16
+            try:
+                ax += int(_font(11).getlength(txt)) + 14
+            except Exception:
+                ax += len(txt) * 7 + 14
             if ax > W - 100:
                 break
     else:
-        draw.text((PAD+120, ay+22), "Hələ yoxdur", font=fxi, fill=GRAY)
+        draw.text((PAD+120, ay+22), "Hele yoxdur", font=fxi, fill=GRAY)
 
     draw.text((PAD, H-24), "Calestify Gaming Community", font=fxi, fill=GRAY)
     img.save(output_path)
@@ -440,7 +443,7 @@ def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_pa
     fs = _font(14)
     fx = _font(12)
 
-    status = "🔴 BANLANDI" if is_banned else f"⚠️ {len(warnings)} Xəbərdarlıq"
+    status = "[BANLANDI]" if is_banned else f"{len(warnings)} Xeberdarliq"
     draw.text((20, 12), "CALESTIFY  ·  ADMIN PANEL", font=fb, fill=GOLD)
     draw.text((20, 28), f"{nick} — {status}", font=ft, fill=RED if is_banned else (255,180,0))
     draw.line([(0,72),(800,72)], fill=BORDER, width=1)
@@ -496,7 +499,7 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str):
         cy = HEADER + row * CELL_H
         bg = (24,22,30) if (row+col)%2==0 else PANEL
         draw.rectangle([(cx, cy),(cx+CW, cy+CELL_H)], fill=bg, outline=BORDER, width=1)
-        draw.text((cx+10, cy+8),  f"{ach['icon']} {ach['name']}", font=fs, fill=GOLD)
+        draw.text((cx+10, cy+8),  ach['name'], font=fs, fill=GOLD)
         draw.text((cx+10, cy+30), ach.get("description","")[:35], font=fx, fill=GRAY)
         dt = datetime.datetime.utcfromtimestamp(ach["earned_at"]) + datetime.timedelta(hours=4)
         draw.text((cx+10, cy+48), dt.strftime("%d.%m.%Y"), font=fx, fill=(80,80,100))

@@ -168,7 +168,7 @@ def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
 
     # Header
     draw.text((30, 18), f"CALESTIFY — SEZON {season_number} LEADERBOARD", font=title_font, fill=CYAN)
-    draw.text((30, 56), f"Sezon: {start_date}  →  {end_date}", font=sub_font, fill=GRAY)
+    draw.text((30, 56), f"Sezon: {start_date}  -  {end_date}", font=sub_font, fill=GRAY)
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=LINE_COLOR, width=2)
 
     # Column headers
