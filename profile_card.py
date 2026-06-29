@@ -188,7 +188,13 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     tx = av_x + av_size + 26
     draw.text((tx, 90),  nick[:24],              font=f_nick,   fill=WHITE)
     draw.text((tx, 130), f"SO2 ID: {so2_id}",   font=f_id,     fill=GRAY)
-    draw.text((tx, 150), f"Level {level}",       font=f_elolbl, fill=level_color)
+    # Rank hesabla
+    _rank_ranges = [
+        (0,900,"Gumus I"),(900,1000,"Gumus II"),(1000,1100,"Qizil I"),(1100,1200,"Qizil II"),
+        (1200,1350,"Almaz I"),(1350,1500,"Almaz II"),(1500,1700,"Elite"),(1700,9999,"Master"),
+    ]
+    rank_name = next((n for lo,hi,n in _rank_ranges if lo<=elo<hi), "Master")
+    draw.text((tx, 150), f"Level {level}  |  {rank_name}", font=f_elolbl, fill=level_color)
 
     # ELO (sağda)
     ex = WIDTH - 220

@@ -858,6 +858,52 @@ class PlayerProfileView(discord.ui.View):
         current_nick = player[1] if player else ""
         await interaction.response.send_modal(NickChangeModal(self.discord_id, current_nick))
 
+    @discord.ui.button(label="Nailiyyətlər", style=discord.ButtonStyle.primary, emoji="🏅", custom_id="profile_achievements", row=2)
+    async def open_achievements(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.discord_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+
+        achs  = get_player_achievements(self.discord_id)
+        path  = os.path.join(DATA_DIR or ".", f"achievements_{self.discord_id}.png")
+
+        if achs:
+            try:
+                await asyncio.to_thread(generate_achievements_card, player[1], achs, path)
+                await interaction.followup.send(file=discord.File(path, filename="achievements.png"), ephemeral=True)
+                return
+            except Exception:
+                pass
+
+        # Nailiyyət yoxdursa və ya kart xəta versə — mövcud nailiyyətlər siyahısı
+        from database import get_player_achievements as _gpa
+        ALL_ACH = [
+            ("🎮", "İlk Matç",       "Birinci matçını oyna"),
+            ("🏆", "10 Qələbə",      "10 matç qazanmaq"),
+            ("👑", "50 Qələbə",      "50 matç qazanmaq"),
+            ("🔫", "50 Kill",        "Cəmi 50 kill etmək"),
+            ("💀", "100 Kill",       "Cəmi 100 kill etmək"),
+            ("🎯", "500 Kill",       "Cəmi 500 kill etmək"),
+            ("⭐", "MVP x3",         "3 dəfə MVP seçilmək"),
+            ("🌟", "MVP Ustası",     "10 dəfə MVP seçilmək"),
+            ("🔥", "Seriya 3",       "3 ardıcıl qələbə"),
+            ("💥", "Seriya 5",       "5 ardıcıl qələbə"),
+            ("⚡", "Seriya 10",      "10 ardıcıl qələbə"),
+            ("🗡️", "KD 2.0+",       "K/D nisbəti 2.0 keçmək"),
+            ("🎯", "Tapşırıq x10",  "10 tapşırıq tamamlamaq"),
+            ("💎", "1200 ELO",       "1200 ELO-ya çatmaq"),
+            ("👑", "1500 ELO",       "1500 ELO-ya çatmaq"),
+        ]
+        owned_ids = {a["id"] for a in achs}
+        embed = discord.Embed(title="🏅 Nailiyyətlər", color=discord.Color.gold())
+        owned_txt  = "\n".join(f"✅ {ico} **{n}**" for ico,n,_ in ALL_ACH if n in [a["name"] for a in achs]) or "—"
+        locked_txt = "\n".join(f"🔒 {ico} {n} — _{d}_" for ico,n,d in ALL_ACH if n not in [a["name"] for a in achs])
+        if owned_txt != "—":
+            embed.add_field(name=f"Qazanıldı ({len(achs)})", value=owned_txt, inline=False)
+        embed.add_field(name="Kilidli", value=locked_txt[:1000] or "Hamısı qazanılıb!", inline=False)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     @discord.ui.button(label="Tapşırıqlar", style=discord.ButtonStyle.success, emoji="🎯", custom_id="profile_tasks", row=2)
     async def open_tasks(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
@@ -2287,16 +2333,34 @@ async def stats_cmd(interaction: discord.Interaction, uzv: discord.Member = None
     player_data = {
         "nick": p[1], "so2_id": p[2], "elo": p[3], "wins": p[4], "losses": p[5],
         "coins": p[6], "zm_balance": p[9] if len(p) > 9 else 0,
-        "kills": p[10] if len(p) > 10 else 0,
-        "assists": p[11] if len(p) > 11 else 0,
-        "deaths": p[12] if len(p) > 12 else 0,
-        "win_streak": p[13] if len(p) > 13 else 0,
-        "max_streak": p[14] if len(p) > 14 else 0,
+        "kills":      p[11] if len(p) > 11 else 0,
+        "assists":    p[12] if len(p) > 12 else 0,
+        "deaths":     p[13] if len(p) > 13 else 0,
+        "win_streak": p[14] if len(p) > 14 else 0,
+        "max_streak": p[15] if len(p) > 15 else 0,
     }
-    achs  = get_player_achievements(target.id)
-    path  = os.path.join(DATA_DIR or ".", f"stats_{target.id}.png")
-    await asyncio.to_thread(generate_stats_card, player_data, achs, path)
-    await interaction.followup.send(file=discord.File(path, filename="stats.png"))
+    achs = get_player_achievements(target.id)
+    path = os.path.join(DATA_DIR or ".", f"stats_{target.id}.png")
+    try:
+        await asyncio.to_thread(generate_stats_card, player_data, achs, path)
+        await interaction.followup.send(file=discord.File(path, filename="stats.png"))
+    except Exception as e:
+        # Kart yaradıla bilmədisə embed fallback
+        p2 = player_data
+        kd = round(p2["kills"]/max(p2["deaths"],1), 2)
+        wr = round(p2["wins"]/max(p2["wins"]+p2["losses"],1)*100, 1)
+        rank_name, _, rank_emoji = get_rank(p2["elo"])
+        embed = discord.Embed(title=f"📊 {p2['nick']} — Statistika", color=discord.Color.blurple())
+        embed.add_field(name="ELO",     value=str(p2["elo"]),   inline=True)
+        embed.add_field(name="Rank",    value=f"{rank_emoji} {rank_name}", inline=True)
+        embed.add_field(name="Streak",  value=f"🔥 {p2['win_streak']} (Max:{p2['max_streak']})", inline=True)
+        embed.add_field(name="Qələbə", value=str(p2["wins"]),  inline=True)
+        embed.add_field(name="Win%",   value=f"{wr}%",          inline=True)
+        embed.add_field(name="K/D",    value=str(kd),           inline=True)
+        embed.add_field(name="Kill",   value=str(p2["kills"]),  inline=True)
+        embed.add_field(name="Asist",  value=str(p2["assists"]),inline=True)
+        embed.add_field(name="Ölüm",   value=str(p2["deaths"]), inline=True)
+        await interaction.followup.send(embed=embed)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3105,16 +3169,24 @@ class AdminPanelView(discord.ui.View):
         player_data = {
             "nick": p[1], "so2_id": p[2], "elo": p[3], "wins": p[4], "losses": p[5],
             "coins": p[6], "zm_balance": p[9] if len(p) > 9 else 0,
-            "kills": p[10] if len(p) > 10 else 0,
-            "assists": p[11] if len(p) > 11 else 0,
-            "deaths": p[12] if len(p) > 12 else 0,
-            "win_streak": p[13] if len(p) > 13 else 0,
-            "max_streak": p[14] if len(p) > 14 else 0,
+            "kills":      p[11] if len(p) > 11 else 0,
+            "assists":    p[12] if len(p) > 12 else 0,
+            "deaths":     p[13] if len(p) > 13 else 0,
+            "win_streak": p[14] if len(p) > 14 else 0,
+            "max_streak": p[15] if len(p) > 15 else 0,
         }
         achs = get_player_achievements(self.discord_id)
         path = os.path.join(DATA_DIR or ".", f"stats_{self.discord_id}.png")
-        await asyncio.to_thread(generate_stats_card, player_data, achs, path)
-        await interaction.followup.send(file=discord.File(path, filename="stats.png"), ephemeral=True)
+        try:
+            await asyncio.to_thread(generate_stats_card, player_data, achs, path)
+            await interaction.followup.send(file=discord.File(path, filename="stats.png"), ephemeral=True)
+        except Exception:
+            kd = round(player_data["kills"]/max(player_data["deaths"],1),2)
+            embed = discord.Embed(title=f"📊 {player_data['nick']}", color=discord.Color.blurple())
+            embed.add_field(name="ELO", value=str(player_data["elo"]), inline=True)
+            embed.add_field(name="K/D", value=str(kd), inline=True)
+            embed.add_field(name="Streak", value=str(player_data["win_streak"]), inline=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="🔫 Skin Envanteri", style=discord.ButtonStyle.danger, row=4)
     async def manage_skins(self, interaction: discord.Interaction, button: discord.ui.Button):

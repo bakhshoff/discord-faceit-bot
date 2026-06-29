@@ -250,10 +250,10 @@ def generate_tasks_card(active_task, available_tasks, output_path):
         cx, cy, cw, ch = PAD, y, WIDTH - PAD*2, CARD_H
         draw.rectangle([cx, cy, cx+cw, cy+ch], fill=PANEL, outline=ORANGE, width=2)
         draw.rectangle([cx, cy, cx+cw, cy+28], fill=(50,30,10))
-        draw.text((cx+10, cy+6), "🎯 AKTİV TAPŞIRIQ", font=fb, fill=ORANGE)
+        draw.text((cx+10, cy+6), "[ AKTiV TAPSIRIQ ]", font=fb, fill=ORANGE)
 
         draw.text((cx+10, cy+36), a["description"][:60], font=fm, fill=WHITE)
-        draw.text((cx+10, cy+58), f"Mükafat: 🪙 {a['reward_coins']} coin", font=fs, fill=GOLD)
+        draw.text((cx+10, cy+58), f"Mukafat: {a['reward_coins']} coin", font=fs, fill=GOLD)
         draw.text((cx+10, cy+76), time_str, font=fx, fill=GRAY)
 
         bar_w = (cw - 30) // 2
@@ -289,7 +289,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
             if t["assist_target"]: details.append(f"🤝 {t['assist_target']} Asist")
             draw.text((cx+10, cy+62), "  ".join(details) if details else "Hədəf yoxdur", font=fs, fill=GRAY)
 
-            draw.text((cx+10, cy+86), f"🪙 Mükafat: {t['reward_coins']} coin", font=fs, fill=GOLD)
+            draw.text((cx+10, cy+86), f"Mukafat: {t['reward_coins']} coin", font=fs, fill=GOLD)
 
             try:
                 exp = datetime.datetime.utcfromtimestamp(t["expires_at"]) + datetime.timedelta(hours=4)
@@ -379,7 +379,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
 
     # Streak
     streak_col = (255,140,0) if streak >= 3 else GRAY
-    draw.text((PAD, 178), f"🔥 Streak: {streak}  |  Max: {max_s}", font=fs, fill=streak_col)
+    draw.text((PAD, 178), f"Streak: {streak}  |  Max: {max_s}", font=fs, fill=streak_col)
 
     # Sağ: ELO böyük
     draw.text((W-180, 82), "ELO", font=_font(14, True), fill=GRAY)
