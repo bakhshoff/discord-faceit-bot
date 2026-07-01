@@ -2090,6 +2090,11 @@ def init_battle_pass(cursor):
             PRIMARY KEY (discord_id, season_id)
         )
     """)
+    # Migration: köhnə cədvəllərdə is_premium olmaya bilər
+    cursor.execute("PRAGMA table_info(battle_pass)")
+    bp_cols = [r[1] for r in cursor.fetchall()]
+    if "is_premium" not in bp_cols:
+        cursor.execute("ALTER TABLE battle_pass ADD COLUMN is_premium INTEGER DEFAULT 0")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS bp_missions (
             id           INTEGER PRIMARY KEY,
