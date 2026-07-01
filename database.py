@@ -52,6 +52,21 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN is_banned INTEGER DEFAULT 0")
     if "peak_elo" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER DEFAULT 1000")
+    if "banned_until" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN banned_until INTEGER DEFAULT 0")
+
+    # ── Personal Records ──────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS personal_records (
+            discord_id   INTEGER PRIMARY KEY,
+            best_kills   INTEGER DEFAULT 0,
+            best_assists INTEGER DEFAULT 0,
+            best_deaths  INTEGER DEFAULT 0,
+            best_kd      REAL    DEFAULT 0,
+            best_match   INTEGER DEFAULT NULL,
+            updated_at   INTEGER DEFAULT 0
+        )
+    """)
 
     # ── ELO History ───────────────────────────────────────────────────────────
     cursor.execute("""
@@ -1730,6 +1745,77 @@ def get_activity_stats(days=7):
         "total_kills": total_kills,
         "player_count": player_count,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ŞƏXSİ REKORDLAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def update_personal_record(discord_id: int, kills: int, assists: int, deaths: int, match_number: int):
+    import time
+    kd   = round(kills / max(deaths, 1), 2)
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute("SELECT best_kills, best_kd FROM personal_records WHERE discord_id=?", (discord_id,))
+    row  = cur.fetchone()
+    now  = int(time.time())
+    if not row:
+        cur.execute(
+            "INSERT INTO personal_records (discord_id,best_kills,best_assists,best_deaths,best_kd,best_match,updated_at) VALUES (?,?,?,?,?,?,?)",
+            (discord_id, kills, assists, deaths, kd, match_number, now)
+        )
+    else:
+        upd = {}
+        if kills   > row[0]: upd["best_kills"]   = kills
+        if kd      > row[1]: upd["best_kd"]      = kd; upd["best_match"] = match_number
+        if assists > 0:       upd["best_assists"] = max(assists, 0)
+        if upd:
+            sets = ", ".join(f"{k}=?" for k in upd)
+            cur.execute(f"UPDATE personal_records SET {sets}, updated_at=? WHERE discord_id=?",
+                        list(upd.values()) + [now, discord_id])
+    conn.commit(); conn.close()
+
+
+def get_personal_record(discord_id: int) -> dict:
+    conn = _get_conn()
+    cur  = conn.cursor()
+    cur.execute("SELECT best_kills,best_assists,best_deaths,best_kd,best_match FROM personal_records WHERE discord_id=?",
+                (discord_id,))
+    row  = cur.fetchone()
+    conn.close()
+    if not row:
+        return {"best_kills": 0, "best_assists": 0, "best_deaths": 0, "best_kd": 0.0, "best_match": None}
+    return {"best_kills": row[0], "best_assists": row[1], "best_deaths": row[2],
+            "best_kd": row[3], "best_match": row[4]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MÜVVƏQƏTİ BAN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def temp_ban(discord_id: int, duration_seconds: int, reason: str, admin_id: int):
+    import time
+    until = int(time.time()) + duration_seconds
+    conn  = _get_conn()
+    cur   = conn.cursor()
+    cur.execute("UPDATE players SET is_banned=1, banned_until=? WHERE discord_id=?", (until, discord_id))
+    conn.commit(); conn.close()
+    add_warning(discord_id, f"[TEMP BAN {duration_seconds//3600}s] {reason}", admin_id)
+    return until
+
+
+def check_and_lift_bans():
+    import time
+    conn = _get_conn()
+    cur  = conn.cursor()
+    now  = int(time.time())
+    cur.execute(
+        "UPDATE players SET is_banned=0, banned_until=0 WHERE is_banned=1 AND banned_until > 0 AND banned_until <= ?",
+        (now,)
+    )
+    lifted = cur.rowcount
+    conn.commit(); conn.close()
+    return lifted
 
 
 def fail_expired_tasks():

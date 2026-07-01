@@ -47,7 +47,9 @@ try:
         place_prediction, resolve_predictions, get_predictions,
         get_season_leaderboard,
         record_elo_history, get_elo_history, get_peak_elo,
-        transfer_coins, get_activity_stats
+        transfer_coins, get_activity_stats,
+        update_personal_record, get_personal_record,
+        temp_ban, check_and_lift_bans
     )
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -1265,6 +1267,48 @@ async def _start_match(channel, guild):
     await channel.send(content=mentions, embed=veto_embed, view=veto_view)
 
 
+async def _send_match_summary(guild, match_number, winner_label,
+                               winner_team, loser_team,
+                               winner_results, loser_results,
+                               all_stats: dict, mvp_nick=None):
+    """Bütün 10 oyunçuya matç icmalını DM ilə göndərir."""
+    if not guild:
+        return
+    all_team = [(p, r, True)  for p, r in zip(winner_team, winner_results)] + \
+               [(p, r, False) for p, r in zip(loser_team,  loser_results)]
+    for p, r, won in all_team:
+        did  = p["discord_id"]
+        s    = all_stats.get(did, {})
+        k, a, d = s.get("kills",0), s.get("assists",0), s.get("deaths",0)
+        kd   = round(k/max(d,1), 2)
+        diff = r["new_elo"] - r["old_elo"]
+        sign = "+" if diff >= 0 else ""
+        streak_now, _ = (0, 0) if not won else (0, 0)  # placeholder — streak bot yaddaşında
+        result_line = "QELEBƏ" if won else "MEGLUBIYET"
+        is_mvp = (p["nick"] == mvp_nick) if mvp_nick else False
+
+        lines = [
+            f"**Matç No{match_number} — {result_line}**",
+            f"Qalib: {winner_label}",
+            "",
+            f"Sizin stat: K:{k}  A:{a}  D:{d}  KD:{kd}",
+            f"ELO: {r['old_elo']} → {r['new_elo']} ({sign}{diff})",
+        ]
+        if is_mvp:
+            lines.append("Siz bu matçda MVP-siniz! (+5 coin +3 ELO)")
+        pr = get_personal_record(did)
+        if k > 0 and k >= pr["best_kills"]:
+            lines.append(f"Yeni rekord: {k} kill bir matçda!")
+        if kd > 0 and kd >= pr["best_kd"] and kd > 1:
+            lines.append(f"Yeni KD rekordu: {kd}!")
+        try:
+            member = guild.get_member(did)
+            if member:
+                await member.send("\n".join(lines))
+        except discord.Forbidden:
+            pass
+
+
 def _apply_mvp(all_players: list, stats: dict):
     """
     Kill + asist toplamı ən çox olan oyunçuya MVP mükafatı verir.
@@ -1699,6 +1743,9 @@ class ScanEditView(discord.ui.View):
                 add_season_stat(did, season["id"], wins=1, elo_gained=max(0, r["new_elo"]-r["old_elo"]))
                 record_elo_history(did, r["new_elo"])
                 check_and_grant_achievements(did)
+                # Şəxsi rekord
+                s = self.parsed.get(did, {})
+                update_personal_record(did, s.get("kills",0), s.get("assists",0), s.get("deaths",0), self.match_number)
             for p, r in zip(loser_team, results["losers"]):
                 did    = p["discord_id"]
                 update_streak(did, False)
@@ -1710,6 +1757,8 @@ class ScanEditView(discord.ui.View):
                                 elo_gained=max(0, r["new_elo"] - r["old_elo"]))
                 record_elo_history(did, r["new_elo"])
                 check_and_grant_achievements(did)
+                s = self.parsed.get(did, {})
+                update_personal_record(did, s.get("kills",0), s.get("assists",0), s.get("deaths",0), self.match_number)
 
             winner_results = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
                               for p, r in zip(winner_team, results["winners"])]
@@ -1753,6 +1802,18 @@ class ScanEditView(discord.ui.View):
             log_ch = bot.get_channel(LOG_CHANNEL_ID)
             if log_ch:
                 await log_ch.send(file=discord.File(result_img, filename="result.png"))
+
+        # Matç icmalı DM-ləri göndər
+        if interaction.guild and results:
+            w_res = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                     for p, r in zip(winner_team, results["winners"])]
+            l_res = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                     for p, r in zip(loser_team, results["losers"])]
+            asyncio.create_task(_send_match_summary(
+                interaction.guild, self.match_number, winner_label_full,
+                winner_team, loser_team, w_res, l_res,
+                {**winner_stats, **loser_stats}, mvp_nick=mvp_nick
+            ))
 
         clear_active_match()
         await asyncio.to_thread(backup.export_backup)
@@ -2301,17 +2362,38 @@ async def warn_error(i, e):
         await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
-@bot.tree.command(name="ban", description="[Admin] Oyunçunu banla (queue-ya qoşula bilməz)")
-@app_commands.describe(uzv="Banlanacaq üzv", sebeb="Ban səbəbi")
+@bot.tree.command(name="ban", description="[Admin] Oyunçunu banla — /ban @uzv Səbəb 2h (müvvəqəti) və ya saatsız (daimi)")
+@app_commands.describe(uzv="Banlanacaq üzv", sebeb="Səbəb", muddet="Müvvəqəti müddət: 1h, 30m, 2d (boş=daimi)")
 @app_commands.checks.has_permissions(administrator=True)
-async def ban_cmd(interaction: discord.Interaction, uzv: discord.Member, sebeb: str):
-    ban_player(uzv.id, sebeb, interaction.user.id)
+async def ban_cmd(interaction: discord.Interaction, uzv: discord.Member,
+                  sebeb: str, muddet: str = ""):
+    seconds = 0
+    label   = "DAİMİ"
+    if muddet:
+        import re as _re
+        for val, unit in _re.findall(r'(\d+)([hdm])', muddet.lower()):
+            mult = {"h": 3600, "d": 86400, "m": 60}.get(unit, 0)
+            seconds += int(val) * mult
+        if seconds > 0:
+            label = muddet.upper()
+
+    if seconds > 0:
+        until = temp_ban(uzv.id, seconds, sebeb, interaction.user.id)
+        import datetime as _dt
+        exp_str = (_dt.datetime.utcfromtimestamp(until) + _dt.timedelta(hours=4)).strftime("%d.%m %H:%M")
+        msg = f"🔴 {uzv.mention} **{label}** banlandı (bitmə: {exp_str}). Səbəb: {sebeb}"
+        dm_msg = f"🔴 **Calestify FACEIT** — {label} banlandınız.\n**Səbəb:** {sebeb}\n**Bitmə:** {exp_str}"
+    else:
+        ban_player(uzv.id, sebeb, interaction.user.id)
+        msg = f"🔴 {uzv.mention} DAİMİ banlandı. Səbəb: {sebeb}"
+        dm_msg = f"🔴 **Calestify FACEIT** — DAİMİ banlandınız.\n**Səbəb:** {sebeb}"
+
     remove_from_queue(uzv.id)
     try:
-        await uzv.send(f"🔴 **Calestify FACEIT** — Siz banlandınız.\n**Səbəb:** {sebeb}")
+        await uzv.send(dm_msg)
     except discord.Forbidden:
         pass
-    await interaction.response.send_message(f"🔴 {uzv.mention} banlandı. Səbəb: {sebeb}", ephemeral=False)
+    await interaction.response.send_message(msg, ephemeral=False)
 
 
 @ban_cmd.error
@@ -2376,10 +2458,19 @@ async def stats_cmd(interaction: discord.Interaction, uzv: discord.Member = None
         "max_streak": p[15] if len(p) > 15 else 0,
     }
     achs = get_player_achievements(target.id)
+    pr   = get_personal_record(target.id)
     path = os.path.join(DATA_DIR or ".", f"stats_{target.id}.png")
     try:
         await asyncio.to_thread(generate_stats_card, player_data, achs, path)
         await interaction.followup.send(file=discord.File(path, filename="stats.png"))
+        # Rekord embedi əlavə göndər
+        if pr["best_kills"] > 0 or pr["best_kd"] > 0:
+            rec_embed = discord.Embed(title="Sexsi Rekordlar", color=discord.Color.gold())
+            rec_embed.add_field(name="Bir matcda max Kill", value=str(pr["best_kills"]), inline=True)
+            rec_embed.add_field(name="Bir matcda max KD",   value=str(pr["best_kd"]),   inline=True)
+            if pr["best_match"]:
+                rec_embed.add_field(name="Matc No", value=str(pr["best_match"]), inline=True)
+            await interaction.followup.send(embed=rec_embed)
     except Exception as e:
         # Kart yaradıla bilmədisə embed fallback
         p2 = player_data
@@ -2662,7 +2753,15 @@ async def on_ready():
         season_end_check.start()
     if not weekly_stats_task.is_running():
         weekly_stats_task.start()
+    if not ban_check_task.is_running():
+        ban_check_task.start()
+    check_and_lift_bans()
     await bot.tree.sync()
+
+
+@tasks.loop(minutes=5)
+async def ban_check_task():
+    check_and_lift_bans()
 
 
 @tasks.loop(hours=6)
