@@ -2277,6 +2277,53 @@ async def sezon_cmd(interaction: discord.Interaction, nomre: int = 0):
     await interaction.followup.send(embed=embed, file=discord.File(lb_path, filename="season_lb.png"))
 
 
+@bot.tree.command(name="sezon_elan", description="[Admin] Sezon sonu elanını yenidən göndər")
+@app_commands.describe(nomre="Sezon nömrəsi", kanal="Hansı kanala (boş = faceit-logs)")
+@app_commands.checks.has_permissions(administrator=True)
+async def sezon_elan_cmd(interaction: discord.Interaction, nomre: int, kanal: discord.TextChannel = None):
+    await interaction.response.defer(ephemeral=True)
+    season = get_season_by_number(nomre)
+    if not season:
+        await interaction.followup.send(f"❌ Sezon {nomre} tapılmadı.", ephemeral=True)
+        return
+
+    rows   = get_season_leaderboard(season["id"])
+    target = kanal or bot.get_channel(LOG_CHANNEL_ID)
+    if not target:
+        await interaction.followup.send("❌ Kanal tapılmadı.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title=f"🏆 SEZON {season['season_number']} TAMAMLANDI!",
+        description=f"Sezon: {season['start_date']}  —  {season['end_date']}",
+        color=discord.Color.gold()
+    )
+    medals  = ["🥇", "🥈", "🥉"]
+    rewards = [500, 300, 150]
+    for i, r in enumerate(rows[:3]):
+        nick       = r[0]
+        elo_gained = r[2]
+        embed.add_field(
+            name=f"{medals[i]} {nick}",
+            value=f"+{elo_gained} ELO  ·  +{rewards[i]} coin mükafat",
+            inline=False
+        )
+    if not rows:
+        embed.description += "\n\nBu sezonda matç oynanılmadı."
+
+    import datetime as _dt
+    embed.set_footer(text=f"Calestify FACEIT  ·  {_dt.datetime.utcnow().strftime('%d.%m.%Y')}")
+
+    await target.send(embed=embed)
+    await interaction.followup.send(f"✅ Sezon {nomre} elanı #{target.name} kanalına göndərildi.", ephemeral=True)
+
+
+@sezon_elan_cmd.error
+async def sezon_elan_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # GÜNDƏLİK TAPŞIRIQLAR
 # ═══════════════════════════════════════════════════════════════════════════════

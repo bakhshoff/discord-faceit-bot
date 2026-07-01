@@ -55,6 +55,42 @@ def init_db():
     if "banned_until" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN banned_until INTEGER DEFAULT 0")
 
+    # ── Daily Login ───────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_logins (
+            discord_id   INTEGER PRIMARY KEY,
+            last_login   INTEGER DEFAULT 0,
+            login_streak INTEGER DEFAULT 0
+        )
+    """)
+
+    # ── Admin Logs ────────────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_logs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            action     TEXT    NOT NULL,
+            target_id  INTEGER NOT NULL,
+            field      TEXT,
+            old_val    TEXT,
+            new_val    TEXT,
+            reason     TEXT,
+            admin_id   INTEGER NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+
+    # ── Market Discounts ──────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS market_discounts (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id     TEXT    NOT NULL,
+            item_type   TEXT    NOT NULL DEFAULT 'market',
+            discount    INTEGER NOT NULL,
+            expires_at  INTEGER NOT NULL,
+            created_at  INTEGER NOT NULL
+        )
+    """)
+
     # ── Personal Records ──────────────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS personal_records (
@@ -1816,6 +1852,185 @@ def check_and_lift_bans():
     lifted = cur.rowcount
     conn.commit(); conn.close()
     return lifted
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GÜNDƏLİK GİRİŞ BONUSU
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def check_daily_login(discord_id: int) -> tuple:
+    """Gündəlik giriş yoxlar. (coins_earned, streak, is_new) qaytarır."""
+    import time, datetime as _dt
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    now    = int(time.time())
+    today  = _dt.datetime.utcnow().date()
+
+    cursor.execute("SELECT last_login, login_streak FROM daily_logins WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        # İlk giriş
+        coins = 10
+        cursor.execute("INSERT INTO daily_logins (discord_id, last_login, login_streak) VALUES (?,?,1)",
+                       (discord_id, now))
+        conn.commit(); conn.close()
+        return coins, 1, True
+
+    last_ts, streak = row
+    last_date = _dt.datetime.utcfromtimestamp(last_ts).date()
+
+    if last_date == today:
+        conn.close(); return 0, streak, False  # Bu gün artıq alınıb
+
+    if (today - last_date).days == 1:
+        streak += 1   # Ardıcıl
+    else:
+        streak = 1    # Sıra kəsildi
+
+    # Streak bonusu
+    if   streak >= 30: coins = 50
+    elif streak >= 14: coins = 35
+    elif streak >= 7:  coins = 25
+    elif streak >= 3:  coins = 15
+    else:              coins = 10
+
+    cursor.execute("UPDATE daily_logins SET last_login=?, login_streak=? WHERE discord_id=?",
+                   (now, streak, discord_id))
+    conn.commit(); conn.close()
+    return coins, streak, True
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MİLESTONE MÜKAFATLARI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+MILESTONES = {10: 50, 25: 100, 50: 200, 100: 500, 250: 1000, 500: 2000}
+
+def check_milestones(discord_id: int, total_matches: int) -> list:
+    """Keçilmiş milestone-ları tapıb coin verir. [{matches, coins}, ...] qaytarır."""
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    # Artıq verilmiş milestone-ları yoxla (coin_logs-dan)
+    cursor.execute(
+        "SELECT reason FROM coin_logs WHERE discord_id=? AND reason LIKE 'Milestone:%'",
+        (discord_id,)
+    )
+    already = {r[0] for r in cursor.fetchall()}
+    earned  = []
+    for ms, reward in MILESTONES.items():
+        label = f"Milestone:{ms}"
+        if total_matches >= ms and label not in already:
+            cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?", (reward, discord_id))
+            cursor.execute(
+                "INSERT INTO coin_logs (discord_id,change,reason,log_type,balance_after,created_at) "
+                "SELECT ?,?,?,?,coins,? FROM players WHERE discord_id=?",
+                (discord_id, reward, label, "earn", __import__("time").time(), discord_id)
+            )
+            earned.append({"matches": ms, "coins": reward})
+    conn.commit(); conn.close()
+    return earned
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADMİN LOGLARI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def log_admin_action(action, target_id, field, old_val, new_val, reason, admin_id):
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO admin_logs (action,target_id,field,old_val,new_val,reason,admin_id,created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (action, target_id, field, str(old_val), str(new_val), reason, admin_id, int(time.time()))
+    )
+    conn.commit(); conn.close()
+
+
+def get_admin_logs(target_id, limit=10):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT action,field,old_val,new_val,reason,admin_id,created_at FROM admin_logs "
+        "WHERE target_id=? ORDER BY created_at DESC LIMIT ?",
+        (target_id, limit)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"action": r[0], "field": r[1], "old": r[2], "new": r[3],
+             "reason": r[4], "admin_id": r[5], "created_at": r[6]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKET ENDİRİM
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def set_discount(item_id: str, item_type: str, discount_pct: int, hours: int):
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    now    = int(time.time())
+    cursor.execute("DELETE FROM market_discounts WHERE item_id=?", (item_id,))
+    cursor.execute(
+        "INSERT INTO market_discounts (item_id,item_type,discount,expires_at,created_at) VALUES (?,?,?,?,?)",
+        (item_id, item_type, discount_pct, now + hours*3600, now)
+    )
+    conn.commit(); conn.close()
+
+
+def get_discount(item_id: str) -> int:
+    """Aktiv endirimi qaytarır (%), yoxdursa 0."""
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discount FROM market_discounts WHERE item_id=? AND expires_at > ?",
+        (item_id, int(time.time()))
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def get_all_discounts() -> list:
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT item_id, item_type, discount, expires_at FROM market_discounts WHERE expires_at > ? ORDER BY created_at DESC",
+        (int(time.time()),)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"item_id": r[0], "item_type": r[1], "discount": r[2], "expires_at": r[3]} for r in rows]
+
+
+def clear_expired_discounts():
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM market_discounts WHERE expires_at <= ?", (int(time.time()),))
+    conn.commit(); conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FƏALİYYƏT — SAATLAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_hourly_activity(days=7) -> dict:
+    """Saat üzrə matç paylanması {hour: count}."""
+    import time as _t, datetime as _dt
+    since  = int(_t.time()) - days * 86400
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT played_at FROM match_history WHERE played_at >= ?", (since,))
+    rows   = cursor.fetchall()
+    conn.close()
+    counts = {}
+    for (ts,) in rows:
+        h = (_dt.datetime.utcfromtimestamp(ts) + _dt.timedelta(hours=4)).hour
+        counts[h] = counts.get(h, 0) + 1
+    return counts
 
 
 def fail_expired_tasks():
