@@ -222,16 +222,25 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
 
     # ── ELO BOOST ─────────────────────────────────────────────────────────────
     if "Boost" in lbl:
-        # Arxa şimşək fon
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
                                fill=(20,10,40), outline=PASS_PURPLE, width=2)
-        # Şimşək bolt
-        lx, ly = w//2, body_h//2
-        bolt = [(lx-8,ly-20),(lx+4,ly-20),(lx-4,ly),(lx+10,ly),(lx-10,ly+20),(lx+2,ly+20),(lx-4,ly),(lx-14,ly)]
-        draw.polygon(bolt, fill=PASS_PURPLE)
-        draw.polygon(bolt, outline=(200,150,255), width=1)
-        # +ELO yazısı
-        draw.text((w//2, body_h-10), "+10% ELO", font=_f(8, True), fill=(200,150,255), anchor="mm")
+        boost_path = os.path.join(BASE_DIR2, "assets", "elo_boost.png")
+        boost_loaded = False
+        try:
+            bi = Image.open(boost_path).convert("RGBA")
+            bi_size = min(body_h - 20, w - 16)
+            bi.thumbnail((bi_size, bi_size), Image.LANCZOS)
+            bx = (w - bi.width) // 2
+            by = (body_h - bi.height) // 2 - 4
+            img.paste(bi, (bx, by), bi)
+            boost_loaded = True
+        except Exception:
+            pass
+        if not boost_loaded:
+            lx, ly = w//2, body_h//2
+            bolt = [(lx-8,ly-20),(lx+4,ly-20),(lx-4,ly),(lx+10,ly),(lx-10,ly+20),(lx+2,ly+20),(lx-4,ly),(lx-14,ly)]
+            draw.polygon(bolt, fill=PASS_PURPLE)
+            draw.text((w//2, body_h-10), "+10% ELO", font=_f(8, True), fill=(200,150,255), anchor="mm")
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_PURPLE, anchor="mm")
         return img
 
