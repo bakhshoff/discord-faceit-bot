@@ -180,43 +180,89 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
 
     # ── S1 BANNER ─────────────────────────────────────────────────────────────
     if "Banner" in lbl:
-        # Gradient arxa plan
-        for y_ in range(body_h):
-            t  = y_ / body_h
-            r_ = int(0 + (30-0)*t)
-            g_ = int(50 + (120-50)*t)
-            b_ = int(30 + (60-30)*t)
-            draw.line([(6,y_+4),(w-6,y_+4)], fill=(r_,g_,b_))
-        draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6, outline=PASS_TEAL, width=2)
-        # Ulduzlar
-        for sx,sy in [(w//4,body_h//4),(3*w//4,body_h//4),(w//2,body_h//2-10)]:
-            draw.polygon([(sx,sy-8),(sx+3,sy-2),(sx+9,sy-2),(sx+4,sy+2),
-                          (sx+6,sy+8),(sx,sy+4),(sx-6,sy+8),(sx-4,sy+2),
-                          (sx-9,sy-2),(sx-3,sy-2)], fill=(255,220,80))
-        draw.text((w//2, body_h-14), "SEASON 1", font=_f(9, True), fill=WHITE2, anchor="mm")
+        # Mini profil banner mockup içəridə
+        BX, BY, BW, BH = 6, 5, w - 12, body_h - 10
+        # Arxa plan: dərin teal-yaşıl gradient
+        for y_ in range(BH):
+            t = y_ / BH
+            r_ = int(8  + (0  - 8 ) * t)
+            g_ = int(55 + (90 - 55) * t)
+            b_ = int(60 + (55 - 60) * t)
+            draw.line([(BX, BY+y_), (BX+BW, BY+y_)], fill=(r_, g_, b_))
+        draw.rounded_rectangle([(BX,BY),(BX+BW,BY+BH)], radius=5, outline=PASS_TEAL, width=2)
+
+        # Dekorativ üfüqi scan-line cızıqlar
+        for sl in range(BY+10, BY+BH-10, 12):
+            draw.line([(BX+8, sl), (BX+BW-8, sl)], fill=(0, 255, 180, 30), width=1)
+
+        # Mərkəz emblem — altıbucaqlı naxış
+        cx, cy = BX + BW//2, BY + BH//2 - 8
+        R = min(BW, BH) // 4
+        import math as _m2
+        hex_pts = [(int(cx + R*_m2.cos(_m2.radians(60*i - 30))),
+                    int(cy + R*_m2.sin(_m2.radians(60*i - 30)))) for i in range(6)]
+        draw.polygon(hex_pts, fill=(0, 130, 110, 180), outline=(0, 220, 180), width=2)
+
+        # Emblem içi: "S1" mətni
+        draw.text((cx, cy), "S", font=_f(12, True), fill=(0, 255, 200), anchor="mm")
+
+        # Üst sağ küncdə "SEASON" badge
+        draw.rectangle([(BX+BW-46, BY+4), (BX+BW-4, BY+16)], fill=(0,80,70))
+        draw.text((BX+BW-25, BY+10), "SEASON", font=_f(7, True), fill=(0,255,200), anchor="mm")
+
+        # Aşağı band: oyunçu adı yer saxlayıcısı
+        nby = BY + BH - 18
+        draw.rectangle([(BX+4, nby), (BX+BW-4, BY+BH-3)], fill=(0, 30, 28, 200))
+        draw.text((BX + 10, nby + 6), "[ Calestify S1 ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
+
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
         return img
 
     # ── S1 FRAME ──────────────────────────────────────────────────────────────
     if "Frame" in lbl:
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
-                               fill=(10,25,30), outline=PASS_TEAL, width=2)
-        # Avatar yer saxlayıcısı
-        aw = w - 24
-        ah = body_h - 20
-        ax, ay = 12, 10
-        draw.rounded_rectangle([(ax,ay),(ax+aw,ay+ah)], radius=4, fill=(15,35,40))
-        # Çərçivə kənarları
-        t = 6
-        for corner_rect in [
-            (ax, ay, ax+t, ay+t),
-            (ax+aw-t, ay, ax+aw, ay+t),
-            (ax, ay+ah-t, ax+t, ay+ah),
-            (ax+aw-t, ay+ah-t, ax+aw, ay+ah)
-        ]:
-            x0,y0,x1,y1 = corner_rect
-            draw.rectangle([(x0,y0),(x1,y1)], fill=PASS_TEAL)
-        draw.text((w//2, ay+ah//2), "AVATAR", font=_f(8), fill=(50,120,120), anchor="mm")
+                               fill=(8, 18, 28), outline=PASS_TEAL, width=2)
+
+        # Profil çərçivəsi — dairəvi avatar mərkəzdə
+        cx, cy = w//2, (body_h)//2 - 2
+        R_out = min(w, body_h)//2 - 16   # xarici halqa
+        R_in  = R_out - 8                # inner circle (avatar)
+
+        # Outer glow ring (layered circles)
+        for rr, alpha in [(R_out+5, 40), (R_out+3, 80), (R_out+1, 140)]:
+            ring = Image.new("RGBA", img.size, (0,0,0,0))
+            rd = ImageDraw.Draw(ring)
+            rd.ellipse([(cx-rr, cy-rr),(cx+rr, cy+rr)], outline=(0,220,200,alpha), width=2)
+            img = Image.alpha_composite(img, ring)
+            draw = ImageDraw.Draw(img)
+
+        # Avatar dairəsi (arxa plan)
+        draw.ellipse([(cx-R_out, cy-R_out),(cx+R_out, cy+R_out)],
+                     fill=(12, 35, 45), outline=(0,220,200), width=3)
+        draw.ellipse([(cx-R_in, cy-R_in),(cx+R_in, cy+R_in)],
+                     fill=(15, 40, 52))
+
+        # Avatar içi — silhuet insan fiquru
+        # baş
+        hr = R_in // 4
+        draw.ellipse([(cx-hr, cy-R_in+4),(cx+hr, cy-R_in+4+hr*2)],
+                     fill=(0, 160, 140))
+        # bədən
+        bw = int(hr * 1.8)
+        draw.rounded_rectangle([(cx-bw, cy-hr+4),(cx+bw, cy+R_in-4)],
+                               radius=bw//2, fill=(0, 130, 115))
+
+        # 4 köşə ornamenti (diagonalda)
+        import math as _m3
+        for ang in [45, 135, 225, 315]:
+            ox = int(cx + R_out * _m3.cos(_m3.radians(ang)))
+            oy = int(cy + R_out * _m3.sin(_m3.radians(ang)))
+            draw.ellipse([(ox-4,oy-4),(ox+4,oy+4)], fill=(0,255,200), outline=(0,80,60), width=1)
+
+        # "S1 FRAME" etiket plitəsi aşağıda
+        draw.rectangle([(cx-26, body_h-18),(cx+26, body_h-5)], fill=(0,60,50))
+        draw.text((cx, body_h-11), "S1  FRAME", font=_f(7, True), fill=(0,220,180), anchor="mm")
+
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
         return img
 

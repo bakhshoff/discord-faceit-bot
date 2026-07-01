@@ -100,7 +100,8 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           coins=0, frame_path=None, zm_balance=0,
                           kills=0, assists=0, deaths=0,
                           season_wins=0, season_losses=0,
-                          season_kills=0, season_assists=0, season_deaths=0):
+                          season_kills=0, season_assists=0, season_deaths=0,
+                          pass_status=None, pass_level=0):
 
     # ── Arxa plan ────────────────────────────────────────────────────────────
     if banner_path and os.path.exists(banner_path):
@@ -195,6 +196,30 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     ]
     rank_name = next((n for lo,hi,n in _rank_ranges if lo<=elo<hi), "Master")
     draw.text((tx, 150), f"Level {level}  |  {rank_name}", font=f_elolbl, fill=level_color)
+
+    # ── Battle Pass badge ────────────────────────────────────────────────────
+    if pass_status in ("free", "premium"):
+        is_vip = pass_status == "premium"
+        badge_bg   = (40, 28, 0)   if is_vip else (20, 20, 30)
+        badge_bdr  = GOLD          if is_vip else (80, 80, 100)
+        badge_txt  = f"VIP PASS  Lv.{pass_level}"  if is_vip else f"FREE PASS  Lv.{pass_level}"
+        badge_col  = GOLD          if is_vip else (140, 140, 160)
+        star_col   = GOLD          if is_vip else (80, 80, 100)
+
+        f_badge = _load_font(11, bold=True)
+        tb = draw.textbbox((0,0), badge_txt, font=f_badge)
+        bw2 = (tb[2]-tb[0]) + 28
+        bh2 = 20
+        bx2, by2 = tx, 172
+
+        draw.rounded_rectangle([(bx2, by2),(bx2+bw2, by2+bh2)],
+                               radius=4, fill=badge_bg, outline=badge_bdr, width=1)
+        # Star icon (premium: gold, free: muted)
+        sx, sy = bx2 + 9, by2 + bh2//2
+        star = [(sx,sy-5),(sx+2,sy-2),(sx+5,sy-2),(sx+3,sy),(sx+4,sy+4),
+                (sx,sy+2),(sx-4,sy+4),(sx-3,sy),(sx-5,sy-2),(sx-2,sy-2)]
+        draw.polygon(star, fill=star_col)
+        draw.text((bx2 + 18, by2 + bh2//2), badge_txt, font=f_badge, fill=badge_col, anchor="lm")
 
     # ELO (sağda)
     ex = WIDTH - 220

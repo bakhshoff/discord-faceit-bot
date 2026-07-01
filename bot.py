@@ -3143,11 +3143,20 @@ async def profile(interaction: discord.Interaction):
     total_matches = player[4] + player[5]
     milestones = check_milestones(discord_id, total_matches)
 
+    # Pass statusu
+    _pd = get_pass_data(discord_id)
+    _pass_status = None
+    _pass_level  = 0
+    if _pd:
+        _pass_level  = _pd.get("level", 0)
+        _pass_status = "premium" if _pd.get("is_premium") else "free"
+
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
         banner_full_path, coins, frame_full_path, zm_balance,
         combat["kills"], combat["assists"], combat["deaths"],
-        ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"]
+        ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"],
+        _pass_status, _pass_level
     )
 
     active_task = get_player_active_task(discord_id)
