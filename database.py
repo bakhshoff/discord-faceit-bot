@@ -54,6 +54,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN peak_elo INTEGER DEFAULT 1000")
     if "banned_until" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN banned_until INTEGER DEFAULT 0")
+    if "lang" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN lang TEXT DEFAULT 'az'")
 
     # ── Daily Login ───────────────────────────────────────────────────────────
     cursor.execute("""
@@ -2376,3 +2378,16 @@ def full_reset():
 
     conn.commit()
     conn.close()
+
+
+def get_lang(discord_id: int) -> str:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT lang FROM players WHERE discord_id=?", (discord_id,))
+    row = cur.fetchone(); conn.close()
+    return (row[0] or 'az') if row else 'az'
+
+
+def set_lang(discord_id: int, lang: str):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE players SET lang=? WHERE discord_id=?", (lang, discord_id))
+    conn.commit(); conn.close()

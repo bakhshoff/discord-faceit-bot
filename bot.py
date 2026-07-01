@@ -54,8 +54,10 @@ try:
         log_admin_action, get_admin_logs,
         set_discount, get_discount, get_all_discounts, clear_expired_discounts,
         buy_battle_pass, has_battle_pass, get_pass_data, add_bp_xp,
-        get_active_bp_missions, update_bp_mission, BP_SEASON_ID, BP_MAX_LEVEL
+        get_active_bp_missions, update_bp_mission, BP_SEASON_ID, BP_MAX_LEVEL,
+        get_lang, set_lang
     )
+    from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
     from profile_card import generate_profile_card
@@ -967,6 +969,41 @@ class PlayerProfileView(discord.ui.View):
                                     inline=False)
                 await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
+    @discord.ui.button(label="Ayarlar", style=discord.ButtonStyle.secondary, emoji="⚙️", custom_id="profile_settings", row=2)
+    async def open_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
+        lang  = get_lang(self.discord_id)
+        embed = discord.Embed(
+            title=_t(lang, 'settings_title'),
+            description=_t(lang, 'settings_desc'),
+            color=discord.Color.blurple()
+        )
+        embed.add_field(name="Dil / Dil", value=_t(lang, 'current_lang'), inline=False)
+        await interaction.response.send_message(embed=embed, view=SettingsView(self.discord_id), ephemeral=True)
+
+
+class SettingsView(discord.ui.View):
+    def __init__(self, discord_id: int):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="🇦🇿 Azərbaycanca", style=discord.ButtonStyle.primary)
+    async def set_az(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        set_lang(self.discord_id, 'az')
+        await interaction.response.edit_message(
+            content=_t('az', 'lang_set_az'),
+            embed=None, view=None)
+
+    @discord.ui.button(label="🇹🇷 Türkçe", style=discord.ButtonStyle.secondary)
+    async def set_tr(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        set_lang(self.discord_id, 'tr')
+        await interaction.response.edit_message(
+            content=_t('tr', 'lang_set_tr'),
+            embed=None, view=None)
+
 
 class NickChangeModal(discord.ui.Modal, title="Nick Dəyişdir"):
     new_nick = discord.ui.TextInput(
@@ -1514,11 +1551,10 @@ async def _launch_match(match_number, selected_map, team_a, team_b, captain_a_id
     for captain_id in (captain_a_id, captain_b_id):
         m = guild.get_member(captain_id)
         if m:
+            team_label = "A" if captain_id == captain_a_id else "B"
             try:
-                await m.send(
-                    f"🎮 **Matç No{match_number}** başladı! Xəritə: **{selected_map}**\n"
-                    f"Matç bitdikdən sonra skor şəklini **#results** kanalına göndərin."
-                )
+                await m.send(_t(captain_id, 'match_start_dm',
+                                num=match_number, team=team_label, channel="#results"))
             except discord.Forbidden:
                 pass
             if general_ch:
@@ -1586,7 +1622,7 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
-        await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/10)", ephemeral=True)
+        await interaction.response.send_message(_t(discord_id, 'queue_joined', pos=size), ephemeral=True)
 
         # 8/10 bildirişi
         if size == 8:
@@ -1605,7 +1641,7 @@ class MatchmakingView(discord.ui.View):
     async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
         removed = remove_from_queue(interaction.user.id)
         if removed:
-            await interaction.response.send_message("✅ Sıradan çıxdınız.", ephemeral=True)
+            await interaction.response.send_message(_t(interaction.user.id, 'queue_left'), ephemeral=True)
             await update_queue_status_message()
         else:
             await interaction.response.send_message("⚠️ Siz sırada deyilsiniz.", ephemeral=True)
@@ -2465,7 +2501,7 @@ async def warn_cmd(interaction: discord.Interaction, uzv: discord.Member, sebeb:
     path  = os.path.join(DATA_DIR or ".", f"warns_{uzv.id}.png")
     await asyncio.to_thread(generate_warnings_card, uzv.display_name, warns, banned, path)
     try:
-        await uzv.send(f"⚠️ **Calestify FACEIT** — Xəbərdarlıq #{count}\n**Səbəb:** {sebeb}")
+        await uzv.send(_t(uzv.id, 'warn_dm', count=count, reason=sebeb))
     except discord.Forbidden:
         pass
     if count >= 3 and not banned:
@@ -2504,12 +2540,12 @@ async def ban_cmd(interaction: discord.Interaction, uzv: discord.Member,
         until = temp_ban(uzv.id, seconds, sebeb, interaction.user.id)
         import datetime as _dt
         exp_str = (_dt.datetime.utcfromtimestamp(until) + _dt.timedelta(hours=4)).strftime("%d.%m %H:%M")
-        msg = f"🔴 {uzv.mention} **{label}** banlandı (bitmə: {exp_str}). Səbəb: {sebeb}"
-        dm_msg = f"🔴 **Calestify FACEIT** — {label} banlandınız.\n**Səbəb:** {sebeb}\n**Bitmə:** {exp_str}"
+        msg    = f"🔴 {uzv.mention} **{label}** banlandı (bitmə: {exp_str}). Səbəb: {sebeb}"
+        dm_msg = _t(uzv.id, 'ban_temp_dm', label=label, reason=sebeb, exp=exp_str)
     else:
         ban_player(uzv.id, sebeb, interaction.user.id)
-        msg = f"🔴 {uzv.mention} DAİMİ banlandı. Səbəb: {sebeb}"
-        dm_msg = f"🔴 **Calestify FACEIT** — DAİMİ banlandınız.\n**Səbəb:** {sebeb}"
+        msg    = f"🔴 {uzv.mention} DAİMİ banlandı. Səbəb: {sebeb}"
+        dm_msg = _t(uzv.id, 'ban_perm_dm', reason=sebeb)
 
     remove_from_queue(uzv.id)
     try:
@@ -2532,7 +2568,7 @@ async def unban_cmd(interaction: discord.Interaction, uzv: discord.Member):
     unban_player(uzv.id)
     clear_warnings(uzv.id)
     try:
-        await uzv.send("✅ **Calestify FACEIT** — Banınız açıldı, yenidən qoşula bilərsiniz.")
+        await uzv.send(_t(uzv.id, 'unban_dm'))
     except discord.Forbidden:
         pass
     await interaction.response.send_message(f"✅ {uzv.mention} banı açıldı, xəbərdarlıqlar silindi.", ephemeral=False)
@@ -2959,7 +2995,7 @@ class _GonderConfirmView(discord.ui.View):
         add_coin_log(self.to_id,    recv,          f"Transfer <- <@{self.from_id}>", "earn",  get_coins(self.to_id))
         await asyncio.to_thread(backup.export_backup)
         await interaction.response.edit_message(
-            content=f"✅ **{recv} coin** <@{self.to_id}>-yə göndərildi. (Komissiya: {comm} coin)",
+            content=_t(self.from_id, 'coin_transfer_ok', recv=recv, to=self.to_id, comm=comm),
             embed=None, view=None)
 
     @discord.ui.button(label="Legv et ❌", style=discord.ButtonStyle.secondary)
@@ -3362,10 +3398,10 @@ async def profile(interaction: discord.Interaction):
     # Login bonusu + milestone bildirişi
     notifs = []
     if is_new_login and login_coins > 0:
-        streak_txt = f" (Seriya: {login_streak})" if login_streak > 1 else ""
-        notifs.append(f"Gundelik bonus: +{login_coins} coin{streak_txt}")
+        streak_sfx = _t(discord_id, 'daily_streak', streak=login_streak) if login_streak > 1 else ""
+        notifs.append(_t(discord_id, 'daily_bonus', coins=login_coins) + streak_sfx)
     for ms in milestones:
-        notifs.append(f"Milestone: {ms['matches']} matc → +{ms['coins']} coin!")
+        notifs.append(f"🎯 Milestone: {ms['matches']} matç → +{ms['coins']} coin!")
     if notifs:
         await interaction.followup.send("\n".join(notifs), ephemeral=True)
 
