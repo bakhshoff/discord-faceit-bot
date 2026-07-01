@@ -83,7 +83,7 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
     return output_path
 
 
-def generate_queue_status_card(players, output_path="queue_status.png"):
+def generate_queue_status_card(players, output_path="queue_status.png", avg_wait_min=None):
     size = len(players)
     row_height = 38
     header_height = 90
@@ -102,7 +102,8 @@ def generate_queue_status_card(players, output_path="queue_status.png"):
     elo_font = _load_font(15, bold=True)
 
     draw.text((30, 22), "SIRA STATUSU", font=title_font, fill=WHITE)
-    draw.text((30, 54), "Real vaxtda yenilənir", font=sub_font, fill=GRAY)
+    wait_txt = f"Real vaxtda yenilenir  |  Orta gozleme: ~{avg_wait_min} deq" if avg_wait_min else "Real vaxtda yenilenir"
+    draw.text((30, 54), wait_txt, font=sub_font, fill=GRAY)
 
     count_text = f"{size}/10"
     count_color = GREEN if size >= 10 else GOLD

@@ -651,8 +651,8 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
 
 
 # ── FƏALİYYƏT PANELİ KARTI ────────────────────────────────────────────────────
-def generate_activity_card(stats: dict, output_path: str):
-    W, H = 720, 320
+def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
+    W, H = 720, 420 if hourly else 320
     img  = Image.new("RGB", (W, H), BG_TOP)
     draw = ImageDraw.Draw(img)
     for y in range(H):
@@ -687,6 +687,22 @@ def generate_activity_card(stats: dict, output_path: str):
     for i, (nick, cnt) in enumerate(stats.get("top_active", [])[:5]):
         draw.text((20, 198 + i*22), f"{medals[i]} {nick[:20]}", font=fs, fill=WHITE)
         draw.text((280, 198 + i*22), f"{cnt} matc", font=fs, fill=GRAY)
+
+    # Saatlıq aktivlik mini-qrafik
+    if hourly and len(hourly) > 0:
+        gy = 310
+        draw.text((20, gy), "Saatliq fealiyyet:", font=fs, fill=WHITE)
+        gy += 22
+        max_cnt = max(hourly.values()) if hourly else 1
+        bar_w   = (W - 40) // 24
+        for hour in range(24):
+            cnt = hourly.get(hour, 0)
+            bh  = int(50 * cnt / max_cnt) if max_cnt else 0
+            bx  = 20 + hour * bar_w
+            col = GREEN if cnt == max_cnt else (CYAN if cnt > max_cnt // 2 else PANEL)
+            draw.rectangle([(bx+1, gy+50-bh), (bx+bar_w-1, gy+50)], fill=col)
+            if hour % 4 == 0:
+                draw.text((bx, gy+54), str(hour), font=_font(9), fill=GRAY)
 
     draw.text((20, H-24), "Calestify Gaming Community", font=fx, fill=GRAY)
     img.save(output_path)

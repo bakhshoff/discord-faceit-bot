@@ -47,9 +47,12 @@ try:
         place_prediction, resolve_predictions, get_predictions,
         get_season_leaderboard,
         record_elo_history, get_elo_history, get_peak_elo,
-        transfer_coins, get_activity_stats,
+        transfer_coins, get_activity_stats, get_hourly_activity,
         update_personal_record, get_personal_record,
-        temp_ban, check_and_lift_bans
+        temp_ban, check_and_lift_bans,
+        check_daily_login, check_milestones,
+        log_admin_action, get_admin_logs,
+        set_discount, get_discount, get_all_discounts, clear_expired_discounts
     )
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -1167,7 +1170,22 @@ async def update_queue_status_message():
         return
     players = get_queue_list()
     image_path = os.path.join(DATA_DIR or ".", QUEUE_STATUS_IMAGE_PATH)
-    await asyncio.to_thread(generate_queue_status_card, players, image_path)
+    # Orta gözləmə vaxtı: son 10 matçın başlama aralığından hesablanır
+    try:
+        from database import _get_conn as _gq
+        _cq = _gq(); _curq = _cq.cursor()
+        _curq.execute("SELECT played_at FROM match_history ORDER BY played_at DESC LIMIT 10")
+        _rows = [r[0] for r in _curq.fetchall()]
+        _cq.close()
+        if len(_rows) >= 2:
+            _diffs = [_rows[i]-_rows[i+1] for i in range(len(_rows)-1)]
+            _avg   = int(sum(_diffs)/len(_diffs)/60)
+            _avg   = max(5, min(_avg, 120))
+        else:
+            _avg   = None
+    except Exception:
+        _avg = None
+    await asyncio.to_thread(generate_queue_status_card, players, image_path, _avg)
     try:
         message = await channel.fetch_message(queue_status_message_id)
         await message.edit(attachments=[discord.File(image_path, filename="queue_status.png")])
@@ -1265,6 +1283,27 @@ async def _start_match(channel, guild):
     veto_view = VetoView(match_number, team_a, team_b,
                          captain_a["discord_id"], captain_b["discord_id"], channel, guild)
     await channel.send(content=mentions, embed=veto_embed, view=veto_view)
+
+    # 2. Balans Skoru — log kanalına vizual embed
+    avg_a  = sum(p["elo"] for p in team_a) / max(len(team_a), 1)
+    avg_b  = sum(p["elo"] for p in team_b) / max(len(team_b), 1)
+    diff   = abs(avg_a - avg_b)
+    score  = max(0, int(100 - diff / 3))
+    bar_f  = int(score / 10)
+    bar    = "=" * bar_f + "-" * (10 - bar_f)
+    color  = 0x57F287 if score >= 80 else (0xFEE75C if score >= 60 else 0xED4245)
+    log_ch = bot.get_channel(LOG_CHANNEL_ID)
+    if log_ch:
+        b_embed = discord.Embed(
+            title=f"Matc No{match_number} — Balans Skoru: {score}/100",
+            description=f"`[{bar}]` {score}%",
+            color=color
+        )
+        b_embed.add_field(name="Komanda A orta ELO", value=f"{avg_a:.0f}", inline=True)
+        b_embed.add_field(name="Komanda B orta ELO", value=f"{avg_b:.0f}", inline=True)
+        b_embed.add_field(name="ELO Ferqi",          value=f"{diff:.0f}", inline=True)
+        b_embed.set_footer(text="80+ Mukemmel · 60-79 Yaxshi · 60- Qeyri-balansl")
+        await log_ch.send(embed=b_embed)
 
 
 async def _send_match_summary(guild, match_number, winner_label,
@@ -2741,10 +2780,11 @@ class _GonderConfirmView(discord.ui.View):
 @app_commands.checks.has_permissions(administrator=True)
 async def ferealiyyet_cmd(interaction: discord.Interaction, gun: int = 7):
     await interaction.response.defer(ephemeral=True)
-    stats = await asyncio.to_thread(get_activity_stats, gun)
-    path  = os.path.join(DATA_DIR or ".", "activity.png")
+    stats  = await asyncio.to_thread(get_activity_stats, gun)
+    hourly = await asyncio.to_thread(get_hourly_activity, gun)
+    path   = os.path.join(DATA_DIR or ".", "activity.png")
     try:
-        await asyncio.to_thread(generate_activity_card, stats, path)
+        await asyncio.to_thread(generate_activity_card, stats, path, hourly)
         await interaction.followup.send(file=discord.File(path, filename="activity.png"), ephemeral=True)
     except Exception as e:
         embed = discord.Embed(title=f"Son {gun} gun fealiyyeti", color=discord.Color.blurple())
@@ -2916,6 +2956,16 @@ async def profile(interaction: discord.Interaction):
     season = get_or_create_current_season()
     ss     = get_season_stat(discord_id, season["id"])
 
+    # Gündəlik giriş bonusu
+    login_coins, login_streak, is_new_login = check_daily_login(discord_id)
+    if is_new_login and login_coins > 0:
+        new_bal = add_coins(discord_id, login_coins)
+        add_coin_log(discord_id, login_coins, f"Gundelik giris bonusu (streak {login_streak})", "earn", new_bal)
+
+    # Milestone yoxlaması
+    total_matches = player[4] + player[5]
+    milestones = check_milestones(discord_id, total_matches)
+
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
         banner_full_path, coins, frame_full_path, zm_balance,
@@ -2945,6 +2995,16 @@ async def profile(interaction: discord.Interaction):
         embed=boost_embed,
         view=PlayerProfileView(discord_id)
     )
+
+    # Login bonusu + milestone bildirişi
+    notifs = []
+    if is_new_login and login_coins > 0:
+        streak_txt = f" (Seriya: {login_streak})" if login_streak > 1 else ""
+        notifs.append(f"Gundelik bonus: +{login_coins} coin{streak_txt}")
+    for ms in milestones:
+        notifs.append(f"Milestone: {ms['matches']} matc → +{ms['coins']} coin!")
+    if notifs:
+        await interaction.followup.send("\n".join(notifs), ephemeral=True)
 
     # Aktiv tapşırıq varsa vizual kart ayrıca göndər
     if active_task:
@@ -3270,7 +3330,14 @@ class AdminEditModal(discord.ui.Modal):
             required=True,
             max_length=50
         )
+        self.reason_input = discord.ui.TextInput(
+            label="Səbəb / Qeyd (opsional)",
+            required=False,
+            max_length=200,
+            placeholder="Nə üçün dəyişdirirsiniz?"
+        )
         self.add_item(self.value_input)
+        self.add_item(self.reason_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         raw_value = str(self.value_input.value).strip()
@@ -3293,10 +3360,18 @@ class AdminEditModal(discord.ui.Modal):
             p = get_player(self.discord_id)
             old_coins = p[6] if p else None
 
+        old_player = get_player(self.discord_id)
+        old_val    = old_player[{"so2_nick":1,"so2_id":2,"elo":3,"wins":4,"losses":5,"coins":6,"zm_balance":9,
+                                  "kills":11,"assists":12,"deaths":13}.get(self.field, 0)] if old_player else None
+        reason     = str(self.reason_input.value).strip() if self.reason_input.value else None
+
         success = admin_set_player_field(self.discord_id, self.field, value)
         if not success:
             await interaction.response.send_message("❌ Xəta baş verdi.", ephemeral=True)
             return
+
+        # Admin logu
+        log_admin_action("edit", self.discord_id, self.field, old_val, value, reason, interaction.user.id)
 
         if self.field == "coins" and old_coins is not None:
             diff = value - old_coins
@@ -3962,6 +4037,127 @@ async def admin_market_cmd(interaction: discord.Interaction):
 async def admin_market_error(interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="endirim", description="[Admin] Market məhsuluna müddətli endirim tət et")
+@app_commands.describe(item_id="Məhsul ID-si (məs: banner_gold)", faiz="Endirim faizi (5-90)", saat="Neçə saat aktiv olsun")
+@app_commands.checks.has_permissions(administrator=True)
+async def endirim_cmd(interaction: discord.Interaction, item_id: str, faiz: int, saat: int):
+    if not (5 <= faiz <= 90):
+        await interaction.response.send_message("❌ Faiz 5-90 arasında olmalıdır.", ephemeral=True)
+        return
+    set_discount(item_id, "market", faiz, saat)
+    await interaction.response.send_message(
+        f"✅ **{item_id}** üçün **{faiz}%** endirim {saat} saat aktiv edildi.", ephemeral=False)
+
+
+@endirim_cmd.error
+async def endirim_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌", ephemeral=True)
+
+
+@bot.tree.command(name="mehsul_ver", description="[Admin] Oyunçuya market məhsulu ver (pulsuz)")
+@app_commands.describe(uzv="Məhsul veriləcək üzv", item_id="Məhsul ID-si (məs: frame_gold)")
+@app_commands.checks.has_permissions(administrator=True)
+async def mehsul_ver_cmd(interaction: discord.Interaction, uzv: discord.Member, item_id: str):
+    item = get_item_by_id(item_id)
+    if not item:
+        await interaction.response.send_message(f"❌ `{item_id}` tapılmadı.", ephemeral=True)
+        return
+    player = get_player(uzv.id)
+    if not player:
+        await interaction.response.send_message("❌ Oyunçu qeydiyyatda deyil.", ephemeral=True)
+        return
+    if owns_item(uzv.id, item_id):
+        await interaction.response.send_message(f"⚠️ {uzv.display_name} artıq bu məhsula sahibdir.", ephemeral=True)
+        return
+    add_to_inventory(uzv.id, item_id)
+    await asyncio.to_thread(backup.export_backup)
+    try:
+        await uzv.send(f"Admin tərəfindən sizə **{item['name']}** verildi!")
+    except discord.Forbidden:
+        pass
+    await interaction.response.send_message(
+        f"✅ **{item['name']}** {uzv.mention}-a verildi.", ephemeral=False)
+
+
+@mehsul_ver_cmd.error
+async def mehsul_ver_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌", ephemeral=True)
+
+
+# ── /ara, /toplu_bildiris, ELO admin log ─────────────────────────────────────
+
+@bot.tree.command(name="ara", description="Oyunçu adına görə ax")
+@app_commands.describe(nick="Oyun adı (qismən yazın kifayətdir)")
+async def ara_cmd(interaction: discord.Interaction, nick: str):
+    await interaction.response.defer(ephemeral=True)
+    from database import _get_conn as _gac
+    conn = _gac(); cur = conn.cursor()
+    cur.execute("SELECT discord_id, so2_nick, so2_id, elo FROM players WHERE so2_nick LIKE ? ORDER BY elo DESC LIMIT 10",
+                (f"%{nick}%",))
+    rows = cur.fetchall(); conn.close()
+    if not rows:
+        await interaction.followup.send("❌ Heç bir oyunçu tapılmadı.", ephemeral=True)
+        return
+    embed = discord.Embed(title=f"Axtaris: '{nick}' — {len(rows)} netice", color=discord.Color.blurple())
+    for did, snick, so2_id, elo in rows:
+        embed.add_field(name=snick, value=f"SO2 ID: {so2_id}  ·  ELO: {elo}  ·  <@{did}>", inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="toplu_bildiris", description="[Admin] Bütün qeydiyyatlı oyunçulara DM göndər")
+@app_commands.describe(mesaj="Göndəriləcək mesaj mətni")
+@app_commands.checks.has_permissions(administrator=True)
+async def toplu_bildiris_cmd(interaction: discord.Interaction, mesaj: str):
+    await interaction.response.defer(ephemeral=True)
+    players = get_all_players(limit=500)
+    sent, fail = 0, 0
+    for p in players:
+        member = interaction.guild.get_member(p["discord_id"])
+        if not member:
+            continue
+        try:
+            await member.send(f"📢 **Calestify FACEIT bildirisi:**\n{mesaj}")
+            sent += 1
+        except discord.Forbidden:
+            fail += 1
+    await interaction.followup.send(
+        f"✅ {sent} oyunçuya göndərildi · {fail} oyunçuya göndərilmədi (DM bağlı).", ephemeral=True)
+
+
+@toplu_bildiris_cmd.error
+async def toplu_bildiris_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌", ephemeral=True)
+
+
+@bot.tree.command(name="elo_tarixce", description="[Admin] Oyunçunun admin dəyişiklik tarixçəsi")
+@app_commands.describe(uzv="Oyunçu")
+@app_commands.checks.has_permissions(administrator=True)
+async def elo_tarixce_cmd(interaction: discord.Interaction, uzv: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    logs = get_admin_logs(uzv.id, limit=10)
+    if not logs:
+        await interaction.followup.send("❌ Bu oyunçu üçün admin loqu yoxdur.", ephemeral=True)
+        return
+    embed = discord.Embed(title=f"{uzv.display_name} — Admin Dəyişiklik Tarixçəsi", color=discord.Color.orange())
+    for lg in logs:
+        dt  = datetime.datetime.utcfromtimestamp(lg["created_at"]) + datetime.timedelta(hours=4)
+        val = f"{lg['old']} → {lg['new']}"
+        if lg.get("reason"):
+            val += f"\nSəbəb: {lg['reason']}"
+        val += f"\nAdmin: <@{lg['admin_id']}> · {dt.strftime('%d.%m.%Y %H:%M')}"
+        embed.add_field(name=f"{lg['action']} — {lg['field']}", value=val, inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@elo_tarixce_cmd.error
+async def elo_tarixce_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌", ephemeral=True)
 
 
 @bot.tree.command(name="admin_panel", description="[Admin] Oyunçunun datalarını manuel idarə et")
