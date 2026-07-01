@@ -65,7 +65,7 @@ try:
                                generate_achievements_card, get_rank,
                                generate_compare_card, generate_elo_graph,
                                generate_activity_card)
-    from pass_visual import generate_pass_gif, generate_pass_card
+    from pass_visual import generate_pass_gif, generate_pass_card, generate_pass_levels_card
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
@@ -2921,6 +2921,21 @@ async def pass_missiyalar_cmd(interaction: discord.Interaction):
         embed.add_field(name=f"{cat_label} Missiyalar", value="\n".join(lines) or "—", inline=False)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="pass_levellar", description="Season Pass — 1-30 bütün levellərin mükafatları")
+async def pass_levellar_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        from database import ensure_free_pass as _efp
+        _efp(interaction.user.id)
+        pd   = get_pass_data(interaction.user.id)
+        path = os.path.join(DATA_DIR or ".", f"pass_levels_{interaction.user.id}.png")
+        await asyncio.to_thread(generate_pass_levels_card, pd, path)
+        await interaction.followup.send(file=discord.File(path, filename="pass_levels.png"), ephemeral=True)
+    except Exception as e:
+        print(f"[PASS_LEVELS]: {e}", flush=True)
+        await interaction.followup.send(f"❌ Xeta: {str(e)[:100]}", ephemeral=True)
 
 
 @bot.event
