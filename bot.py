@@ -64,7 +64,9 @@ try:
                                generate_stats_card, generate_warnings_card,
                                generate_achievements_card, get_rank,
                                generate_compare_card, generate_elo_graph,
-                               generate_activity_card)
+                               generate_activity_card,
+                               generate_transfer_card, generate_search_results_card,
+                               generate_skin_catalog_card, generate_bet_card)
     from pass_visual import generate_pass_gif, generate_pass_card, generate_pass_levels_card, generate_pass_announcement
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
@@ -2305,30 +2307,9 @@ async def sezon_cmd(interaction: discord.Interaction, nomre: int = 0):
         season["season_number"], season["start_date"], season["end_date"], lb_path
     )
 
-    # Sezon info embed
-    try:
-        end_dt  = dt.datetime.strptime(season["end_date"], "%Y-%m-%d")
-        now_dt  = dt.datetime.utcnow() + dt.timedelta(hours=4)
-        days_left = (end_dt - now_dt).days
-        day_num   = (now_dt - dt.datetime.strptime(season["start_date"], "%Y-%m-%d")).days + 1
-    except Exception:
-        days_left = "?"
-        day_num   = "?"
-
-    color = discord.Color.teal() if season.get("status") == "active" else discord.Color.greyple()
-    embed = discord.Embed(
-        title=f"🏆 Sezon {season['season_number']}",
-        color=color
-    )
-    embed.add_field(name="Başlangıc", value=season["start_date"], inline=True)
-    embed.add_field(name="Son",       value=season["end_date"],   inline=True)
-    embed.add_field(name="Gün",       value=f"{day_num}. gün",   inline=True)
-    if season.get("status") == "active":
-        embed.add_field(name="⏰ Qalan", value=f"{days_left} gün", inline=True)
-        embed.add_field(name="🎁 Sezon sonu mükafatları",
-                        value="🥇 Ən çox ELO qazanan Top 3 → Ekstra coin\n"
-                              "🗡️ Ən yüksək K/D Top 3 → Ekstra coin", inline=False)
-    await interaction.followup.send(embed=embed, file=discord.File(lb_path, filename="season_lb.png"))
+    await interaction.followup.send(
+        file=discord.File(lb_path, filename="season_lb.png"),
+        view=SezonNavView(season["season_number"], season["id"]))
 
 
 @bot.tree.command(name="sezon_elan", description="[Admin] Sezon sonu elanını yenidən göndər")
@@ -2577,6 +2558,143 @@ async def warns_cmd(interaction: discord.Interaction, uzv: discord.Member = None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# NAVİQASİYA VİEW SİNİFLƏRİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class StatsNavView(discord.ui.View):
+    def __init__(self, target_id: int):
+        super().__init__(timeout=300)
+        self.target_id = target_id
+
+    @discord.ui.button(label="ELO Qrafik", emoji="📈", style=discord.ButtonStyle.secondary)
+    async def show_elo(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.target_id)
+        if not player:
+            await interaction.followup.send("❌ Oyunçu tapılmadı.", ephemeral=True); return
+        history = get_elo_history(self.target_id, limit=30)
+        peak    = get_peak_elo(self.target_id)
+        path    = os.path.join(DATA_DIR or ".", f"elo_graph_{self.target_id}.png")
+        try:
+            await asyncio.to_thread(generate_elo_graph, player[1], history, peak, path)
+            await interaction.followup.send(file=discord.File(path, filename="elo_graph.png"),
+                                            view=EloGrafikView(self.target_id), ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Qrafik yaradıla bilmədi: {e}", ephemeral=True)
+
+    @discord.ui.button(label="Nailiyyətlər", emoji="🏅", style=discord.ButtonStyle.secondary)
+    async def show_ach(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.target_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+        achs = get_player_achievements(self.target_id)
+        path = os.path.join(DATA_DIR or ".", f"achievements_{self.target_id}.png")
+        await asyncio.to_thread(generate_achievements_card, player[1], achs, path)
+        await interaction.followup.send(file=discord.File(path, filename="achievements.png"),
+                                        view=NailiyyetNavView(self.target_id), ephemeral=True)
+
+
+class EloGrafikView(discord.ui.View):
+    def __init__(self, target_id: int):
+        super().__init__(timeout=300)
+        self.target_id = target_id
+
+    async def _regen(self, interaction: discord.Interaction, limit: int):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.target_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+        history = get_elo_history(self.target_id, limit=limit)
+        peak    = get_peak_elo(self.target_id)
+        path    = os.path.join(DATA_DIR or ".", f"elo_graph_{self.target_id}.png")
+        await asyncio.to_thread(generate_elo_graph, player[1], history, peak, path)
+        lbl = f"Son {limit}" if limit < 200 else "Bütün tarix"
+        await interaction.followup.send(
+            content=f"📊 **{lbl}** — {player[1]}",
+            file=discord.File(path, filename="elo_graph.png"),
+            view=EloGrafikView(self.target_id), ephemeral=True)
+
+    @discord.ui.button(label="Son 10 Matç", emoji="📉", style=discord.ButtonStyle.secondary)
+    async def last10(self, i, b): await self._regen(i, 10)
+
+    @discord.ui.button(label="Son 30 Matç", emoji="📊", style=discord.ButtonStyle.primary)
+    async def last30(self, i, b): await self._regen(i, 30)
+
+    @discord.ui.button(label="Hamısı", emoji="📈", style=discord.ButtonStyle.secondary)
+    async def all_hist(self, i, b): await self._regen(i, 200)
+
+
+class NailiyyetNavView(discord.ui.View):
+    def __init__(self, target_id: int):
+        super().__init__(timeout=300)
+        self.target_id = target_id
+
+    @discord.ui.button(label="Statistika", emoji="📊", style=discord.ButtonStyle.secondary)
+    async def show_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.target_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+        p = player
+        pdata = {
+            "nick": p[1], "so2_id": p[2], "elo": p[3], "wins": p[4], "losses": p[5],
+            "coins": p[6], "zm_balance": p[9] if len(p)>9 else 0,
+            "kills": p[11] if len(p)>11 else 0, "assists": p[12] if len(p)>12 else 0,
+            "deaths": p[13] if len(p)>13 else 0, "win_streak": p[14] if len(p)>14 else 0,
+            "max_streak": p[15] if len(p)>15 else 0,
+        }
+        achs = get_player_achievements(self.target_id)
+        path = os.path.join(DATA_DIR or ".", f"stats_{self.target_id}.png")
+        await asyncio.to_thread(generate_stats_card, pdata, achs, path)
+        await interaction.followup.send(file=discord.File(path, filename="stats.png"),
+                                        view=StatsNavView(self.target_id), ephemeral=True)
+
+
+class SezonNavView(discord.ui.View):
+    def __init__(self, season_number: int, season_id: int):
+        super().__init__(timeout=300)
+        self.season_number = season_number
+        self.season_id     = season_id
+
+    @discord.ui.button(label="Şəxsi Statistikam", emoji="📊", style=discord.ButtonStyle.secondary)
+    async def my_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(interaction.user.id)
+        ss     = get_season_stat(interaction.user.id, self.season_id)
+        if not player:
+            await interaction.followup.send("❌ Qeydiyyat yoxdur.", ephemeral=True); return
+        s_matches = (ss["wins"] + ss["losses"]) if ss else 0
+        s_wr  = round(ss["wins"]/s_matches*100, 1) if s_matches else 0
+        s_kd  = round(ss["kills"]/max(ss["deaths"],1), 2) if ss else 0
+        embed = discord.Embed(
+            title=f"📊 Sezon {self.season_number} — {player[1]}",
+            color=discord.Color.teal()
+        )
+        embed.add_field(name="Matç",   value=str(s_matches),            inline=True)
+        embed.add_field(name="Qələbə", value=str(ss["wins"] if ss else 0), inline=True)
+        embed.add_field(name="Win%",   value=f"{s_wr}%",                inline=True)
+        embed.add_field(name="Kill",   value=str(ss["kills"] if ss else 0),   inline=True)
+        embed.add_field(name="K/D",    value=str(s_kd),                 inline=True)
+        embed.add_field(name="Asist",  value=str(ss["assists"] if ss else 0), inline=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Liderboard", emoji="🏆", style=discord.ButtonStyle.primary)
+    async def show_lb(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        season = get_season_by_number(self.season_number)
+        if not season:
+            await interaction.followup.send("❌", ephemeral=True); return
+        rows   = get_season_leaderboard(season["id"])
+        path   = os.path.join(DATA_DIR or ".", f"season_lb_{self.season_number}.png")
+        await asyncio.to_thread(
+            generate_season_leaderboard_image, rows,
+            season["season_number"], season["start_date"], season["end_date"], path)
+        await interaction.followup.send(file=discord.File(path, filename="season_lb.png"),
+                                        view=SezonNavView(self.season_number, self.season_id), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # /STATS — BAŞQASININ STATİSTİKASI
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2604,15 +2722,17 @@ async def stats_cmd(interaction: discord.Interaction, uzv: discord.Member = None
     path = os.path.join(DATA_DIR or ".", f"stats_{target.id}.png")
     try:
         await asyncio.to_thread(generate_stats_card, player_data, achs, path)
-        await interaction.followup.send(file=discord.File(path, filename="stats.png"))
-        # Rekord embedi əlavə göndər
+        rec_embed = None
         if pr["best_kills"] > 0 or pr["best_kd"] > 0:
-            rec_embed = discord.Embed(title="Sexsi Rekordlar", color=discord.Color.gold())
-            rec_embed.add_field(name="Bir matcda max Kill", value=str(pr["best_kills"]), inline=True)
-            rec_embed.add_field(name="Bir matcda max KD",   value=str(pr["best_kd"]),   inline=True)
+            rec_embed = discord.Embed(title="🏆 Şəxsi Rekordlar", color=discord.Color.gold())
+            rec_embed.add_field(name="Max Kill (1 matçda)", value=str(pr["best_kills"]), inline=True)
+            rec_embed.add_field(name="Max K/D (1 matçda)",  value=str(pr["best_kd"]),   inline=True)
             if pr["best_match"]:
-                rec_embed.add_field(name="Matc No", value=str(pr["best_match"]), inline=True)
-            await interaction.followup.send(embed=rec_embed)
+                rec_embed.add_field(name="Matç No", value=str(pr["best_match"]), inline=True)
+        await interaction.followup.send(
+            file=discord.File(path, filename="stats.png"),
+            embed=rec_embed,
+            view=StatsNavView(target.id))
     except Exception as e:
         # Kart yaradıla bilmədisə embed fallback
         p2 = player_data
@@ -2648,7 +2768,8 @@ async def nailiyyetler_cmd(interaction: discord.Interaction, uzv: discord.Member
     achs = get_player_achievements(target.id)
     path = os.path.join(DATA_DIR or ".", f"achievements_{target.id}.png")
     await asyncio.to_thread(generate_achievements_card, player[1], achs, path)
-    await interaction.followup.send(file=discord.File(path, filename="achievements.png"), ephemeral=True)
+    await interaction.followup.send(file=discord.File(path, filename="achievements.png"),
+                                    view=NailiyyetNavView(target.id), ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2709,13 +2830,20 @@ async def merc_cmd(interaction: discord.Interaction):
     if not player:
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisən.", ephemeral=True)
         return
-    coins = get_coins(interaction.user.id)
-    embed = discord.Embed(
-        title=f"🎲 Matç No{active['match_number']} — Mərc",
-        description=f"Qalibə mərc et, düz tapsan **2x** qazanırsın!\n\n🪙 Balansınız: **{coins} coin**",
-        color=discord.Color.gold()
-    )
-    await interaction.response.send_message(embed=embed, view=PredictionView(active["match_number"]), ephemeral=True)
+    coins     = get_coins(interaction.user.id)
+    bet_path  = os.path.join(DATA_DIR or ".", f"bet_{active['match_number']}.png")
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await asyncio.to_thread(generate_bet_card, active["match_number"], coins, bet_path)
+        await interaction.followup.send(
+            file=discord.File(bet_path, filename="bet.png"),
+            view=PredictionView(active["match_number"]), ephemeral=True)
+    except Exception as e:
+        embed = discord.Embed(
+            title=f"🎲 Matç No{active['match_number']} — Mərc",
+            description=f"Qalibə mərc et, düz tapsan **2x** qazanırsın!\n\n🪙 Balansınız: **{coins} coin**",
+            color=discord.Color.gold())
+        await interaction.followup.send(embed=embed, view=PredictionView(active["match_number"]), ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2769,7 +2897,8 @@ async def elo_grafik_cmd(interaction: discord.Interaction, uzv: discord.Member =
     path     = os.path.join(DATA_DIR or ".", f"elo_graph_{target.id}.png")
     try:
         await asyncio.to_thread(generate_elo_graph, player[1], history, peak, path)
-        await interaction.followup.send(file=discord.File(path, filename="elo_graph.png"), ephemeral=True)
+        await interaction.followup.send(file=discord.File(path, filename="elo_graph.png"),
+                                        view=EloGrafikView(target.id), ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ Qrafik yaradıla bilmədi: {e}", ephemeral=True)
 
@@ -2786,20 +2915,27 @@ async def gonder_cmd(interaction: discord.Interaction, uzv: discord.Member, mikt
 
     commission = int(miktar * 0.20)
     receiver   = miktar - commission
+    from_bal   = get_coins(interaction.user.id)
 
-    embed = discord.Embed(
-        title="💸 Coin Transfer — Təsdiq",
-        color=discord.Color.gold()
-    )
-    embed.add_field(name="Göndərən",    value=f"{interaction.user.display_name}", inline=True)
-    embed.add_field(name="Alan",        value=f"{uzv.display_name}", inline=True)
-    embed.add_field(name="​",           value="​", inline=True)
-    embed.add_field(name="Sizdən çıxır", value=f"🪙 {miktar}", inline=True)
-    embed.add_field(name="Komissiya (20%)", value=f"🪙 {commission}", inline=True)
-    embed.add_field(name="Alan alır",   value=f"🪙 {receiver}", inline=True)
-
-    view = _GonderConfirmView(interaction.user.id, uzv.id, miktar, receiver, commission)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    card_path = os.path.join(DATA_DIR or ".", f"transfer_{interaction.user.id}.png")
+    try:
+        await asyncio.to_thread(
+            generate_transfer_card,
+            interaction.user.display_name, uzv.display_name,
+            miktar, commission, receiver, from_bal, card_path)
+        view = _GonderConfirmView(interaction.user.id, uzv.id, miktar, receiver, commission)
+        await interaction.followup.send(file=discord.File(card_path, filename="transfer.png"),
+                                        view=view, ephemeral=True)
+    except Exception as e:
+        embed = discord.Embed(title="💸 Coin Transfer — Təsdiq", color=discord.Color.gold())
+        embed.add_field(name="Göndərən",       value=interaction.user.display_name, inline=True)
+        embed.add_field(name="Alan",           value=uzv.display_name,              inline=True)
+        embed.add_field(name="Sizdən çıxır",   value=f"🪙 {miktar}",              inline=True)
+        embed.add_field(name="Komissiya (20%)",value=f"🪙 {commission}",           inline=True)
+        embed.add_field(name="Alan alır",      value=f"🪙 {receiver}",             inline=True)
+        view = _GonderConfirmView(interaction.user.id, uzv.id, miktar, receiver, commission)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
 class _GonderConfirmView(discord.ui.View):
@@ -4329,10 +4465,15 @@ async def ara_cmd(interaction: discord.Interaction, nick: str):
     if not rows:
         await interaction.followup.send("❌ Heç bir oyunçu tapılmadı.", ephemeral=True)
         return
-    embed = discord.Embed(title=f"Axtaris: '{nick}' — {len(rows)} netice", color=discord.Color.blurple())
-    for did, snick, so2_id, elo in rows:
-        embed.add_field(name=snick, value=f"SO2 ID: {so2_id}  ·  ELO: {elo}  ·  <@{did}>", inline=False)
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    search_path = os.path.join(DATA_DIR or ".", f"search_{interaction.user.id}.png")
+    try:
+        await asyncio.to_thread(generate_search_results_card, nick, rows, search_path)
+        await interaction.followup.send(file=discord.File(search_path, filename="search.png"), ephemeral=True)
+    except Exception as e:
+        embed = discord.Embed(title=f"Axtaris: '{nick}' — {len(rows)} netice", color=discord.Color.blurple())
+        for did, snick, so2_id, elo in rows:
+            embed.add_field(name=snick, value=f"SO2 ID: {so2_id}  ·  ELO: {elo}", inline=False)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="toplu_bildiris", description="[Admin] Bütün qeydiyyatlı oyunçulara DM göndər")
@@ -4458,12 +4599,17 @@ async def skin_sil_error(interaction: discord.Interaction, error):
 @app_commands.checks.has_permissions(administrator=True)
 async def skin_siyahi(interaction: discord.Interaction):
     skins = get_active_skins()
-    if not skins:
-        await interaction.response.send_message("Mağazada heç bir skin yoxdur.", ephemeral=True)
-        return
-    lines = [f"ID **{s['id']}** — {s['name']} — 🪙 {s['price']}" for s in skins]
-    embed = discord.Embed(title="🔫 Marketdəki Skinlər", description="\n".join(lines), color=discord.Color.blue())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    catalog_path = os.path.join(DATA_DIR or ".", "skin_catalog.png")
+    try:
+        await asyncio.to_thread(generate_skin_catalog_card, skins, catalog_path)
+        await interaction.followup.send(file=discord.File(catalog_path, filename="skins.png"), ephemeral=True)
+    except Exception as e:
+        if not skins:
+            await interaction.followup.send("Mağazada heç bir skin yoxdur.", ephemeral=True); return
+        lines = [f"ID **{s['id']}** — {s['name']} — 🪙 {s['price']}" for s in skins]
+        embed = discord.Embed(title="🔫 Marketdəki Skinlər", description="\n".join(lines), color=discord.Color.blue())
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @skin_siyahi.error

@@ -974,3 +974,113 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
     draw.text((28, height-FOOTER_H+4), "Calestify Gaming Community", font=_font(11), fill=GRAY)
     img.save(output_path)
     return output_path
+
+
+# ── COiN TRANSFERi KARTI ────────────────────────────────────────────────────
+
+def generate_transfer_card(from_nick, to_nick, amount, commission, receiver_gets, from_balance, output_path):
+    W, H = WIDTH, 230
+    img  = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+    f_brand = _font(12, True); f_title = _font(22, True); f_big = _font(20, True)
+    f_med = _font(15, True);   f_sm = _font(12);          f_lbl = _font(11)
+    draw.text((28, 14), "CALESTIFY", font=f_brand, fill=GOLD)
+    draw.text((28, 30), "COiN TRANSFERi", font=f_title, fill=WHITE)
+    draw.line([(18, 65), (W-18, 65)], fill=BORDER, width=1)
+    cx = W // 2
+    draw.rounded_rectangle([(18, 75), (cx-20, 168)], radius=6, fill=PANEL, outline=RED, width=2)
+    draw.text((cx//2, 96),  from_nick[:14],  font=f_med, fill=WHITE,  anchor="mm")
+    draw.text((cx//2, 120), f"-{amount}",    font=f_big, fill=RED,   anchor="mm")
+    draw.text((cx//2, 143), "coin",          font=f_sm,  fill=RED,   anchor="mm")
+    draw.text((cx//2, 163), "Gonderan",      font=f_lbl, fill=GRAY,  anchor="mm")
+    draw.text((cx, 120), ">", font=_font(30, True), fill=GOLD, anchor="mm")
+    rx0 = cx+20; rx1 = W-18
+    draw.rounded_rectangle([(rx0, 75), (rx1, 168)], radius=6, fill=PANEL, outline=GREEN, width=2)
+    rc = rx0 + (rx1-rx0)//2
+    draw.text((rc, 96),  to_nick[:14],        font=f_med, fill=WHITE,  anchor="mm")
+    draw.text((rc, 120), f"+{receiver_gets}",  font=f_big, fill=GREEN, anchor="mm")
+    draw.text((rc, 143), "coin",               font=f_sm,  fill=GREEN, anchor="mm")
+    draw.text((rc, 163), "Alan",               font=f_lbl, fill=GRAY,  anchor="mm")
+    draw.line([(18, 175), (W-18, 175)], fill=BORDER, width=1)
+    draw.text((W//2, 195), f"Komissiya: {commission} coin (20%)   |   Balans: {from_balance} coin", font=f_lbl, fill=GRAY, anchor="mm")
+    draw.text((28, H-18), "Calestify Gaming Community", font=f_lbl, fill=GRAY)
+    img.save(output_path); return output_path
+
+
+# ── OYUNCU AXTARISI KARTI ───────────────────────────────────────────────────
+
+def generate_search_results_card(query, results, output_path):
+    ROW_H = 48; HEADER_H = 78; FOOTER_H = 22
+    H = HEADER_H + max(1, len(results)) * ROW_H + FOOTER_H
+    img = _bg(H); draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(WIDTH-1,H-1)], outline=BORDER, width=2)
+    draw.text((28, 14), "CALESTIFY", font=_font(12,True), fill=GOLD)
+    draw.text((28, 30), f"AXTARIS: '{query[:18]}'  -  {len(results)} netice", font=_font(20,True), fill=WHITE)
+    draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
+    y = HEADER_H
+    for i, row in enumerate(results):
+        did = row[0]; nick = row[1]; so2_id = row[2]; elo = row[3]
+        if i % 2 == 0: draw.rectangle([(2,y),(WIDTH-2,y+ROW_H-1)], fill=(21,19,25))
+        ec = (255,215,0) if elo>=1500 else (GREEN if elo>=1200 else (BLUE if elo>=1000 else GRAY))
+        _bar(draw, 20, y, ROW_H, ec)
+        draw.text((42, y+8),  nick[:28],        font=_font(15,True), fill=WHITE)
+        draw.text((42, y+28), f"SO2: {so2_id}", font=_font(12),      fill=GRAY)
+        draw.text((WIDTH-28, y+ROW_H//2), str(elo), font=_font(16,True), fill=ec, anchor="rm")
+        draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
+        y += ROW_H
+    draw.text((28, H-FOOTER_H+6), "Calestify Gaming Community", font=_font(11), fill=GRAY)
+    img.save(output_path); return output_path
+
+
+# ── SKiN KATALOQ KARTI ──────────────────────────────────────────────────────
+
+def generate_skin_catalog_card(skins, output_path):
+    ROW_H = 52; HEADER_H = 78; FOOTER_H = 22
+    H = HEADER_H + max(1, len(skins)) * ROW_H + FOOTER_H
+    img = _bg(H); draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(WIDTH-1,H-1)], outline=BORDER, width=2)
+    draw.text((28, 14), "CALESTIFY", font=_font(12,True), fill=GOLD)
+    draw.text((28, 30), "SKiN KATALOQU", font=_font(22,True), fill=WHITE)
+    cnt_t = f"{len(skins)} skin"
+    draw.text((WIDTH-28-_tw(draw,cnt_t,_font(12)), 42), cnt_t, font=_font(12), fill=GRAY)
+    draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
+    y = HEADER_H
+    for i, s in enumerate(skins):
+        if i % 2 == 0: draw.rectangle([(2,y),(WIDTH-2,y+ROW_H-1)], fill=(21,19,25))
+        _bar(draw, 20, y, ROW_H, BLUE)
+        draw.text((42, y+10), s.get("name","?")[:32], font=_font(15,True), fill=WHITE)
+        draw.text((42, y+32), f"ID: {s.get('id','?')}   Standoff 2 Skin", font=_font(11), fill=GRAY)
+        draw.text((WIDTH-28, y+ROW_H//2), f"{s.get('price','?')} coin", font=_font(16,True), fill=GOLD, anchor="rm")
+        draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
+        y += ROW_H
+    draw.text((28, H-FOOTER_H+6), "Calestify Gaming Community", font=_font(11), fill=GRAY)
+    img.save(output_path); return output_path
+
+
+# ── MERC KARTI ──────────────────────────────────────────────────────────────
+
+def generate_bet_card(match_number, balance, output_path):
+    W, H = WIDTH, 248
+    img = _bg(H); draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+    draw.rectangle([(0,0),(W,54)], fill=(20,15,30))
+    draw.line([(0,54),(W,54)], fill=BORDER, width=1)
+    draw.text((28, 12), "CALESTIFY", font=_font(12,True), fill=GOLD)
+    draw.text((28, 30), f"MATC No{match_number} - MERC", font=_font(20,True), fill=WHITE)
+    cx = W // 2
+    ax = (18+cx-16)//2
+    draw.rounded_rectangle([(18,68),(cx-16,176)], radius=8, fill=(12,16,40), outline=BLUE, width=2)
+    draw.text((ax, 90),  "KOMANDA A", font=_font(13,True), fill=BLUE,  anchor="mm")
+    draw.text((ax, 128), "A",         font=_font(44,True), fill=BLUE,  anchor="mm")
+    draw.text((ax, 162), "2x mukafat",font=_font(11),      fill=GRAY,  anchor="mm")
+    draw.text((cx, 122), "VS", font=_font(20,True), fill=GOLD, anchor="mm")
+    bx = cx+16+(W-18-(cx+16))//2
+    draw.rounded_rectangle([(cx+16,68),(W-18,176)], radius=8, fill=(40,12,12), outline=RED, width=2)
+    draw.text((bx, 90),  "KOMANDA B", font=_font(13,True), fill=RED,   anchor="mm")
+    draw.text((bx, 128), "B",         font=_font(44,True), fill=RED,   anchor="mm")
+    draw.text((bx, 162), "2x mukafat",font=_font(11),      fill=GRAY,  anchor="mm")
+    draw.line([(18,183),(W-18,183)], fill=BORDER, width=1)
+    draw.text((W//2, 204), f"Balans: {balance} coin   Duz tapsan 2x qazanirsin!", font=_font(12), fill=GRAY, anchor="mm")
+    draw.text((W//2, 232), "Asagidaki duymelere basin", font=_font(11,True), fill=GOLD, anchor="mm")
+    img.save(output_path); return output_path
