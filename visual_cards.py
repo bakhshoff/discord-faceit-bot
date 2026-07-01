@@ -709,6 +709,172 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
     return output_path
 
 
+# ── BATTLE PASS KARTI (ANİMASİYALI GIF) ──────────────────────────────────────
+PASS_GOLD   = (255, 200, 50)
+PASS_PURPLE = (140, 80, 255)
+PASS_TEAL   = (40, 210, 180)
+PASS_BG     = (12, 10, 18)
+PASS_PANEL  = (22, 18, 32)
+PASS_BORDER = (60, 50, 80)
+
+MILESTONE_LEVELS = {10, 15, 20, 25, 30}
+
+
+def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(860, 460)):
+    """Tek frame çəkir. glow 0.0–1.0 arası."""
+    W, H   = output_size
+    img    = Image.new("RGB", (W, H), PASS_BG)
+    draw   = ImageDraw.Draw(img)
+
+    # Arxa gradient
+    for y in range(H):
+        t = y / H
+        r = int(12 + (30 - 12) * t)
+        g = int(10 + (10 - 10) * t)
+        b = int(18 + (35 - 18) * t)
+        draw.line([(0, y), (W, y)], fill=(r, g, b))
+
+    fb = _font(13, True); ft = _font(22, True); fm = _font(14, True)
+    fs = _font(13);       fx2 = _font(11);      fxi = _font(10)
+
+    level    = pass_data.get("level", 0)
+    xp       = pass_data.get("xp", 0)
+    max_lvl  = 30
+    xp_need  = 500
+    xp_pct   = min(xp / xp_need, 1.0)
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    draw.rectangle([(0, 0), (W, 56)], fill=PASS_PANEL)
+    draw.rectangle([(0, 54), (W, 57)], fill=PASS_PURPLE)
+    draw.text((20, 10), "CALESTIFY", font=fb, fill=PASS_GOLD)
+    draw.text((20, 24), "SEASON 1 PASS", font=ft, fill=WHITE)
+    # Level badge sağda
+    lvl_txt = f"LVL {level}"
+    draw.rectangle([(W-110, 10), (W-10, 46)], fill=PASS_PURPLE, outline=PASS_GOLD, width=2)
+    draw.text(((W-110+W-10)//2, 28), lvl_txt, font=fm, fill=PASS_GOLD, anchor="mm")
+
+    # ── Level Bar (30 xana) ───────────────────────────────────────────────────
+    BAR_Y  = 68
+    BAR_H  = 28
+    PAD    = 16
+    cell_w = (W - PAD*2) / max_lvl
+    glow_alpha = int(180 + 75 * glow)
+
+    for i in range(max_lvl):
+        lv  = i + 1
+        x0  = int(PAD + i * cell_w)
+        x1  = int(PAD + (i+1) * cell_w) - 2
+        done = lv <= level
+
+        if done:
+            col = PASS_GOLD if lv in MILESTONE_LEVELS else PASS_TEAL
+        else:
+            col = (35, 30, 50)
+
+        draw.rectangle([(x0, BAR_Y), (x1, BAR_Y + BAR_H)], fill=col)
+
+        # Milestone marker
+        if lv in MILESTONE_LEVELS:
+            mc = PASS_GOLD if done else (80, 70, 100)
+            draw.rectangle([(x0, BAR_Y-4), (x1, BAR_Y)], fill=mc)
+
+        # Current level glow
+        if lv == level + 1:
+            gl = int(glow_alpha)
+            draw.rectangle([(x0-1, BAR_Y-1), (x1+1, BAR_Y+BAR_H+1)],
+                           outline=(gl, gl, 50), width=2)
+
+    # Level sayları (hər 5-ci)
+    for i in range(0, max_lvl, 5):
+        lv = i + 1
+        x  = int(PAD + i * cell_w + cell_w/2)
+        draw.text((x, BAR_Y + BAR_H + 4), str(lv), font=fxi, fill=GRAY, anchor="mt")
+
+    # ── XP Progress ──────────────────────────────────────────────────────────
+    xp_y  = BAR_Y + BAR_H + 22
+    xp_w  = W - PAD*2
+    draw.rectangle([(PAD, xp_y), (PAD+xp_w, xp_y+10)], fill=(35,30,50), outline=PASS_BORDER, width=1)
+    fill_w = int(xp_w * xp_pct)
+    if fill_w > 0:
+        draw.rectangle([(PAD, xp_y), (PAD+fill_w, xp_y+10)], fill=PASS_PURPLE)
+    xp_txt = f"{xp} / {xp_need} XP"
+    draw.text((W//2, xp_y+5), xp_txt, font=fxi, fill=WHITE, anchor="mm")
+
+    # ── Missiyalar ────────────────────────────────────────────────────────────
+    mis_y = xp_y + 20
+    draw.line([(PAD, mis_y), (W-PAD, mis_y)], fill=PASS_BORDER, width=1)
+    mis_y += 6
+    draw.text((PAD, mis_y), "AKTİV MİSSİYALAR", font=fb, fill=PASS_GOLD)
+    mis_y += 18
+
+    shown = [m for m in missions if not m["completed"]][:4]
+    col_w = (W - PAD*2) // 2
+    for idx, m in enumerate(shown):
+        col    = idx % 2
+        row    = idx // 2
+        mx     = PAD + col * col_w
+        my     = mis_y + row * 44
+        pct    = min(m["progress"] / m["target"], 1.0) if m["target"] else 1.0
+        cat_c  = PASS_GOLD if m["cat"] == "seasonal" else (PASS_TEAL if m["cat"] == "weekly" else GRAY)
+
+        draw.rectangle([(mx, my), (mx+col_w-8, my+38)], fill=PASS_PANEL, outline=PASS_BORDER, width=1)
+        draw.text((mx+6, my+4),  m["desc"][:28], font=fxi, fill=WHITE)
+        draw.text((mx+6, my+16), f"{m['progress']}/{m['target']}  +{m['xp']} XP", font=fxi, fill=cat_c)
+        # Mini bar
+        bar_xw = col_w - 20
+        draw.rectangle([(mx+6, my+28), (mx+6+bar_xw, my+34)], fill=(35,30,50))
+        if pct > 0:
+            draw.rectangle([(mx+6, my+28), (mx+6+int(bar_xw*pct), my+34)], fill=cat_c)
+
+    # ── Final Reward ──────────────────────────────────────────────────────────
+    rew_y = mis_y + 100
+    draw.line([(PAD, rew_y), (W-PAD, rew_y)], fill=PASS_BORDER, width=1)
+    rew_y += 6
+    draw.text((PAD, rew_y), "LEVEL 30 MUKAFIT:", font=fb, fill=PASS_GOLD)
+    # Glow box
+    gl_int = int(80 + 60 * glow)
+    glow_col = (gl_int, gl_int//2, 0)
+    draw.rectangle([(PAD, rew_y+16), (W-PAD, rew_y+52)],
+                   fill=(25,15,5), outline=glow_col, width=2)
+    draw.text(((W)//2, rew_y+34), "AWM | Boom  —  Standoff 2 Skin  (Real AZN deyeri)",
+              font=fm, fill=PASS_GOLD, anchor="mm")
+
+    # Footer
+    prog_pct = int(level / max_lvl * 100)
+    draw.text((PAD, H-18), f"Calestify Season 1 Pass  ·  {prog_pct}% tamamlandi", font=fxi, fill=GRAY)
+    draw.text((W-PAD, H-18), "5 AZN", font=fb, fill=PASS_GOLD, anchor="ra")
+
+    return img
+
+
+def generate_pass_gif(pass_data: dict, missions: list, output_path: str):
+    """Animasiyalı Battle Pass GIF yaradır."""
+    FRAMES = 20
+    frames, durations = [], []
+
+    for fi in range(FRAMES):
+        # Glow dalğalanması (sin əyri)
+        import math
+        glow = (math.sin(fi / FRAMES * 2 * math.pi) + 1) / 2
+        frame = _draw_pass_frame(pass_data, missions, glow)
+        frames.append(frame)
+        durations.append(80)
+
+    frames[0].save(
+        output_path,
+        save_all=True, append_images=frames[1:],
+        loop=0, duration=durations, optimize=False
+    )
+    return output_path
+
+
+def generate_pass_card(pass_data: dict, missions: list, output_path: str):
+    """Statik pass kartı (PNG) — GIF alternativ."""
+    img = _draw_pass_frame(pass_data, missions, 0.8)
+    img.save(output_path)
+    return output_path
+
+
 # ── iNVENTAR ────────────────────────────────────────────────────────────────
 
 def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, get_item_by_id_fn, output_path):

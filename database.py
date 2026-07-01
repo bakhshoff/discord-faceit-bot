@@ -162,6 +162,9 @@ def init_db():
     # Achievements seed data
     _seed_achievements(cursor)
 
+    # Battle Pass
+    init_battle_pass(cursor)
+
     # ── Seasons ──────────────────────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS seasons (
@@ -2011,6 +2014,270 @@ def clear_expired_discounts():
     cursor = conn.cursor()
     cursor.execute("DELETE FROM market_discounts WHERE expires_at <= ?", (int(time.time()),))
     conn.commit(); conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BATTLE PASS SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Season 1 konfiqurasiyası
+BP_SEASON_ID   = 1
+BP_PRICE_AZN   = 5
+BP_MAX_LEVEL   = 30
+BP_XP_PER_LEVEL= 500
+
+BP_LEVEL_REWARDS = {
+    1:  {"type": "coins",  "value": 50,   "label": "50 coin"},
+    2:  {"type": "coins",  "value": 25,   "label": "25 coin"},
+    3:  {"type": "coins",  "value": 25,   "label": "25 coin"},
+    4:  {"type": "coins",  "value": 25,   "label": "25 coin"},
+    5:  {"type": "coins",  "value": 200,  "label": "200 coin"},
+    6:  {"type": "coins",  "value": 50,   "label": "50 coin"},
+    7:  {"type": "coins",  "value": 50,   "label": "50 coin"},
+    8:  {"type": "coins",  "value": 50,   "label": "50 coin"},
+    9:  {"type": "coins",  "value": 50,   "label": "50 coin"},
+    10: {"type": "banner", "value": "bp1_banner", "label": "S1 Banner"},
+    11: {"type": "coins",  "value": 75,   "label": "75 coin"},
+    12: {"type": "coins",  "value": 75,   "label": "75 coin"},
+    13: {"type": "coins",  "value": 75,   "label": "75 coin"},
+    14: {"type": "coins",  "value": 75,   "label": "75 coin"},
+    15: {"type": "boost",  "value": "boost_50_1d", "label": "50% ELO Boost"},
+    16: {"type": "coins",  "value": 100,  "label": "100 coin"},
+    17: {"type": "coins",  "value": 100,  "label": "100 coin"},
+    18: {"type": "coins",  "value": 100,  "label": "100 coin"},
+    19: {"type": "coins",  "value": 100,  "label": "100 coin"},
+    20: {"type": "frame",  "value": "bp1_frame",  "label": "S1 Frame"},
+    21: {"type": "coins",  "value": 150,  "label": "150 coin"},
+    22: {"type": "coins",  "value": 150,  "label": "150 coin"},
+    23: {"type": "coins",  "value": 150,  "label": "150 coin"},
+    24: {"type": "coins",  "value": 150,  "label": "150 coin"},
+    25: {"type": "coins",  "value": 1000, "label": "1000 coin"},
+    26: {"type": "coins",  "value": 200,  "label": "200 coin"},
+    27: {"type": "coins",  "value": 200,  "label": "200 coin"},
+    28: {"type": "coins",  "value": 200,  "label": "200 coin"},
+    29: {"type": "coins",  "value": 200,  "label": "200 coin"},
+    30: {"type": "skin",   "value": "AWM | Boom", "label": "AWM | Boom SKIN"},
+}
+
+BP_MISSIONS_SEED = [
+    # (id, type, target, xp, description, mission_type)
+    # Daily
+    (1,  "kills",   5,  150, "5 kill et",               "daily"),
+    (2,  "matches", 1,  100, "1 matc oyna",              "daily"),
+    (3,  "mvp",     1,  200, "MVP ol",                   "daily"),
+    # Weekly
+    (4,  "kills",   20, 500, "20 kill et",               "weekly"),
+    (5,  "wins",    3,  600, "3 qelebeni qazan",         "weekly"),
+    (6,  "assists", 10, 400, "10 asist et",              "weekly"),
+    # Seasonal
+    (7,  "matches", 10, 1000,"10 matc oyna",             "seasonal"),
+    (8,  "kills",   50, 1500,"50 kill et",               "seasonal"),
+    (9,  "mvp",     5,  2000,"5 defe MVP ol",            "seasonal"),
+    (10, "wins",    15, 2500,"15 qelebeni qazan",        "seasonal"),
+]
+
+
+def init_battle_pass(cursor):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS battle_pass (
+            discord_id  INTEGER NOT NULL,
+            season_id   INTEGER NOT NULL,
+            level       INTEGER DEFAULT 0,
+            xp          INTEGER DEFAULT 0,
+            purchased_at INTEGER NOT NULL,
+            claimed_levels TEXT DEFAULT '[]',
+            PRIMARY KEY (discord_id, season_id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bp_missions (
+            id           INTEGER PRIMARY KEY,
+            season_id    INTEGER NOT NULL,
+            type         TEXT NOT NULL,
+            target       INTEGER NOT NULL,
+            xp_reward    INTEGER NOT NULL,
+            description  TEXT NOT NULL,
+            mission_type TEXT NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS player_bp_missions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id  INTEGER NOT NULL,
+            mission_id  INTEGER NOT NULL,
+            season_id   INTEGER NOT NULL,
+            progress    INTEGER DEFAULT 0,
+            completed   INTEGER DEFAULT 0,
+            assigned_at INTEGER NOT NULL,
+            UNIQUE(discord_id, mission_id, season_id)
+        )
+    """)
+    # Seed missions
+    for mid, mtype, target, xp, desc, mcat in BP_MISSIONS_SEED:
+        cursor.execute(
+            "INSERT OR IGNORE INTO bp_missions (id,season_id,type,target,xp_reward,description,mission_type) VALUES (?,?,?,?,?,?,?)",
+            (mid, BP_SEASON_ID, mtype, target, xp, desc, mcat)
+        )
+
+
+def buy_battle_pass(discord_id: int) -> tuple:
+    """Passu alır. (success, msg) qaytarır."""
+    import time, json
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < BP_PRICE_AZN:
+        conn.close(); return False, f"Kifayet qeder AZN yoxdur. Lazim: {BP_PRICE_AZN} AZN"
+    cursor.execute("SELECT discord_id FROM battle_pass WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
+    if cursor.fetchone():
+        conn.close(); return False, "Artiq pass sahibisiniz!"
+    cursor.execute("UPDATE players SET zm_balance=zm_balance-? WHERE discord_id=?",
+                   (BP_PRICE_AZN, discord_id))
+    cursor.execute("INSERT INTO battle_pass (discord_id,season_id,level,xp,purchased_at,claimed_levels) VALUES (?,?,0,0,?,?)",
+                   (discord_id, BP_SEASON_ID, int(time.time()), json.dumps([])))
+    conn.commit(); conn.close()
+    return True, "Pass ugurla alindi!"
+
+
+def has_battle_pass(discord_id: int) -> bool:
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM battle_pass WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
+    ok = cursor.fetchone() is not None
+    conn.close(); return ok
+
+
+def get_pass_data(discord_id: int) -> dict:
+    import json
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT level,xp,claimed_levels FROM battle_pass WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"level": row[0], "xp": row[1], "claimed": json.loads(row[2] or "[]")}
+
+
+def add_bp_xp(discord_id: int, xp: int) -> dict:
+    """XP əlavə edir. {"level_up": bool, "new_level": int, "rewards": []} qaytarır."""
+    import json
+    if not has_battle_pass(discord_id):
+        return {}
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT level,xp,claimed_levels FROM battle_pass WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
+    row = cursor.fetchone()
+    if not row:
+        conn.close(); return {}
+
+    level, cur_xp, claimed_json = row
+    claimed = json.loads(claimed_json or "[]")
+    cur_xp += xp
+    new_rewards = []
+
+    # Level up
+    while level < BP_MAX_LEVEL and cur_xp >= BP_XP_PER_LEVEL:
+        cur_xp -= BP_XP_PER_LEVEL
+        level  += 1
+        if level not in claimed:
+            reward = BP_LEVEL_REWARDS.get(level)
+            if reward:
+                new_rewards.append({"level": level, **reward})
+                # Coini ver
+                if reward["type"] == "coins":
+                    cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?",
+                                   (reward["value"], discord_id))
+            claimed.append(level)
+
+    cursor.execute("UPDATE battle_pass SET level=?,xp=?,claimed_levels=? WHERE discord_id=? AND season_id=?",
+                   (level, cur_xp, json.dumps(claimed), discord_id, BP_SEASON_ID))
+    conn.commit(); conn.close()
+    return {"new_level": level, "new_xp": cur_xp, "rewards": new_rewards}
+
+
+def get_active_bp_missions(discord_id: int) -> list:
+    import time, json
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    now    = int(time.time())
+    today  = now - (now % 86400)
+
+    # Günlük missiyaları assign et
+    cursor.execute(
+        "SELECT COUNT(*) FROM player_bp_missions WHERE discord_id=? AND season_id=? AND completed=0 "
+        "AND assigned_at >= ? AND mission_id IN (SELECT id FROM bp_missions WHERE mission_type='daily')",
+        (discord_id, BP_SEASON_ID, today)
+    )
+    if cursor.fetchone()[0] == 0:
+        cursor.execute(
+            "SELECT id FROM bp_missions WHERE season_id=? AND mission_type='daily' ORDER BY RANDOM() LIMIT 3",
+            (BP_SEASON_ID,)
+        )
+        for (mid,) in cursor.fetchall():
+            cursor.execute(
+                "INSERT OR IGNORE INTO player_bp_missions (discord_id,mission_id,season_id,assigned_at) VALUES (?,?,?,?)",
+                (discord_id, mid, BP_SEASON_ID, now)
+            )
+        conn.commit()
+
+    # Sezonluq missiyaları da assign et
+    cursor.execute(
+        "SELECT id FROM bp_missions WHERE season_id=? AND mission_type='seasonal'",
+        (BP_SEASON_ID,)
+    )
+    for (mid,) in cursor.fetchall():
+        cursor.execute(
+            "INSERT OR IGNORE INTO player_bp_missions (discord_id,mission_id,season_id,assigned_at) VALUES (?,?,?,?)",
+            (discord_id, mid, BP_SEASON_ID, now)
+        )
+    conn.commit()
+
+    # Aktiv missiyaları qaytar
+    cursor.execute("""
+        SELECT pm.id, bm.description, bm.type, bm.target, bm.xp_reward, bm.mission_type,
+               pm.progress, pm.completed
+        FROM player_bp_missions pm
+        JOIN bp_missions bm ON bm.id=pm.mission_id
+        WHERE pm.discord_id=? AND pm.season_id=?
+        ORDER BY pm.completed ASC, bm.mission_type DESC
+        LIMIT 8
+    """, (discord_id, BP_SEASON_ID))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "desc": r[1], "type": r[2], "target": r[3], "xp": r[4],
+             "cat": r[5], "progress": r[6], "completed": bool(r[7])} for r in rows]
+
+
+def update_bp_mission(discord_id: int, mission_type: str, amount: int = 1) -> int:
+    """Missiya tipinə görə progressi yenilər. Qazanılan XP-ni qaytarır."""
+    if not has_battle_pass(discord_id):
+        return 0
+    import time
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT pm.id, bm.target, bm.xp_reward, pm.progress
+        FROM player_bp_missions pm
+        JOIN bp_missions bm ON bm.id=pm.mission_id
+        WHERE pm.discord_id=? AND pm.season_id=? AND bm.type=? AND pm.completed=0
+    """, (discord_id, BP_SEASON_ID, mission_type))
+    rows   = cursor.fetchall()
+    total_xp = 0
+    for pm_id, target, xp_reward, progress in rows:
+        new_prog = min(progress + amount, target)
+        completed = 1 if new_prog >= target else 0
+        cursor.execute("UPDATE player_bp_missions SET progress=?,completed=? WHERE id=?",
+                       (new_prog, completed, pm_id))
+        if completed and progress < target:
+            total_xp += xp_reward
+    conn.commit(); conn.close()
+    return total_xp
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

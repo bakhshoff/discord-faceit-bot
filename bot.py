@@ -52,7 +52,9 @@ try:
         temp_ban, check_and_lift_bans,
         check_daily_login, check_milestones,
         log_admin_action, get_admin_logs,
-        set_discount, get_discount, get_all_discounts, clear_expired_discounts
+        set_discount, get_discount, get_all_discounts, clear_expired_discounts,
+        buy_battle_pass, has_battle_pass, get_pass_data, add_bp_xp,
+        get_active_bp_missions, update_bp_mission, BP_SEASON_ID, BP_MAX_LEVEL
     )
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -62,7 +64,8 @@ try:
                                generate_stats_card, generate_warnings_card,
                                generate_achievements_card, get_rank,
                                generate_compare_card, generate_elo_graph,
-                               generate_activity_card)
+                               generate_activity_card,
+                               generate_pass_gif, generate_pass_card)
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
@@ -1782,9 +1785,15 @@ class ScanEditView(discord.ui.View):
                 add_season_stat(did, season["id"], wins=1, elo_gained=max(0, r["new_elo"]-r["old_elo"]))
                 record_elo_history(did, r["new_elo"])
                 check_and_grant_achievements(did)
-                # Şəxsi rekord
                 s = self.parsed.get(did, {})
                 update_personal_record(did, s.get("kills",0), s.get("assists",0), s.get("deaths",0), self.match_number)
+                # Battle Pass XP — qələbə
+                _bp_xp = 200 + s.get("kills",0)*10 + s.get("assists",0)*5
+                _bp_res = add_bp_xp(did, _bp_xp)
+                update_bp_mission(did, "wins", 1)
+                update_bp_mission(did, "matches", 1)
+                update_bp_mission(did, "kills", s.get("kills",0))
+                update_bp_mission(did, "assists", s.get("assists",0))
             for p, r in zip(loser_team, results["losers"]):
                 did    = p["discord_id"]
                 update_streak(did, False)
@@ -1798,6 +1807,12 @@ class ScanEditView(discord.ui.View):
                 check_and_grant_achievements(did)
                 s = self.parsed.get(did, {})
                 update_personal_record(did, s.get("kills",0), s.get("assists",0), s.get("deaths",0), self.match_number)
+                # Battle Pass XP — məğlubiyyət
+                _bp_xp = 100 + s.get("kills",0)*10 + s.get("assists",0)*5
+                add_bp_xp(did, _bp_xp)
+                update_bp_mission(did, "matches", 1)
+                update_bp_mission(did, "kills", s.get("kills",0))
+                update_bp_mission(did, "assists", s.get("assists",0))
 
             winner_results = [{"nick": p["nick"], "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
                               for p, r in zip(winner_team, results["winners"])]
@@ -2799,6 +2814,92 @@ async def ferealiyyet_cmd(interaction: discord.Interaction, gun: int = 7):
 async def ferealiyyet_error(i, e):
     if isinstance(e, app_commands.MissingPermissions):
         await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BATTLE PASS KOMANDALARı
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="pass", description="Season Pass kartını göstər")
+async def pass_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if not has_battle_pass(interaction.user.id):
+        embed = discord.Embed(
+            title="CALESTIFY SEASON 1 PASS",
+            description=(
+                "**Pass hele alinmayib!**\n\n"
+                "**Ne qazanirsiniz:**\n"
+                "- Gundelik +25 coin bonus\n"
+                "- 30 levelde AWM | Boom Skin\n"
+                "- Ekskluziv banner + cercive\n"
+                "- MVP bonusu 2x\n"
+                "- Queue 30 deq erkən acilar\n\n"
+                f"**Qiymet: 5 AZN**\n"
+                "`/pass_al` ile alin!"
+            ),
+            color=0x8C50FF
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
+    pd       = get_pass_data(interaction.user.id)
+    missions = get_active_bp_missions(interaction.user.id)
+    path     = os.path.join(DATA_DIR or ".", f"pass_{interaction.user.id}.gif")
+    try:
+        await asyncio.to_thread(generate_pass_gif, pd, missions, path)
+        await interaction.followup.send(file=discord.File(path, filename="pass.gif"), ephemeral=True)
+    except Exception:
+        path2 = path.replace(".gif", ".png")
+        await asyncio.to_thread(generate_pass_card, pd, missions, path2)
+        await interaction.followup.send(file=discord.File(path2, filename="pass.png"), ephemeral=True)
+
+
+@bot.tree.command(name="pass_al", description="Season Pass al (5 AZN)")
+async def pass_al_cmd(interaction: discord.Interaction):
+    ok, msg = buy_battle_pass(interaction.user.id)
+    if ok:
+        embed = discord.Embed(
+            title="Season Pass alindi!",
+            description=(
+                "Season 1 Pass-iniz aktivdir!\n\n"
+                "`/pass` - Pass kartinizi acin\n"
+                "`/pass_missiyalar` - Missiyalarinizia baxin"
+            ),
+            color=0x57F287
+        )
+        await asyncio.to_thread(backup.export_backup)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+
+
+@bot.tree.command(name="pass_missiyalar", description="Battle Pass missiyalarını göstər")
+async def pass_missiyalar_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if not has_battle_pass(interaction.user.id):
+        await interaction.followup.send("❌ Pass-iniz yoxdur. `/pass_al` ile alin.", ephemeral=True)
+        return
+
+    missions = get_active_bp_missions(interaction.user.id)
+    pd       = get_pass_data(interaction.user.id)
+
+    embed = discord.Embed(
+        title=f"Missiyalar  |  LVL {pd['level']}/{BP_MAX_LEVEL}",
+        color=0x8C50FF
+    )
+    cats = {"daily": "Gundelik", "weekly": "Hefte", "seasonal": "Sezon"}
+    for cat, cat_label in cats.items():
+        ms = [m for m in missions if m["cat"] == cat]
+        if not ms:
+            continue
+        lines = []
+        for m in ms:
+            icon = "✅" if m["completed"] else "○"
+            pct  = int(m["progress"]/m["target"]*100) if m["target"] else 100
+            lines.append(f"{icon} {m['desc'][:30]} ({m['progress']}/{m['target']}) +{m['xp']} XP")
+        embed.add_field(name=f"{cat_label} Missiyalar", value="\n".join(lines) or "—", inline=False)
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.event
