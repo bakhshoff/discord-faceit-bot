@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782935820,
+  "exported_at": 1782936745,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -272,8 +272,8 @@
       "elo": 985,
       "wins": 5,
       "losses": 6,
-      "coins": 230,
-      "active_banner": null,
+      "coins": 30,
+      "active_banner": "banner_red",
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
@@ -426,11 +426,11 @@
       "elo": 1083,
       "wins": 5,
       "losses": 0,
-      "coins": 194,
-      "active_banner": null,
-      "active_frame": null,
+      "coins": 7,
+      "active_banner": "banner_purple",
+      "active_frame": "frame_cyan",
       "zm_balance": 0,
-      "ai_memory": null,
+      "ai_memory": "5 qələbə, 100% win rate, ELO 1083",
       "kills": 102,
       "assists": 13,
       "deaths": 49,
@@ -536,11 +536,11 @@
       "elo": 1016,
       "wins": 3,
       "losses": 2,
-      "coins": 4,
+      "coins": 104,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "ra almaq, qaynar xarakter, könüllü, cəmiyyətə bağlı, aura istəyi, coin toplamaq istəyi, strategiya barədə fikirləşmək istəyi, spamdan narahatlığı, LORD AİZEN-in sevimli aurası 14-cü Aura, Standoff 2-də ən yaxşı strategiya defansif oyun, LORD AİZEN-in ən yaxşı silahı M4A1, LORD AİZEN, Standoff 2, 14-cü Aura, M4A1, defansif oyun, əsəbi oyun stili, LORD AİZEN, Standoff 2, 14-cü Aura, M4A1, defansif oyun, əsəbi oyun stili, fiziki varlıq yoxdur, LORD AİZEN-in sevimli aurası 14-cü Aura, Standoff 2-də ən yaxşı strategiya defansif oyun, LORD AİZEN-in ən yaxşı silahı M4A1, LORD AİZEN əsəbi oyun stilinə malikdir, LORD AİZEN-in məqsədi aura almaqdır, LORD AİZEN cəmiyyətə bağlıdır, LORD AİZEN könüllüdür, fiziki varlığı yoxdur, proqram tərəfindən idarə olunur, mənim fiziki varlığım yoxdur, Discord botusam, proqram tərəfindən idarə olunuram, LORD AİZEN-in fiziki görüş tələbi, LORD AİZEN-in Discord botuna olan münasibəti, LORD AİZEN-in fiziki görüş tələbi, LORD AİZEN-in Discord botuna olan münasibəti",
+      "ai_memory": "evimli aurası 14-cü Aura, Standoff 2-də ən yaxşı strategiya defansif oyun, LORD AİZEN-in ən yaxşı silahı M4A1, LORD AİZEN, Standoff 2, 14-cü Aura, M4A1, defansif oyun, əsəbi oyun stili, LORD AİZEN, Standoff 2, 14-cü Aura, M4A1, defansif oyun, əsəbi oyun stili, fiziki varlıq yoxdur, LORD AİZEN-in sevimli aurası 14-cü Aura, Standoff 2-də ən yaxşı strategiya defansif oyun, LORD AİZEN-in ən yaxşı silahı M4A1, LORD AİZEN əsəbi oyun stilinə malikdir, LORD AİZEN-in məqsədi aura almaqdır, LORD AİZEN cəmiyyətə bağlıdır, LORD AİZEN könüllüdür, fiziki varlığı yoxdur, proqram tərəfindən idarə olunur, mənim fiziki varlığım yoxdur, Discord botusam, proqram tərəfindən idarə olunuram, LORD AİZEN-in fiziki görüş tələbi, LORD AİZEN-in Discord botuna olan münasibəti, LORD AİZEN-in fiziki görüş tələbi, LORD AİZEN-in Discord botuna olan münasibəti, LORD AİZEN coinləri qazanmaq istəyir, LORD AİZEN əzmlə oyun oynayır, LORD AİZEN, coin qazanmaq istəyir, Standoff 2, əzmlə oyun oynayır, turnirlərdə iştirak edir",
       "kills": 46,
       "assists": 12,
       "deaths": 89,
@@ -894,6 +894,24 @@
       "discord_id": 964144436374294609,
       "item_id": "frame_purple",
       "acquired_at": 1782889068
+    },
+    {
+      "id": 6,
+      "discord_id": 1263121818244616195,
+      "item_id": "banner_purple",
+      "acquired_at": 1782936175
+    },
+    {
+      "id": 7,
+      "discord_id": 1263121818244616195,
+      "item_id": "frame_cyan",
+      "acquired_at": 1782936189
+    },
+    {
+      "id": 8,
+      "discord_id": 1066686022500495420,
+      "item_id": "banner_red",
+      "acquired_at": 1782936256
     }
   ],
   "giveaways": [
@@ -2615,6 +2633,51 @@
       "log_type": "earn",
       "balance_after": 1208,
       "created_at": 1782935820
+    },
+    {
+      "id": 236,
+      "discord_id": 1263121818244616195,
+      "change": 463,
+      "reason": "Admin tənzimləməsi",
+      "log_type": "earn",
+      "balance_after": 657,
+      "created_at": 1782936128
+    },
+    {
+      "id": 237,
+      "discord_id": 1263121818244616195,
+      "change": -350,
+      "reason": "Market alışı: Benovseyi Elite Banner",
+      "log_type": "spend",
+      "balance_after": 307,
+      "created_at": 1782936175
+    },
+    {
+      "id": 238,
+      "discord_id": 1263121818244616195,
+      "change": -300,
+      "reason": "Market alışı: Neon Mavi Cercive",
+      "log_type": "spend",
+      "balance_after": 7,
+      "created_at": 1782936189
+    },
+    {
+      "id": 239,
+      "discord_id": 1066686022500495420,
+      "change": -200,
+      "reason": "Market alışı: Qirmizi Alov Banner",
+      "log_type": "spend",
+      "balance_after": 30,
+      "created_at": 1782936256
+    },
+    {
+      "id": 240,
+      "discord_id": 1385557493874294855,
+      "change": 100,
+      "reason": "Admin tənzimləməsi",
+      "log_type": "earn",
+      "balance_after": 104,
+      "created_at": 1782936745
     }
   ],
   "active_boosts": []
