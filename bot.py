@@ -2820,6 +2820,57 @@ async def ferealiyyet_error(i, e):
 # BATTLE PASS KOMANDALARı
 # ═══════════════════════════════════════════════════════════════════════════════
 
+class PassView(discord.ui.View):
+    def __init__(self, discord_id: int):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="Bütün Levellər", style=discord.ButtonStyle.primary, emoji="📋")
+    async def show_levels(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu sizin pass-iniz deyil.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        try:
+            pd   = get_pass_data(self.discord_id)
+            path = os.path.join(DATA_DIR or ".", f"pass_levels_{self.discord_id}.png")
+            await asyncio.to_thread(generate_pass_levels_card, pd, path)
+            await interaction.followup.send(
+                file=discord.File(path, filename="pass_levels.png"), ephemeral=True)
+        except Exception as e:
+            print(f"[LEVELS BTN]: {e}", flush=True)
+            await interaction.followup.send(f"❌ {str(e)[:80]}", ephemeral=True)
+
+    @discord.ui.button(label="Missiyalar", style=discord.ButtonStyle.secondary, emoji="🎯")
+    async def show_missions(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+        missions = get_active_bp_missions(self.discord_id)
+        pd       = get_pass_data(self.discord_id)
+        embed    = discord.Embed(title=f"Missiyalar  |  LVL {pd['level']}/30", color=0x8C50FF)
+        cats     = {"daily": "Gundelik", "weekly": "Hefte", "seasonal": "Sezon"}
+        for cat, cat_label in cats.items():
+            ms = [m for m in missions if m["cat"] == cat]
+            if not ms: continue
+            lines = [f"{'✅' if m['completed'] else '○'} {m['desc'][:28]} ({m['progress']}/{m['target']}) +{m['xp']} XP"
+                     for m in ms]
+            embed.add_field(name=cat_label, value="\n".join(lines), inline=False)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Premium Al — 7 AZN", style=discord.ButtonStyle.success, emoji="⭐")
+    async def buy_premium(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        ok, msg = buy_battle_pass(self.discord_id)
+        color   = discord.Color.green() if ok else discord.Color.red()
+        await interaction.response.send_message(
+            embed=discord.Embed(description=f"{'✅' if ok else '❌'} {msg}", color=color),
+            ephemeral=True)
+        if ok:
+            await asyncio.to_thread(backup.export_backup)
+
+
 @bot.tree.command(name="pass", description="Season Pass kartını göstər")
 async def pass_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
@@ -2859,12 +2910,16 @@ async def pass_cmd(interaction: discord.Interaction):
     path_png = os.path.join(DATA_DIR or ".", f"pass_{interaction.user.id}.png")
     try:
         await asyncio.to_thread(generate_pass_gif, pd, missions, path_gif)
-        await interaction.followup.send(file=discord.File(path_gif, filename="pass.gif"), ephemeral=True)
+        await interaction.followup.send(
+            file=discord.File(path_gif, filename="pass.gif"),
+            view=PassView(interaction.user.id), ephemeral=True)
     except Exception as e1:
         print(f"[PASS GIF]: {e1}", flush=True)
         try:
             await asyncio.to_thread(generate_pass_card, pd, missions, path_png)
-            await interaction.followup.send(file=discord.File(path_png, filename="pass.png"), ephemeral=True)
+            await interaction.followup.send(
+                file=discord.File(path_png, filename="pass.png"),
+                view=PassView(interaction.user.id), ephemeral=True)
         except Exception as e2:
             print(f"[PASS PNG]: {e2}", flush=True)
             embed = discord.Embed(
@@ -2921,21 +2976,6 @@ async def pass_missiyalar_cmd(interaction: discord.Interaction):
         embed.add_field(name=f"{cat_label} Missiyalar", value="\n".join(lines) or "—", inline=False)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-@bot.tree.command(name="pass_levellar", description="Season Pass — 1-30 bütün levellərin mükafatları")
-async def pass_levellar_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    try:
-        from database import ensure_free_pass as _efp
-        _efp(interaction.user.id)
-        pd   = get_pass_data(interaction.user.id)
-        path = os.path.join(DATA_DIR or ".", f"pass_levels_{interaction.user.id}.png")
-        await asyncio.to_thread(generate_pass_levels_card, pd, path)
-        await interaction.followup.send(file=discord.File(path, filename="pass_levels.png"), ephemeral=True)
-    except Exception as e:
-        print(f"[PASS_LEVELS]: {e}", flush=True)
-        await interaction.followup.send(f"❌ Xeta: {str(e)[:100]}", ephemeral=True)
 
 
 @bot.event
