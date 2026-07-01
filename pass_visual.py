@@ -157,13 +157,24 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         # Arxa panel
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=8,
                                fill=(40,32,8), outline=(100,80,20), width=1)
-        # Parıltılı xəttlər (deco)
-        for i in range(3):
-            y_ = 12 + i*10
-            draw.line([(8,y_),(w-8,y_)], fill=(60,48,10), width=1)
-        # Böyük coin
-        cx, cy = w//2, body_h//2
-        _coin_icon(draw, cx, cy-5, min(w,body_h)//3, amount, gold)
+        # Real coin şəkli
+        coin_path = os.path.join(BASE_DIR2, "assets", "coin.png")
+        coin_loaded = False
+        try:
+            ci = Image.open(coin_path).convert("RGBA")
+            ci_size = min(body_h - 20, w - 20)
+            ci.thumbnail((ci_size, ci_size), Image.LANCZOS)
+            cx_off = (w - ci.width) // 2
+            cy_off = (body_h - ci.height) // 2 - 4
+            img.paste(ci, (cx_off, cy_off), ci)
+            coin_loaded = True
+        except Exception:
+            pass
+        if not coin_loaded:
+            cx, cy = w//2, body_h//2
+            _coin_icon(draw, cx, cy-5, min(w,body_h)//3, amount, gold)
+        # Miqdar
+        draw.text((w//2, body_h - 6), f"x{amount}", font=_f(10, True), fill=gold, anchor="mm")
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=gold, anchor="mm")
         return img
 
