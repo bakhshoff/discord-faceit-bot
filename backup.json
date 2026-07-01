@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782889100,
+  "exported_at": 1782927318,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -8,11 +8,11 @@
       "elo": 983,
       "wins": 3,
       "losses": 4,
-      "coins": 85,
+      "coins": 95,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null,
+      "ai_memory": "istifadəçi ilk defe cavab verib, hansı məsələ ilə maraqlandığını deməyib",
       "kills": 97,
       "assists": 26,
       "deaths": 136,
@@ -20,7 +20,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 530035951347433474,
@@ -41,7 +42,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 673522186400563210,
@@ -62,7 +64,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 700371111853948968,
@@ -83,7 +86,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 807514987043749919,
@@ -92,7 +96,7 @@
       "elo": 1075,
       "wins": 5,
       "losses": 1,
-      "coins": 464,
+      "coins": 474,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -104,7 +108,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 820700268446482442,
@@ -125,7 +130,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 855719280086876161,
@@ -146,7 +152,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 964144436374294609,
@@ -167,7 +174,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 989097823586893895,
@@ -188,7 +196,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1001110996657651772,
@@ -209,7 +218,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1053637265689157753,
@@ -230,7 +240,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1060637021565112360,
@@ -251,7 +262,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1066686022500495420,
@@ -260,7 +272,7 @@
       "elo": 969,
       "wins": 3,
       "losses": 5,
-      "coins": 33,
+      "coins": 43,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -272,7 +284,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1102666334157938728,
@@ -293,7 +306,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1134288537546674238,
@@ -302,7 +316,7 @@
       "elo": 958,
       "wins": 1,
       "losses": 4,
-      "coins": 80,
+      "coins": 90,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -314,7 +328,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1208089903544672278,
@@ -335,7 +350,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1226117959756414986,
@@ -356,7 +372,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1228418531951906838,
@@ -377,7 +394,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1247206286056226848,
@@ -398,7 +416,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1263121818244616195,
@@ -419,7 +438,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1307319883482009690,
@@ -440,7 +460,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1326856754511745156,
@@ -461,7 +482,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1359923868688580789,
@@ -482,7 +504,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1385557493874294855,
@@ -491,7 +514,7 @@
       "elo": 1016,
       "wins": 2,
       "losses": 1,
-      "coins": 15,
+      "coins": 25,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -503,7 +526,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1386319084563726359,
@@ -524,7 +548,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1390263674601472041,
@@ -545,7 +570,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1399406331714076693,
@@ -566,7 +592,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1423975179419385928,
@@ -587,7 +614,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1424104516214849617,
@@ -596,7 +624,7 @@
       "elo": 1000,
       "wins": 0,
       "losses": 0,
-      "coins": 0,
+      "coins": 10,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -608,7 +636,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1429511300391764060,
@@ -629,7 +658,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1453750341987209308,
@@ -650,7 +680,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1457800486882382022,
@@ -671,7 +702,30 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
+    },
+    {
+      "discord_id": 1475723969012437175,
+      "so2_nick": "PrnHub",
+      "so2_id": "281052158",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
+      "win_streak": 0,
+      "max_streak": 0,
+      "is_banned": 0,
+      "peak_elo": 1000,
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1476543366438191174,
@@ -692,7 +746,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1478002530284736687,
@@ -705,7 +760,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null,
+      "ai_memory": "Sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı zyko, yaşı yoxdur, bacarıqları yoxdur",
       "kills": 75,
       "assists": 17,
       "deaths": 75,
@@ -713,7 +768,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1482470627397865743,
@@ -734,7 +790,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1513910231212621890,
@@ -743,7 +800,7 @@
       "elo": 1017,
       "wins": 4,
       "losses": 3,
-      "coins": 183,
+      "coins": 193,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -755,7 +812,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     },
     {
       "discord_id": 1518324691117281404,
@@ -776,7 +834,8 @@
       "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
-      "banned_until": 0
+      "banned_until": 0,
+      "lang": "az"
     }
   ],
   "inventory": [
@@ -2026,6 +2085,69 @@
       "log_type": "spend",
       "balance_after": 150,
       "created_at": 1782889068
+    },
+    {
+      "id": 186,
+      "discord_id": 1513910231212621890,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 193,
+      "created_at": 1782902482
+    },
+    {
+      "id": 187,
+      "discord_id": 1134288537546674238,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 90,
+      "created_at": 1782910770
+    },
+    {
+      "id": 188,
+      "discord_id": 1066686022500495420,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 43,
+      "created_at": 1782911043
+    },
+    {
+      "id": 189,
+      "discord_id": 1424104516214849617,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 10,
+      "created_at": 1782914139
+    },
+    {
+      "id": 190,
+      "discord_id": 1385557493874294855,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 25,
+      "created_at": 1782918359
+    },
+    {
+      "id": 191,
+      "discord_id": 381710974710972416,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 95,
+      "created_at": 1782920801
+    },
+    {
+      "id": 192,
+      "discord_id": 807514987043749919,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 474,
+      "created_at": 1782925083
     }
   ],
   "active_boosts": []
