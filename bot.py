@@ -2810,9 +2810,9 @@ async def season_end_check():
 TOP3_CHANNEL_ID = 1519835276124360785
 
 
-@tasks.loop(minutes=30)
+@tasks.loop(hours=3)
 async def weekly_stats_task():
-    """Hər 30 dəqiqədə Top 3 ELO xatırlatması."""
+    """Hər 3 saatda Top 3 ELO xatırlatması."""
     ch = bot.get_channel(TOP3_CHANNEL_ID)
     if not ch:
         return
