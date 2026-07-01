@@ -531,3 +531,109 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
 
     img.save(output_path)
     return output_path
+
+
+def generate_pass_announcement(output_path: str):
+    """Season 1 Battle Pass tanıtım elan kartı — kanal elanı üçün."""
+    W, H = 900, 560
+    img  = Image.new("RGBA", (W, H), (0,0,0,255))
+    draw = ImageDraw.Draw(img)
+
+    # ── Fon gradient (tünd göy-bənövşəyi) ────────────────────────────────────
+    for y in range(H):
+        t  = y / H
+        r_ = int(12 + (20-12)*t)
+        g_ = int(10 + (8 -10)*t)
+        b_ = int(28 + (18-28)*t)
+        draw.line([(0,y),(W,y)], fill=(r_,g_,b_))
+
+    # Çəpinə işıq şüası (dekor)
+    import math as _ma
+    ray = Image.new("RGBA", (W,H), (0,0,0,0))
+    rd  = ImageDraw.Draw(ray)
+    for rx in range(0, W+400, 18):
+        rd.polygon([(rx,0),(rx+280,0),(rx+280-H,H),(rx-H,H)],
+                   fill=(255,200,80,6))
+    img = Image.alpha_composite(img, ray)
+    draw = ImageDraw.Draw(img)
+
+    # ── Sol üst logo şeridi ───────────────────────────────────────────────────
+    draw.rectangle([(0,0),(W,5)], fill=PASS_GOLD)
+    draw.text((28,14), "CALESTIFY  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_GOLD)
+
+    # ── Mərkəz başlıq ─────────────────────────────────────────────────────────
+    draw.text((W//2, 52),  "BATTLE PASS",  font=_f(52,True), fill=WHITE2, anchor="mm")
+    draw.text((W//2, 100), "S E A S O N   1",  font=_f(18,True), fill=PASS_TEAL,  anchor="mm")
+
+    # Başlıq altı xətt
+    draw.line([(60,115),(W-60,115)], fill=PASS_BORDER, width=1)
+
+    # ── 3 əsas mükafat kartı ─────────────────────────────────────────────────
+    CARD_W, CARD_H = 220, 200
+    cards = [
+        (5,  False, "LVL 5 — FREE",   "S1 Banner",  PASS_TEAL),
+        (20, True,  "LVL 20 — VIP",   "S1 Frame",   PASS_TEAL),
+        (30, True,  "LVL 30 — VIP",   "AWM BOOM",   PASS_GOLD),
+    ]
+    total_cards = len(cards)
+    spacing = (W - total_cards * CARD_W) // (total_cards + 1)
+    cy0 = 130
+
+    for ci, (lv, prem, badge, name, col) in enumerate(cards):
+        cx0 = spacing + ci * (CARD_W + spacing)
+
+        # Kart fon
+        glow_c = (*col[:3], 60)
+        card_bg = (25, 18, 40) if prem else (18, 28, 25)
+        draw.rounded_rectangle([(cx0,cy0),(cx0+CARD_W,cy0+CARD_H)],
+                               radius=8, fill=card_bg, outline=col, width=2)
+
+        # Badge şerid
+        draw.rounded_rectangle([(cx0+6,cy0+6),(cx0+CARD_W-6,cy0+24)],
+                               radius=4, fill=col)
+        draw.text((cx0+CARD_W//2, cy0+15), badge, font=_f(9,True),
+                  fill=(20,15,10) if col==PASS_GOLD else (10,30,28), anchor="mm")
+
+        # Mükafat ikonu (mükafat_img funksiyasından)
+        icon_size = (CARD_W-24, CARD_H-70)
+        icon = _reward_img(lv, prem, icon_size)
+        img.paste(icon, (cx0+12, cy0+30), icon)
+
+        # Ad
+        draw.text((cx0+CARD_W//2, cy0+CARD_H-14), name, font=_f(11,True),
+                  fill=col, anchor="mm")
+
+    # ── Free vs VIP müqayisə paneli ───────────────────────────────────────────
+    PY = cy0 + CARD_H + 20
+    PH = 90
+    PX = 40
+    PW = (W - PX*2 - 20) // 2
+
+    # FREE panel
+    draw.rounded_rectangle([(PX, PY),(PX+PW, PY+PH)],
+                           radius=6, fill=(14,28,20), outline=PASS_TEAL, width=2)
+    draw.text((PX+PW//2, PY+12), "FREE PASS", font=_f(13,True), fill=PASS_TEAL, anchor="mm")
+    for ri, row in enumerate(["Coin mükafatlar hər leveldə",
+                               "1000 Coin sezon sonu"]):
+        draw.text((PX+14, PY+28+ri*16), f"• {row}", font=_f(9), fill=WHITE2)
+
+    # VIP panel
+    VX = PX + PW + 20
+    draw.rounded_rectangle([(VX, PY),(VX+PW, PY+PH)],
+                           radius=6, fill=(30,18,8), outline=PASS_GOLD, width=2)
+    draw.text((VX+PW//2, PY+12), "VIP PASS — 7 AZN", font=_f(13,True), fill=PASS_GOLD, anchor="mm")
+    for ri, row in enumerate(["Banner + Frame + ELO Boost",
+                               "AWM BOOM skin (Lv.30)"]):
+        draw.text((VX+14, PY+28+ri*16), f"• {row}", font=_f(9), fill=WHITE2)
+
+    # ── Alt CTA şeridi ────────────────────────────────────────────────────────
+    FY = H - 46
+    draw.rectangle([(0,FY),(W,H)], fill=(8,6,14))
+    draw.line([(0,FY),(W,FY)], fill=PASS_GOLD, width=2)
+    draw.text((W//2, FY+23),
+              "/pass  →  Battle Pass-ınızı açın",
+              font=_f(16,True), fill=WHITE2, anchor="mm")
+
+    img = img.convert("RGB")
+    img.save(output_path)
+    return output_path

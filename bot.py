@@ -65,7 +65,7 @@ try:
                                generate_achievements_card, get_rank,
                                generate_compare_card, generate_elo_graph,
                                generate_activity_card)
-    from pass_visual import generate_pass_gif, generate_pass_card, generate_pass_levels_card
+    from pass_visual import generate_pass_gif, generate_pass_card, generate_pass_levels_card, generate_pass_announcement
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
@@ -2374,6 +2374,47 @@ async def sezon_elan_cmd(interaction: discord.Interaction, nomre: int, kanal: di
 
 @sezon_elan_cmd.error
 async def sezon_elan_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="pass_elan", description="[Admin] Season 1 Battle Pass tanıtım elanını kanala göndər")
+@app_commands.describe(kanal="Elanın göndəriləcəyi kanal (boş = bu kanal)")
+@app_commands.checks.has_permissions(administrator=True)
+async def pass_elan_cmd(interaction: discord.Interaction, kanal: discord.TextChannel = None):
+    target = kanal or interaction.channel
+    await interaction.response.defer(ephemeral=True)
+
+    card_path = os.path.join(DATA_DIR or ".", "pass_announcement.png")
+    try:
+        await asyncio.to_thread(generate_pass_announcement, card_path)
+    except Exception as e:
+        print(f"[PASS_ELAN] Kart xətası: {e}", flush=True)
+        await interaction.followup.send(f"❌ Kart yaradılmadı: {e}", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="🎮 SEASON 1 BATTLE PASS — AKTİVDİR!",
+        description=(
+            "**Calestify FACEIT**-də Season 1 Battle Pass başladı!\n\n"
+            "**FREE PASS** — hamı üçün pulsuz açılır\n"
+            "**VIP PASS** — 7 AZN, əlavə xüsusi mükafatlar\n\n"
+            "XP qazanmaq üçün matç oynayın, missiyaları tamamlayın!\n"
+            "Level 30-da **AWM BOOM** skini VIP oyunçuları gözləyir."
+        ),
+        color=0xFFCC00
+    )
+    embed.add_field(name="📋 Açmaq üçün",   value="`/pass`",           inline=True)
+    embed.add_field(name="💰 VIP qiyməti",   value="**7 AZN**",        inline=True)
+    embed.add_field(name="🏆 Level 30 mükafat", value="AWM BOOM skin", inline=True)
+    embed.set_footer(text="Calestify Gaming Community  •  Season 1")
+
+    await target.send(file=discord.File(card_path, filename="pass_season1.png"), embed=embed)
+    await interaction.followup.send(f"✅ Pass elanı #{target.name} kanalına göndərildi.", ephemeral=True)
+
+
+@pass_elan_cmd.error
+async def pass_elan_error(i, e):
     if isinstance(e, app_commands.MissingPermissions):
         await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
