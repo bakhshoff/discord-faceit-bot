@@ -2823,6 +2823,13 @@ async def ferealiyyet_error(i, e):
 @bot.tree.command(name="pass", description="Season Pass kartını göstər")
 async def pass_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
+    try:
+        # Free pass yarat (hamı üçün avtomatik)
+        from database import ensure_free_pass as _efp
+        _efp(interaction.user.id)
+    except Exception:
+        pass
+
     if not has_battle_pass(interaction.user.id):
         embed = discord.Embed(
             title="CALESTIFY SEASON 1 PASS",
@@ -2834,7 +2841,7 @@ async def pass_cmd(interaction: discord.Interaction):
                 "- Ekskluziv banner + cercive\n"
                 "- MVP bonusu 2x\n"
                 "- Queue 30 deq erkən acilar\n\n"
-                f"**Qiymet: 5 AZN**\n"
+                f"**Qiymet: 7 AZN**\n"
                 "`/pass_al` ile alin!"
             ),
             color=0x8C50FF
@@ -2842,16 +2849,30 @@ async def pass_cmd(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
-    pd       = get_pass_data(interaction.user.id)
-    missions = get_active_bp_missions(interaction.user.id)
-    path     = os.path.join(DATA_DIR or ".", f"pass_{interaction.user.id}.gif")
     try:
-        await asyncio.to_thread(generate_pass_gif, pd, missions, path)
-        await interaction.followup.send(file=discord.File(path, filename="pass.gif"), ephemeral=True)
-    except Exception:
-        path2 = path.replace(".gif", ".png")
-        await asyncio.to_thread(generate_pass_card, pd, missions, path2)
-        await interaction.followup.send(file=discord.File(path2, filename="pass.png"), ephemeral=True)
+        pd       = get_pass_data(interaction.user.id)
+        missions = get_active_bp_missions(interaction.user.id)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Xeta: {e}", ephemeral=True); return
+
+    path_gif = os.path.join(DATA_DIR or ".", f"pass_{interaction.user.id}.gif")
+    path_png = os.path.join(DATA_DIR or ".", f"pass_{interaction.user.id}.png")
+    try:
+        await asyncio.to_thread(generate_pass_gif, pd, missions, path_gif)
+        await interaction.followup.send(file=discord.File(path_gif, filename="pass.gif"), ephemeral=True)
+    except Exception as e1:
+        print(f"[PASS GIF]: {e1}", flush=True)
+        try:
+            await asyncio.to_thread(generate_pass_card, pd, missions, path_png)
+            await interaction.followup.send(file=discord.File(path_png, filename="pass.png"), ephemeral=True)
+        except Exception as e2:
+            print(f"[PASS PNG]: {e2}", flush=True)
+            embed = discord.Embed(
+                title=f"Season 1 Pass — LVL {pd.get('level',0)}/30",
+                description=f"XP: {pd.get('xp',0)}/500  |  {'GOLD' if pd.get('is_premium') else 'FREE'} PASS\n`/pass_missiyalar` ile missiyalari gor.",
+                color=0x8C50FF
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="pass_al", description="Season Pass al (5 AZN)")
