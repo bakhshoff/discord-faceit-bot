@@ -737,61 +737,84 @@ def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(
     fb = _font(13, True); ft = _font(22, True); fm = _font(14, True)
     fs = _font(13);       fx2 = _font(11);      fxi = _font(10)
 
-    level    = pass_data.get("level", 0)
-    xp       = pass_data.get("xp", 0)
-    max_lvl  = 30
-    xp_need  = 500
-    xp_pct   = min(xp / xp_need, 1.0)
+    level      = pass_data.get("level", 0)
+    xp         = pass_data.get("xp", 0)
+    is_premium = pass_data.get("is_premium", False)
+    max_lvl    = 30
+    xp_need    = 500
+    xp_pct     = min(xp / xp_need, 1.0)
 
     # ── Header ────────────────────────────────────────────────────────────────
     draw.rectangle([(0, 0), (W, 56)], fill=PASS_PANEL)
-    draw.rectangle([(0, 54), (W, 57)], fill=PASS_PURPLE)
+    hdr_col = PASS_GOLD if is_premium else (120, 120, 140)
+    draw.rectangle([(0, 54), (W, 57)], fill=hdr_col)
     draw.text((20, 10), "CALESTIFY", font=fb, fill=PASS_GOLD)
     draw.text((20, 24), "SEASON 1 PASS", font=ft, fill=WHITE)
-    # Level badge sağda
+    # Pass tipi + Level badge
+    tier_txt = "PREMIUM" if is_premium else "FREE"
+    tier_col = PASS_GOLD if is_premium else (140, 140, 160)
+    tier_bg  = (40, 30, 0) if is_premium else (30, 30, 40)
+    draw.rectangle([(W-220, 10), (W-120, 46)], fill=tier_bg, outline=tier_col, width=2)
+    draw.text(((W-220+W-120)//2, 28), tier_txt, font=fm, fill=tier_col, anchor="mm")
     lvl_txt = f"LVL {level}"
     draw.rectangle([(W-110, 10), (W-10, 46)], fill=PASS_PURPLE, outline=PASS_GOLD, width=2)
     draw.text(((W-110+W-10)//2, 28), lvl_txt, font=fm, fill=PASS_GOLD, anchor="mm")
 
-    # ── Level Bar (30 xana) ───────────────────────────────────────────────────
-    BAR_Y  = 68
-    BAR_H  = 28
-    PAD    = 16
-    cell_w = (W - PAD*2) / max_lvl
+    # ── Level Bar (FREE üst + PREMIUM alt, 30 xana) ──────────────────────────
+    PAD        = 16
+    cell_w     = (W - PAD*2) / max_lvl
     glow_alpha = int(180 + 75 * glow)
 
+    FREE_Y  = 68;  FREE_H  = 14  # Free track (üst)
+    PREM_Y  = 86;  PREM_H  = 18  # Premium track (alt)
+
+    # Etiketlər
+    draw.text((PAD-14, FREE_Y+2),  "F", font=fxi, fill=(140,140,160), anchor="rm")
+    draw.text((PAD-14, PREM_Y+4),  "P", font=fxi, fill=PASS_GOLD,     anchor="rm")
+
     for i in range(max_lvl):
-        lv  = i + 1
-        x0  = int(PAD + i * cell_w)
-        x1  = int(PAD + (i+1) * cell_w) - 2
+        lv   = i + 1
+        x0   = int(PAD + i * cell_w)
+        x1   = int(PAD + (i+1) * cell_w) - 2
         done = lv <= level
+        is_ms = lv in MILESTONE_LEVELS
 
+        # FREE track
+        free_col = (80, 160, 80) if done else (30, 40, 30)
+        draw.rectangle([(x0, FREE_Y), (x1, FREE_Y+FREE_H)], fill=free_col)
+
+        # PREMIUM track
         if done:
-            col = PASS_GOLD if lv in MILESTONE_LEVELS else PASS_TEAL
+            prem_col = PASS_GOLD if is_ms else PASS_TEAL
         else:
-            col = (35, 30, 50)
+            prem_col = (40, 30, 55)
+        if not is_premium and not done:
+            prem_col = (25, 20, 35)  # Premium yoxdursa daha qaranlıq
+        draw.rectangle([(x0, PREM_Y), (x1, PREM_Y+PREM_H)], fill=prem_col)
 
-        draw.rectangle([(x0, BAR_Y), (x1, BAR_Y + BAR_H)], fill=col)
-
-        # Milestone marker
-        if lv in MILESTONE_LEVELS:
+        # Milestone marker (üstdə kiçik nişan)
+        if is_ms:
             mc = PASS_GOLD if done else (80, 70, 100)
-            draw.rectangle([(x0, BAR_Y-4), (x1, BAR_Y)], fill=mc)
+            draw.rectangle([(x0, FREE_Y-5), (x1, FREE_Y-1)], fill=mc)
 
-        # Current level glow
-        if lv == level + 1:
-            gl = int(glow_alpha)
-            draw.rectangle([(x0-1, BAR_Y-1), (x1+1, BAR_Y+BAR_H+1)],
-                           outline=(gl, gl, 50), width=2)
+        # (per-cell glow artiq yoxdur — umumi glow asagida)
 
     # Level sayları (hər 5-ci)
     for i in range(0, max_lvl, 5):
         lv = i + 1
         x  = int(PAD + i * cell_w + cell_w/2)
-        draw.text((x, BAR_Y + BAR_H + 4), str(lv), font=fxi, fill=GRAY, anchor="mt")
+        draw.text((x, PREM_Y + PREM_H + 3), str(lv), font=fxi, fill=GRAY, anchor="mt")
+
+    # Current level glow
+    if level < max_lvl:
+        nx0 = int(PAD + level * cell_w)
+        nx1 = int(PAD + (level+1) * cell_w) - 2
+        gl  = int(glow_alpha)
+        draw.rectangle([(nx0-1, FREE_Y-1), (nx1+1, PREM_Y+PREM_H+1)],
+                       outline=(gl, gl, 50), width=2)
 
     # ── XP Progress ──────────────────────────────────────────────────────────
-    xp_y  = BAR_Y + BAR_H + 22
+    xp_y  = PREM_Y + PREM_H + 20
     xp_w  = W - PAD*2
     draw.rectangle([(PAD, xp_y), (PAD+xp_w, xp_y+10)], fill=(35,30,50), outline=PASS_BORDER, width=1)
     fill_w = int(xp_w * xp_pct)

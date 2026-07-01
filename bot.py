@@ -64,8 +64,8 @@ try:
                                generate_stats_card, generate_warnings_card,
                                generate_achievements_card, get_rank,
                                generate_compare_card, generate_elo_graph,
-                               generate_activity_card,
-                               generate_pass_gif, generate_pass_card)
+                               generate_activity_card)
+    from pass_visual import generate_pass_gif, generate_pass_card
     from match_card import generate_match_card, generate_result_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner

@@ -2022,7 +2022,7 @@ def clear_expired_discounts():
 
 # Season 1 konfiqurasiyası
 BP_SEASON_ID   = 1
-BP_PRICE_AZN   = 5
+BP_PRICE_AZN   = 7
 BP_MAX_LEVEL   = 30
 BP_XP_PER_LEVEL= 500
 
@@ -2080,12 +2080,13 @@ BP_MISSIONS_SEED = [
 def init_battle_pass(cursor):
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS battle_pass (
-            discord_id  INTEGER NOT NULL,
-            season_id   INTEGER NOT NULL,
-            level       INTEGER DEFAULT 0,
-            xp          INTEGER DEFAULT 0,
+            discord_id   INTEGER NOT NULL,
+            season_id    INTEGER NOT NULL,
+            level        INTEGER DEFAULT 0,
+            xp           INTEGER DEFAULT 0,
             purchased_at INTEGER NOT NULL,
             claimed_levels TEXT DEFAULT '[]',
+            is_premium   INTEGER DEFAULT 0,
             PRIMARY KEY (discord_id, season_id)
         )
     """)
@@ -2120,28 +2121,47 @@ def init_battle_pass(cursor):
         )
 
 
-def buy_battle_pass(discord_id: int) -> tuple:
-    """Passu alır. (success, msg) qaytarır."""
+def ensure_free_pass(discord_id: int):
+    """Hər oyunçu üçün FREE pass avtomatik yaradılır."""
     import time, json
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT discord_id FROM battle_pass WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
+    if not cursor.fetchone():
+        cursor.execute(
+            "INSERT OR IGNORE INTO battle_pass (discord_id,season_id,level,xp,purchased_at,claimed_levels,is_premium) VALUES (?,?,0,0,?,?,0)",
+            (discord_id, BP_SEASON_ID, int(time.time()), json.dumps([]))
+        )
+        conn.commit()
+    conn.close()
+
+
+def buy_battle_pass(discord_id: int) -> tuple:
+    """Premium pass alır. (success, msg) qaytarır."""
+    import time, json
+    ensure_free_pass(discord_id)
     conn   = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT zm_balance FROM players WHERE discord_id=?", (discord_id,))
     row = cursor.fetchone()
     if not row or row[0] < BP_PRICE_AZN:
         conn.close(); return False, f"Kifayet qeder AZN yoxdur. Lazim: {BP_PRICE_AZN} AZN"
-    cursor.execute("SELECT discord_id FROM battle_pass WHERE discord_id=? AND season_id=?",
+    cursor.execute("SELECT is_premium FROM battle_pass WHERE discord_id=? AND season_id=?",
                    (discord_id, BP_SEASON_ID))
-    if cursor.fetchone():
-        conn.close(); return False, "Artiq pass sahibisiniz!"
+    pr = cursor.fetchone()
+    if pr and pr[0] == 1:
+        conn.close(); return False, "Artiq Premium Pass sahibisiniz!"
     cursor.execute("UPDATE players SET zm_balance=zm_balance-? WHERE discord_id=?",
                    (BP_PRICE_AZN, discord_id))
-    cursor.execute("INSERT INTO battle_pass (discord_id,season_id,level,xp,purchased_at,claimed_levels) VALUES (?,?,0,0,?,?)",
-                   (discord_id, BP_SEASON_ID, int(time.time()), json.dumps([])))
+    cursor.execute("UPDATE battle_pass SET is_premium=1 WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
     conn.commit(); conn.close()
-    return True, "Pass ugurla alindi!"
+    return True, "Premium Pass ugurla alindi!"
 
 
 def has_battle_pass(discord_id: int) -> bool:
+    """Free və ya premium pass var?"""
     conn   = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT 1 FROM battle_pass WHERE discord_id=? AND season_id=?",
@@ -2150,24 +2170,35 @@ def has_battle_pass(discord_id: int) -> bool:
     conn.close(); return ok
 
 
-def get_pass_data(discord_id: int) -> dict:
-    import json
+def is_premium_pass(discord_id: int) -> bool:
     conn   = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT level,xp,claimed_levels FROM battle_pass WHERE discord_id=? AND season_id=?",
+    cursor.execute("SELECT is_premium FROM battle_pass WHERE discord_id=? AND season_id=?",
+                   (discord_id, BP_SEASON_ID))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+
+def get_pass_data(discord_id: int) -> dict:
+    import json
+    ensure_free_pass(discord_id)
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT level,xp,claimed_levels,is_premium FROM battle_pass WHERE discord_id=? AND season_id=?",
                    (discord_id, BP_SEASON_ID))
     row = cursor.fetchone()
     conn.close()
     if not row:
-        return None
-    return {"level": row[0], "xp": row[1], "claimed": json.loads(row[2] or "[]")}
+        return {"level": 0, "xp": 0, "claimed": [], "is_premium": False}
+    return {"level": row[0], "xp": row[1], "claimed": json.loads(row[2] or "[]"),
+            "is_premium": bool(row[3])}
 
 
 def add_bp_xp(discord_id: int, xp: int) -> dict:
-    """XP əlavə edir. {"level_up": bool, "new_level": int, "rewards": []} qaytarır."""
+    """XP əlavə edir. Hər oyunçu üçün işləyir (free + premium)."""
     import json
-    if not has_battle_pass(discord_id):
-        return {}
+    ensure_free_pass(discord_id)  # Free pass avtomatik yaradılır
     conn   = _get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT level,xp,claimed_levels FROM battle_pass WHERE discord_id=? AND season_id=?",
