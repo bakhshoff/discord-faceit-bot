@@ -55,7 +55,8 @@ try:
         set_discount, get_discount, get_all_discounts, clear_expired_discounts,
         buy_battle_pass, has_battle_pass, get_pass_data, add_bp_xp,
         get_active_bp_missions, update_bp_mission, BP_SEASON_ID, BP_MAX_LEVEL,
-        get_lang, set_lang
+        get_lang, set_lang,
+        claim_bp_rewards, get_unclaimed_bp_levels
     )
     from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
@@ -1172,6 +1173,23 @@ class MatchResultView(discord.ui.View):
             elo_diff = r["new_elo"] - r["old_elo"]
             add_season_stat(p["discord_id"], season["id"], losses=1, elo_gained=max(0, elo_diff))
 
+        # Mərc nəticələrini həll et + coin_log yaz
+        pred_winners = resolve_predictions(self.match_number, winner_label)
+        for pw in pred_winners:
+            new_bal = get_coins(pw["discord_id"])
+            add_coin_log(pw["discord_id"], pw["payout"],
+                         f"Merc qalibiyyeti — Matc No{self.match_number} (+{pw['payout']} coin)",
+                         "earn", new_bal)
+            member = interaction.guild.get_member(pw["discord_id"]) if interaction.guild else None
+            if member:
+                try:
+                    await member.send(
+                        f"🎲 **Matç No{self.match_number}** — Mərc qazandınız!\n"
+                        f"Mərc: {pw['bet']} coin → Qazanc: **+{pw['payout']} coin** 🎉"
+                    )
+                except discord.Forbidden:
+                    pass
+
         # Matç kilidini aç
         clear_active_match()
 
@@ -1907,6 +1925,23 @@ class ScanEditView(discord.ui.View):
                 {**winner_stats, **loser_stats}, mvp_nick=mvp_nick
             ))
 
+        # Mərc nəticələrini həll et
+        pred_winners = resolve_predictions(self.match_number, winner_label_full)
+        for pw in pred_winners:
+            new_bal = get_coins(pw["discord_id"])
+            add_coin_log(pw["discord_id"], pw["payout"],
+                         f"Merc qalibiyyeti — Matc No{self.match_number} (+{pw['payout']} coin)",
+                         "earn", new_bal)
+            member = interaction.guild.get_member(pw["discord_id"]) if interaction.guild else None
+            if member:
+                try:
+                    await member.send(
+                        f"🎲 **Matç No{self.match_number}** — Mərc qazandınız!\n"
+                        f"Mərc: {pw['bet']} coin → Qazanc: **+{pw['payout']} coin** 🎉"
+                    )
+                except discord.Forbidden:
+                    pass
+
         clear_active_match()
         await asyncio.to_thread(backup.export_backup)
 
@@ -2240,6 +2275,15 @@ class ManuelMatchStatView(discord.ui.View):
             [r["new_elo"] for r in results["losers"]],
             self.match_number
         )
+        # Mərc nəticələrini həll et
+        _wlabel_m = f"Komanda {self.winner}"
+        pred_winners_m = resolve_predictions(self.match_number, _wlabel_m)
+        for pw in pred_winners_m:
+            new_bal = get_coins(pw["discord_id"])
+            add_coin_log(pw["discord_id"], pw["payout"],
+                         f"Merc qalibiyyeti — Matc No{self.match_number} (+{pw['payout']} coin)",
+                         "earn", new_bal)
+
         clear_active_match()
         await asyncio.to_thread(backup.export_backup)
 
@@ -3071,7 +3115,33 @@ class PassView(discord.ui.View):
             embed.add_field(name=cat_label, value="\n".join(lines), inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Premium Al — 7 AZN", style=discord.ButtonStyle.success, emoji="⭐")
+    @discord.ui.button(label="Mükafatı Al", style=discord.ButtonStyle.success, emoji="🎁")
+    async def claim_rewards(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+        unclaimed = get_unclaimed_bp_levels(self.discord_id)
+        if not unclaimed:
+            await interaction.followup.send(
+                "✅ Bütün mövcud mükafatlar artıq tələb edilib!", ephemeral=True); return
+        result = claim_bp_rewards(self.discord_id, unclaimed)
+        if result["coins_earned"] > 0:
+            new_bal = get_coins(self.discord_id)
+            add_coin_log(self.discord_id, result["coins_earned"],
+                         f"Pass mükafatı — Level {unclaimed[0]}-{unclaimed[-1]}", "earn", new_bal)
+        lines = [f"✅ Level {lv}" for lv in result["claimed"]]
+        if result["coins_earned"]:
+            lines.append(f"\n🪙 **+{result['coins_earned']} coin** əlavə edildi!")
+        for it in result["items_earned"]:
+            lines.append(f"🎮 {it['label']} (Level {it['level']}, {it['track'].upper()})")
+        embed = discord.Embed(
+            title="🎁 Mükafatlar Tələb Edildi!",
+            description="\n".join(lines[:20]),
+            color=discord.Color.gold())
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        await asyncio.to_thread(backup.export_backup)
+
+    @discord.ui.button(label="Premium Al — 7 AZN", style=discord.ButtonStyle.primary, emoji="⭐")
     async def buy_premium(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.discord_id:
             await interaction.response.send_message("❌", ephemeral=True); return

@@ -2391,3 +2391,61 @@ def set_lang(discord_id: int, lang: str):
     conn = _get_conn(); cur = conn.cursor()
     cur.execute("UPDATE players SET lang=? WHERE discord_id=?", (lang, discord_id))
     conn.commit(); conn.close()
+
+
+def claim_bp_rewards(discord_id: int, levels_to_claim: list) -> dict:
+    """
+    Seçilmiş levellərin mükafatlarını tələb edir.
+    Yalnız oyunçunun çatdığı levelə qədər, hələ tələb edilməmiş levelləri işlər.
+    Qaytarır: {claimed: [level,...], coins_earned: int, items_earned: [...]}
+    """
+    import json
+    pd = get_pass_data(discord_id)
+    max_level   = pd["level"]
+    already     = set(pd["claimed"])
+    is_premium  = pd["is_premium"]
+
+    newly_claimed = []
+    coins_earned  = 0
+    items_earned  = []
+
+    for lv in levels_to_claim:
+        if lv > max_level or lv in already:
+            continue
+        # FREE mükafat
+        free_r = BP_LEVEL_REWARDS.get(lv, {}).get("free")
+        if free_r:
+            if free_r.get("type") == "coins":
+                coins_earned += free_r.get("amount", 0)
+            else:
+                items_earned.append({"level": lv, "track": "free", "label": free_r.get("label","")})
+        # PREMIUM mükafat (yalnız premium oyunçulara)
+        if is_premium:
+            prem_r = BP_LEVEL_REWARDS.get(lv, {}).get("premium")
+            if prem_r:
+                if prem_r.get("type") == "coins":
+                    coins_earned += prem_r.get("amount", 0)
+                else:
+                    items_earned.append({"level": lv, "track": "premium", "label": prem_r.get("label","")})
+        newly_claimed.append(lv)
+
+    if not newly_claimed:
+        return {"claimed": [], "coins_earned": 0, "items_earned": []}
+
+    # DB yenilə
+    new_claimed = list(already | set(newly_claimed))
+    conn = _get_conn(); cur = conn.cursor()
+    if coins_earned > 0:
+        cur.execute("UPDATE players SET coins=coins+? WHERE discord_id=?", (coins_earned, discord_id))
+    cur.execute("UPDATE battle_pass SET claimed_levels=? WHERE discord_id=? AND season_id=?",
+                (json.dumps(new_claimed), discord_id, BP_SEASON_ID))
+    conn.commit(); conn.close()
+
+    return {"claimed": newly_claimed, "coins_earned": coins_earned, "items_earned": items_earned}
+
+
+def get_unclaimed_bp_levels(discord_id: int) -> list:
+    """Oyunçunun çatdığı amma hələ tələb etmədiyi levelləri qaytarır."""
+    pd = get_pass_data(discord_id)
+    claimed = set(pd["claimed"])
+    return [lv for lv in range(1, pd["level"] + 1) if lv not in claimed]
