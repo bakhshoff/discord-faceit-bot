@@ -2460,15 +2460,24 @@ def init_tournament_tables():
     conn = _get_conn(); cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tournaments (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            name         TEXT NOT NULL,
-            status       TEXT DEFAULT 'registration',
-            prize_coins  INTEGER DEFAULT 0,
-            created_by   INTEGER NOT NULL,
-            created_at   INTEGER NOT NULL,
-            max_teams    INTEGER DEFAULT 8
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            name           TEXT NOT NULL,
+            status         TEXT DEFAULT 'registration',
+            prize_coins    INTEGER DEFAULT 0,
+            prize_azn      REAL    DEFAULT 0,
+            prize_item_ids TEXT    DEFAULT '[]',
+            prize_skin_ids TEXT    DEFAULT '[]',
+            created_by     INTEGER NOT NULL,
+            created_at     INTEGER NOT NULL,
+            max_teams      INTEGER DEFAULT 8
         )
     """)
+    # Migration: köhnə cədvəllərə yeni sütunlar əlavə et
+    cur.execute("PRAGMA table_info(tournaments)")
+    t_cols = [r[1] for r in cur.fetchall()]
+    for col, dflt in [("prize_azn","0.0"), ("prize_item_ids","'[]'"), ("prize_skin_ids","'[]'")]:
+        if col not in t_cols:
+            cur.execute(f"ALTER TABLE tournaments ADD COLUMN {col} DEFAULT {dflt}")
     cur.execute("""
         CREATE TABLE IF NOT EXISTS tournament_teams (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2507,22 +2516,54 @@ def create_tournament(name, prize_coins, max_teams, created_by):
     return tid
 
 
+def _t_row(row):
+    import json
+    return {"id":row[0],"name":row[1],"status":row[2],"prize_coins":row[3],
+            "prize_azn":row[4],"prize_item_ids":json.loads(row[5] or "[]"),
+            "prize_skin_ids":json.loads(row[6] or "[]"),
+            "created_by":row[7],"created_at":row[8],"max_teams":row[9]}
+
+_T_SEL = "SELECT id,name,status,prize_coins,prize_azn,prize_item_ids,prize_skin_ids,created_by,created_at,max_teams"
+
 def get_active_tournament():
     conn = _get_conn(); cur = conn.cursor()
-    cur.execute("SELECT id,name,status,prize_coins,created_by,created_at,max_teams FROM tournaments WHERE status!='finished' ORDER BY id DESC LIMIT 1")
+    cur.execute(f"{_T_SEL} FROM tournaments WHERE status!='finished' ORDER BY id DESC LIMIT 1")
     row = cur.fetchone(); conn.close()
-    if not row: return None
-    return {"id":row[0],"name":row[1],"status":row[2],"prize_coins":row[3],
-            "created_by":row[4],"created_at":row[5],"max_teams":row[6]}
+    return _t_row(row) if row else None
 
 
 def get_tournament(tid):
     conn = _get_conn(); cur = conn.cursor()
-    cur.execute("SELECT id,name,status,prize_coins,created_by,created_at,max_teams FROM tournaments WHERE id=?", (tid,))
+    cur.execute(f"{_T_SEL} FROM tournaments WHERE id=?", (tid,))
     row = cur.fetchone(); conn.close()
-    if not row: return None
-    return {"id":row[0],"name":row[1],"status":row[2],"prize_coins":row[3],
-            "created_by":row[4],"created_at":row[5],"max_teams":row[6]}
+    return _t_row(row) if row else None
+
+
+def set_tournament_prize(tid, prize_coins=None, prize_azn=None,
+                          add_item_id=None, remove_item_id=None,
+                          add_skin_id=None, remove_skin_id=None):
+    import json
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(f"{_T_SEL} FROM tournaments WHERE id=?", (tid,))
+    row = cur.fetchone()
+    if not row: conn.close(); return
+    t = _t_row(row)
+    items = list(t["prize_item_ids"])
+    skins = list(t["prize_skin_ids"])
+    if add_item_id and add_item_id not in items:
+        items.append(add_item_id)
+    if remove_item_id and remove_item_id in items:
+        items.remove(remove_item_id)
+    if add_skin_id and add_skin_id not in skins:
+        skins.append(add_skin_id)
+    if remove_skin_id and remove_skin_id in skins:
+        skins.remove(remove_skin_id)
+    new_coins = prize_coins if prize_coins is not None else t["prize_coins"]
+    new_azn   = prize_azn   if prize_azn   is not None else t["prize_azn"]
+    cur.execute(
+        "UPDATE tournaments SET prize_coins=?,prize_azn=?,prize_item_ids=?,prize_skin_ids=? WHERE id=?",
+        (new_coins, new_azn, json.dumps(items), json.dumps(skins), tid))
+    conn.commit(); conn.close()
 
 
 def register_tournament_team(tournament_id, team_name, captain_id, member_ids, elo_avg):

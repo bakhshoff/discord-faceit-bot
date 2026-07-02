@@ -180,3 +180,78 @@ def generate_tournament_registration_card(tournament: dict, teams: list, output_
               font=_f(11), fill=GRAY, anchor="lm")
     img.save(output_path)
     return output_path
+
+
+def generate_prize_card(tournament: dict, item_names: list, skin_names: list, output_path: str) -> str:
+    """
+    Turnir mükafat fondu vizual kartı.
+    item_names: [{"name":"Qizili Banner","type":"banner"}, ...]
+    skin_names: [{"name":"AWM BOOM"}, ...]
+    """
+    W     = 700
+    ROW_H = 52
+    HEAD_H = 90
+    SEC_H  = 30
+    FOOT_H = 34
+    PAD    = 28
+
+    prize_rows = []
+    if tournament.get("prize_coins", 0):
+        prize_rows.append(("coin",   f"{tournament['prize_coins']} Coin",  GOLD))
+    if tournament.get("prize_azn", 0):
+        prize_rows.append(("azn",    f"{tournament['prize_azn']:.2f} AZN", GREEN))
+    for it in item_names:
+        typ  = it.get("type", "item")
+        icon = "🖼" if typ == "banner" else ("🔲" if typ == "avatar_frame" else "🎨")
+        prize_rows.append(("item", f"{icon} {it['name']}", PURPLE))
+    for sk in skin_names:
+        prize_rows.append(("skin", f"🔫 {sk['name']}", BLUE))
+
+    if not prize_rows:
+        prize_rows.append(("empty", "Henuz mukafat teyin edilmeyib", GRAY))
+
+    H = HEAD_H + SEC_H + max(1, len(prize_rows)) * ROW_H + FOOT_H
+
+    img  = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+
+    # Header
+    draw.rectangle([(0,0),(W,HEAD_H)], fill=(16,12,28))
+    draw.line([(0,HEAD_H),(W,HEAD_H)], fill=GOLD, width=2)
+    draw.text((PAD, 14), "CALESTIFY", font=_f(11,True), fill=GOLD)
+    draw.text((PAD, 32), tournament.get("name","TURNIR"), font=_f(22,True), fill=WHITE)
+    draw.text((PAD, 64), "MUKAFAT FONDU", font=_f(13,True), fill=GOLD)
+    st_map = {"registration":"Qeydiyyat","active":"Aktiv","finished":"Bitdi"}
+    draw.text((W-PAD, 64), st_map.get(tournament.get("status",""), ""),
+              font=_f(12), fill=GRAY, anchor="rm")
+
+    # Section header
+    sh_y = HEAD_H
+    draw.rectangle([(0,sh_y),(W,sh_y+SEC_H)], fill=(24,20,40))
+    draw.text((PAD, sh_y+SEC_H//2), "Mükafat növü", font=_f(10,True), fill=GRAY, anchor="lm")
+    draw.text((W-PAD, sh_y+SEC_H//2), "Dəyər / Əşya", font=_f(10,True), fill=GRAY, anchor="rm")
+
+    y = sh_y + SEC_H
+    for i, (ptype, label, col) in enumerate(prize_rows):
+        if i % 2 == 0:
+            draw.rectangle([(2,y),(W-2,y+ROW_H-1)], fill=(20,18,32))
+        # Sol rəngli şerid
+        draw.rectangle([(0,y),(6,y+ROW_H-1)], fill=col)
+        # Icon / tip
+        icons = {"coin":"🪙","azn":"💵","item":"🎨","skin":"🔫","empty":"—"}
+        draw.text((PAD, y+ROW_H//2), icons.get(ptype, "•"),
+                  font=_f(14), fill=col, anchor="lm")
+        draw.text((PAD+30, y+ROW_H//2), label[:42],
+                  font=_f(15,True), fill=WHITE if ptype != "empty" else GRAY, anchor="lm")
+        draw.line([(18,y+ROW_H-1),(W-18,y+ROW_H-1)], fill=BORDER, width=1)
+        y += ROW_H
+
+    # Footer
+    draw.rectangle([(0,H-FOOT_H),(W,H)], fill=(10,8,18))
+    draw.text((PAD, H-FOOT_H+FOOT_H//2),
+              "/turnir_mukafat ile mukafat deyis",
+              font=_f(11), fill=GRAY, anchor="lm")
+
+    img.save(output_path)
+    return output_path

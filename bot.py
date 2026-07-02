@@ -59,9 +59,10 @@ try:
         claim_bp_rewards, get_unclaimed_bp_levels,
         init_tournament_tables, create_tournament, get_active_tournament, get_tournament,
         register_tournament_team, get_tournament_teams, generate_bracket,
-        get_tournament_matches, set_match_winner
+        get_tournament_matches, set_match_winner, set_tournament_prize
     )
-    from tournament_visual import generate_tournament_card, generate_tournament_registration_card
+    from tournament_visual import (generate_tournament_card,
+                                    generate_tournament_registration_card, generate_prize_card)
     from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -5044,14 +5045,51 @@ async def turnir_netice_cmd(interaction: discord.Interaction, match_id: int, qal
     await asyncio.to_thread(generate_tournament_card, t, teams, matches, path)
     if finished:
         winner_team = next((tm for tm in teams if tm["id"] == qalib_id), None)
-        wname = winner_team["team_name"] if winner_team else "?"
-        prize = t["prize_coins"]
-        if winner_team and prize > 0:
-            for did in winner_team.get("members", []):
-                new_bal = add_coins(did, prize // 5)
-                add_coin_log(did, prize // 5, f"Turnir qalibi — {t['name']}", "earn", new_bal)
+        wname       = winner_team["team_name"] if winner_team else "?"
+        members     = winner_team.get("members", []) if winner_team else []
+        n_members   = max(len(members), 1)
+        prize_lines = []
+
+        # ── Coin ──────────────────────────────────────────────────────────────
+        prize_c = t.get("prize_coins", 0)
+        if prize_c > 0:
+            share = prize_c // n_members
+            for did in members:
+                nb = add_coins(did, share)
+                add_coin_log(did, share, f"Turnir qalibi — {t['name']}", "earn", nb)
+            prize_lines.append(f"🪙 {prize_c} Coin ({share}/nəfər)")
+
+        # ── AZN ───────────────────────────────────────────────────────────────
+        prize_azn = t.get("prize_azn", 0.0)
+        if prize_azn > 0:
+            share_azn = round(prize_azn / n_members, 2)
+            for did in members:
+                add_zm(did, share_azn)
+            prize_lines.append(f"💵 {prize_azn:.2f} AZN ({share_azn:.2f}/nəfər)")
+
+        # ── Market itemlər (bannerlər, çərçivələr) — kapitana verilir ─────────
+        for iid in t.get("prize_item_ids", []):
+            item = get_item_by_id(iid)
+            if item and members:
+                cap_id = winner_team["captain_id"] if winner_team else members[0]
+                add_to_inventory(cap_id, iid)
+                prize_lines.append(f"🎨 {item['name']} (Kapitan aldı)")
+
+        # ── Skinlər — kapitana verilir ─────────────────────────────────────────
+        for sid in t.get("prize_skin_ids", []):
+            try:
+                skin = get_skin_by_id(int(sid))
+            except Exception:
+                skin = None
+            if skin and members:
+                cap_id = winner_team["captain_id"] if winner_team else members[0]
+                add_skin_to_inventory(cap_id, skin["id"], skin["name"], skin.get("price", 0))
+                prize_lines.append(f"🔫 {skin['name']} (Kapitan aldı)")
+
+        prize_text = "\n".join(prize_lines) if prize_lines else "Mükafat təyin edilməmişdi"
+        await asyncio.to_thread(backup.export_backup)
         await interaction.followup.send(
-            content=f"🏆 **{t['name']}** Turniri TAMAMLANDI!\n\n🥇 Qalib: **{wname}** — +{prize} coin!",
+            content=f"🏆 **{t['name']}** Turniri TAMAMLANDI!\n\n🥇 Qalib: **{wname}**\n\n**Mükafatlar:**\n{prize_text}",
             file=discord.File(path, filename="tournament.png"))
     else:
         await interaction.followup.send(
@@ -5061,6 +5099,149 @@ async def turnir_netice_cmd(interaction: discord.Interaction, match_id: int, qal
 
 @turnir_netice_cmd.error
 async def turnir_netice_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TURNİR MÜKAFAT PANELİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _prize_card_send(interaction, t, followup=False):
+    """Mükafat kartını generate edib göndər."""
+    item_names = []
+    skin_names = []
+    for iid in t.get("prize_item_ids", []):
+        item = get_item_by_id(iid)
+        if item: item_names.append(item)
+    for sid in t.get("prize_skin_ids", []):
+        sk = get_skin_by_id(int(sid)) if str(sid).isdigit() else None
+        if sk: skin_names.append({"name": sk.get("name", str(sid))})
+    path = os.path.join(DATA_DIR or ".", "tournament_prize.png")
+    await asyncio.to_thread(generate_prize_card, t, item_names, skin_names, path)
+    view = PrizePanelView(t["id"])
+    msg  = f"🏆 **{t['name']}** — Mükafat Fondu"
+    f    = discord.File(path, filename="tournament_prize.png")
+    if followup:
+        await interaction.followup.send(content=msg, file=f, view=view, ephemeral=True)
+    else:
+        await interaction.response.send_message(content=msg, file=f, view=view, ephemeral=True)
+
+
+class CoinPrizeModal(discord.ui.Modal, title="Coin Mükafatı Təyin Et"):
+    amount = discord.ui.TextInput(label="Coin miqdarı", placeholder="5000", max_length=8)
+
+    def __init__(self, tid):
+        super().__init__(); self.tid = tid
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            coins = int(self.amount.value.strip())
+            if coins < 0: raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ Düzgün rəqəm daxil edin.", ephemeral=True); return
+        set_tournament_prize(self.tid, prize_coins=coins)
+        t = get_tournament(self.tid)
+        await _prize_card_send(interaction, t)
+
+
+class AznPrizeModal(discord.ui.Modal, title="AZN Mükafatı Təyin Et"):
+    amount = discord.ui.TextInput(label="AZN məbləği", placeholder="20.00", max_length=8)
+
+    def __init__(self, tid):
+        super().__init__(); self.tid = tid
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            azn = float(self.amount.value.strip().replace(",", "."))
+            if azn < 0: raise ValueError
+        except ValueError:
+            await interaction.response.send_message("❌ Düzgün məbləğ daxil edin.", ephemeral=True); return
+        set_tournament_prize(self.tid, prize_azn=azn)
+        t = get_tournament(self.tid)
+        await _prize_card_send(interaction, t)
+
+
+class PrizePanelView(discord.ui.View):
+    def __init__(self, tid: int):
+        super().__init__(timeout=300)
+        self.tid = tid
+        self._build_item_select()
+        self._build_skin_select()
+
+    def _build_item_select(self):
+        opts = [discord.SelectOption(label=i["name"][:25], value=i["id"],
+                                     description=i.get("type","")[:40])
+                for i in MARKET_ITEMS[:25]]
+        if not opts: return
+        sel = discord.ui.Select(placeholder="🎨 Avatar / Banner / Çərçivə əlavə et",
+                                options=opts, custom_id="prize_item_sel", row=2)
+        async def item_cb(inter: discord.Interaction):
+            set_tournament_prize(self.tid, add_item_id=sel.values[0])
+            t = get_tournament(self.tid)
+            await inter.response.defer()
+            await _prize_card_send(inter, t, followup=True)
+        sel.callback = item_cb
+        self.add_item(sel)
+
+    def _build_skin_select(self):
+        skins = get_active_skins()
+        if not skins: return
+        opts = [discord.SelectOption(label=s["name"][:25], value=str(s["id"]),
+                                     description=f"{s['price']} coin")
+                for s in skins[:25]]
+        sel = discord.ui.Select(placeholder="🔫 Skin əlavə et",
+                                options=opts, custom_id="prize_skin_sel", row=3)
+        async def skin_cb(inter: discord.Interaction):
+            set_tournament_prize(self.tid, add_skin_id=sel.values[0])
+            t = get_tournament(self.tid)
+            await inter.response.defer()
+            await _prize_card_send(inter, t, followup=True)
+        sel.callback = skin_cb
+        self.add_item(sel)
+
+    @discord.ui.button(label="🪙 Coin Təyin Et", style=discord.ButtonStyle.success, row=0)
+    async def set_coins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CoinPrizeModal(self.tid))
+
+    @discord.ui.button(label="💵 AZN Təyin Et", style=discord.ButtonStyle.primary, row=0)
+    async def set_azn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(AznPrizeModal(self.tid))
+
+    @discord.ui.button(label="🗑️ Mükafatı Sıfırla", style=discord.ButtonStyle.danger, row=1)
+    async def reset_prize(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True); return
+        set_tournament_prize(self.tid, prize_coins=0, prize_azn=0.0)
+        t = get_tournament(self.tid)
+        # item və skin siyahısını da sıfırla
+        from database import _get_conn as _gdb
+        import json as _j
+        _c = _gdb(); _cu = _c.cursor()
+        _cu.execute("UPDATE tournaments SET prize_item_ids='[]',prize_skin_ids='[]' WHERE id=?", (self.tid,))
+        _c.commit(); _c.close()
+        t = get_tournament(self.tid)
+        await _prize_card_send(interaction, t)
+
+    @discord.ui.button(label="📊 Cari Vəziyyət", style=discord.ButtonStyle.secondary, row=1)
+    async def show_current(self, interaction: discord.Interaction, button: discord.ui.Button):
+        t = get_tournament(self.tid)
+        if not t:
+            await interaction.response.send_message("❌ Turnir tapılmadı.", ephemeral=True); return
+        await _prize_card_send(interaction, t)
+
+
+@bot.tree.command(name="turnir_mukafat", description="[Admin] Turnir mükafat fondunu idarə et")
+@app_commands.checks.has_permissions(administrator=True)
+async def turnir_mukafat_cmd(interaction: discord.Interaction):
+    t = get_active_tournament()
+    if not t:
+        await interaction.response.send_message("❌ Aktiv turnir yoxdur.", ephemeral=True); return
+    await _prize_card_send(interaction, t)
+
+
+@turnir_mukafat_cmd.error
+async def turnir_mukafat_error(i, e):
     if isinstance(e, app_commands.MissingPermissions):
         await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
