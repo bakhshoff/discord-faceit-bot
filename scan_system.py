@@ -2,9 +2,10 @@
 Scan sistemi: Claude Haiku Vision ilə skor ekranından K/A/D oxuyur.
 Fallback: OCR.space API (ANTHROPIC_API_KEY olmadıqda).
 
-Standoff 2 skor ekranı sütun sırası:
-  Sol komanda: # | İsim | Para($) | K | A | D | Skor | Ping
-  Sağ komanda: # | İsim | K | A | D | Skor | Ping
+Standoff 2 skor ekranı — sütun yapısı:
+  Hər oyunçu sətiri:  #  |  İsim  |  [Para$]  |  K  |  A  |  D  |  Skor  |  Ping
+  - Para$ sütunu: bəzən var ($ işarəli), bəzən yox — həm CT, həm T tərəfində ola bilər
+  - Skor ≤ ~100, Ping ≤ ~500 (bəzən 100+ olur!)
 """
 import os
 import re
@@ -15,50 +16,49 @@ import requests
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OCR_API_KEY       = os.getenv("OCR_API_KEY", "helloworld")
 
-CLAUDE_PROMPT = """Bu Standoff 2 mobil oyununun matç sonu istatistik ekranıdır.
+CLAUDE_PROMPT = """Bu Standoff 2 matç sonu İSTATİSTİKLER ekranıdır.
 
-SÜTUN SIRASİ:
-- Sol komanda (CT/SAVUNMA): # | İsim | Para($) | K | A | D | Skor | Ping
-- Sağ komanda (T/SALDIRI): # | İsim | K | A | D | Skor | Ping
+SÜTUN YAPISI (hər oyunçu sətiri):
+  #  |  İsim  |  [Para$]  |  K  |  A  |  D  |  Skor  |  Ping
 
-Hər oyunçu üçün çıxar:
-1. nick — ad mötərizə içi KİLAN TAGi olmadan (məs. [CSTFY] Zenith → "Zenith", [56799] PrnHub → "PrnHub")
-   - Adın ÖNÜNDƏ [...] (TAG) {GRP} formatında varsa SİL
-   - Xüsusi simvolları (~, _, -, .) saxla
-2. K — "K" başlıqlı sütun (kill sayı, sol komandada Para($)-dan SONRA gəlir)
-3. A — "A" başlıqlı sütun (assist)
-4. D — "D" başlıqlı sütun (death)
+Qeydlər:
+- "Para$" sütunu: bəzən var, bəzən yox (həmişə $ ilə işarələnib, min. 1000+)
+- "K" = Kill (öldürmə), "A" = Assist, "D" = Death — ekranda bu başlıqlarla göstərilir
+- "Skor" və "Ping" K/A/D-dən SONRA gəlir — bunları SAYMA
 
-DİQQƏT:
-- Para (pul miqdarı, $ işarəli, məs. 6900$, 10000$) — BU K DEYİL, SAYMA
-- "Skor" sütunu — K/A/D-dən SONRA gəlir, onu da SAYMA
-- "Ping" sütunu — ən sonda, SAYMA
-- Yalnız K, A, D sütunlarını çıxart
+NİCK QAYDASI — klan taqlərini sil:
+- [CSTFY] Zenith   → "Zenith"
+- [56799] PrnHub   → "PrnHub"    ← rəqəmli taq da silinir
+- [AZE9] SeeyouSo2 → "SeeyouSo2"
+- [S2WRX] Am1n     → "Am1n"
+- [IFFAB] 910      → "910"       ← yalnız rəqəmlərdən ibarət nik
+- [BTN52] Lawliet  → "Lawliet"
+- VXO~KFC          → "VXO~KFC"  ← taq yoxdur, olduğu kimi
+- URKA____117      → "URKA____117"
 
-YALNIZCA bu JSON formatında qaytar, başqa heç nə yazma:
+YALNIZCA JSON qaytır (başqa heç nə yazma):
 [
-  {"nick": "Zenith",         "kills": 39, "assists": 5,  "deaths": 15},
-  {"nick": "NyxZero",        "kills": 24, "assists": 1,  "deaths": 12},
-  {"nick": "XyRo~",          "kills": 11, "assists": 6,  "deaths": 14},
-  {"nick": "TofiqXS",        "kills": 38, "assists": 1,  "deaths": 15},
-  {"nick": "AzE_-Elfat1Ha-", "kills": 10, "assists": 4,  "deaths": 17}
+  {"nick": "Zenith",    "kills": 39, "assists": 5, "deaths": 15},
+  {"nick": "TofiqXS",  "kills": 38, "assists": 1, "deaths": 15},
+  {"nick": "VXO~KFC",  "kills": 8,  "assists": 2, "deaths": 15}
 ]"""
 
 
 def _strip_clan_tag(nick: str) -> str:
-    """[TAG], (TAG), {TAG} kimi klan taglarını adın önündən silir.
-    Həm hərfli ([CSTFY]), həm rəqəmli ([56799]) tagları tutir."""
+    """
+    [TAG], (TAG), {TAG} klan taqlarını adın önündən silir.
+    Həm hərfli ([CSTFY]), həm rəqəmli ([56799]), həm qarışıq ([AZE9], [BTN52]) taqları tutur.
+    """
     nick = nick.strip()
-    # Mötərizə içi klan tag — ad başında (hərf, rəqəm, alt xətt, tire 1-12 simvol)
     nick = re.sub(r'^\s*[\[\(\{][A-Za-z0-9_\-]{1,12}[\]\)\}]\s*', '', nick)
     nick = re.sub(r'\s+', ' ', nick).strip()
     return nick
 
 
 def _safe_int(v, default: int = 0) -> int:
-    """Dəyəri təhlükəsiz şəkildə int-ə çevirir."""
     try:
-        return max(0, int(str(v).strip().replace(',', '').replace('.', '')))
+        s = str(v).strip().replace(',', '').replace(' ', '')
+        return max(0, int(float(s)))
     except Exception:
         return default
 
@@ -91,8 +91,7 @@ def _claude_ocr(image_bytes: bytes) -> list:
             }]
         )
         raw = msg.content[0].text.strip()
-        # JSON bloku tap
-        m = re.search(r'\[[\s\S]*?\]', raw)
+        m   = re.search(r'\[[\s\S]*?\]', raw)
         if m:
             raw = m.group(0)
         parsed = json.loads(raw)
@@ -140,11 +139,18 @@ def _ocrspace_ocr(image_bytes: bytes) -> list:
 
 def _parse_ocr_text(text: str) -> list:
     """
-    OCR.space mətnindən K/A/D məlumatı çıxarır.
+    OCR.space mətnindən K/A/D çıxarır.
 
-    Sütun sırası:
-      Sol komanda: Para($) K A D Skor Ping  → Para-nı sil, ilk 3 = K/A/D
-      Sağ komanda: K A D Skor Ping          → ilk 3 = K/A/D
+    Hər sətir yapısı (Para$ çıxarılandan sonra):
+      [row#]  K  A  D  Skor  Ping
+      - row# həmişə 1-5 arası
+      - Skor ≤ ~100, Ping 0-500 (100+ ola bilər!)
+
+    Alqoritm:
+      1. Para$ məbləğini sil
+      2. 0-150 aralığındakı rəqəmləri al (Ping > 150 kimi ekstremal dəyərləri at)
+      3. Birinci rəqəm 1-9 aralığındadırsa VƏ ardından ≥3 rəqəm varsa → sıra nömrəsidir, atla
+      4. İlk 3 rəqəm = K, A, D
     """
     results, seen = [], set()
 
@@ -153,48 +159,51 @@ def _parse_ocr_text(text: str) -> list:
         if not line:
             continue
 
-        # Para sütununu sil (N$ və ya $N formatı, adətən 1000-10000 arası)
-        # Məs: "6900$", "10000$", "$6900"
+        # 1. Para məbləğini sil (N$ və ya $N, adətən 1000-10000 arası)
         line_no_money = re.sub(r'\b\d{3,6}\s*\$|\$\s*\d{3,6}\b', '', line)
 
-        # Sətirdəki bütün rəqəmlər
-        all_nums = re.findall(r'\b(\d+)\b', line_no_money)
-        if len(all_nums) < 3:
+        # 2. Bütün rəqəmləri tap, yalnız 0-150 aralığını saxla
+        #    (Para artıq silindi; Ping 151+ aralığını filter edir)
+        all_raw = re.findall(r'\b(\d+)\b', line_no_money)
+        valid   = [int(n) for n in all_raw if 0 <= int(n) <= 150]
+
+        if len(valid) < 3:
             continue
 
-        # Ad hissəsini tap (rəqəmləri silərək)
-        name_part = re.sub(r'\b\d+\b', '', line_no_money)
-        # Klan tagları sil
-        name_part = re.sub(r'[\[\(\{][A-Za-z0-9_\-]{1,12}[\]\)\}]', ' ', name_part)
-        # Oyun adı üçün icazəli simvollar: hərf, rəqəm, _, ~, -, .
-        name_part = re.sub(r'[^A-Za-z0-9_~.\-\s]', ' ', name_part)
-        words = [w for w in name_part.split() if len(w) >= 2]
-        if not words:
+        # 3. Sıra nömrəsini atla:
+        #    Birinci rəqəm 1-9 aralığındadırsa VƏ ardından ≥ 3 rəqəm varsa → sıra nömrəsidir
+        if valid[0] <= 9 and len(valid) >= 4:
+            valid = valid[1:]
+
+        if len(valid) < 3:
             continue
 
-        nick = max(words, key=len)
-        nick_lower = nick.lower()
-        if nick_lower in seen:
-            continue
-        seen.add(nick_lower)
+        k, a, d = valid[0], valid[1], valid[2]
 
-        # Rəqəmləri filtr: yalnız 0-99 arası (K/A/D/Skor/Ping üçün məntiqli)
-        valid_nums = [int(n) for n in all_nums if int(n) <= 99]
-        if len(valid_nums) < 3:
-            continue
-
-        # Sıra nömrəsi (# 1-5) idarəsi:
-        # Əgər 6 və ya daha çox rəqəm varsa: # + K + A + D + Skor + Ping = 6
-        # Birinci rəqəm sıra nömrəsidir — atla.
-        # 5 rəqəm varsa: K + A + D + Skor + Ping — atlamaq lazım deyil.
-        if len(valid_nums) >= 6:
-            valid_nums = valid_nums[1:]   # sıra nömrəsini at
-
-        k, a, d = valid_nums[0], valid_nums[1], valid_nums[2]
-
-        # Ağlabatan K/A/D aralığı yoxla
+        # 4. K/A/D ağlabatan aralıq yoxlaması
         if k > 60 or a > 30 or d > 30:
             continue
+
+        # 5. Oyunçu adını çıxart
+        name_part = re.sub(r'\b\d+\b', '', line_no_money)
+        name_part = re.sub(r'[\[\(\{][A-Za-z0-9_\-]{1,12}[\]\)\}]', ' ', name_part)
+        name_part = re.sub(r'[^A-Za-z0-9_~.\-\s]', ' ', name_part)
+        words = [w for w in name_part.split() if len(w) >= 2]
+
+        if not words:
+            # Xüsusi hal: yalnız rəqəmlərdən ibarət nick (məs. "910")
+            # Sıra nömrəsini (1-9) və K/A/D/Skor/Ping-i qeyri-olaraq atıb
+            # 2-4 rəqəmli, ≤ 999 olan ədədi nick kimi qəbul edirik
+            digit_nicks = [n for n in re.findall(r'\b(\d{2,4})\b', line_no_money)
+                           if 10 <= int(n) <= 999]
+            if not digit_nicks:
+                continue
+            nick = digit_nicks[0]
+        else:
+            nick = max(words, key=len)
+        if nick.lower() in seen:
+            continue
+        seen.add(nick.lower())
 
         results.append({"nick": nick, "kills": k, "assists": a, "deaths": d})
 
@@ -263,15 +272,20 @@ def _similarity(a: str, b: str) -> float:
         return 0.0
     if a == b:
         return 1.0
+
+    # Tam substring uyğunluğu
     if a in b or b in a:
         return 0.92
 
     # Prefix uyğunluğu (ilk N simvol)
     min_len = min(len(a), len(b))
-    if min_len >= 4:
+    if min_len >= 3:
         prefix_match = sum(1 for i in range(min_len) if a[i] == b[i])
-        if prefix_match / min_len >= 0.80:
+        ratio = prefix_match / min_len
+        if ratio >= 0.80:
             return 0.85
+        if ratio >= 0.60:
+            return 0.70
 
     # Karakter bazlı uyğunluq
     longer  = max(a, b, key=len)
