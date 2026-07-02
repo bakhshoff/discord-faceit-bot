@@ -12,6 +12,12 @@ MARKET_ITEMS = [
     {"id": "banner_ambassador", "name": "Calestify Ambassador",
      "type": "banner", "price": 0, "file": "banner_ambassador.png", "exclusive": True},
 
+    # Standoff 2 Animated — hərəkətli GIF banner + çərçivə
+    {"id": "banner_s2_animated", "name": "S2 Animated Banner",
+     "type": "banner", "price": 800, "file": "s2_animated.gif", "animated": True},
+    {"id": "frame_s2_animated", "name": "S2 Tactical Frame",
+     "type": "avatar_frame", "price": 600, "file": "s2_frame.gif", "animated": True},
+
     {"id": "banner_gold", "name": "Qizili Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
     {"id": "banner_red", "name": "Qirmizi Alov Banner", "type": "banner", "price": 200, "file": "banner_red.png"},
     {"id": "banner_purple", "name": "Benovseyi Elite Banner", "type": "banner", "price": 350, "file": "banner_purple.png"},

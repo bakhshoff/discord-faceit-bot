@@ -106,10 +106,15 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     # ── Arxa plan ────────────────────────────────────────────────────────────
     if banner_path and os.path.exists(banner_path):
         try:
-            bi  = Image.open(banner_path).convert("RGB")
+            raw = Image.open(banner_path)
+            # GIF animasiya: orta frame-i götür
+            if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
+                n = getattr(raw, "n_frames", 1)
+                raw.seek(n // 2)
+            bi  = raw.convert("RGB")
             bi  = ImageOps.fit(bi, (WIDTH, HEIGHT), Image.LANCZOS)
             ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
-            img = Image.blend(bi, ov, 0.50)
+            img = Image.blend(bi, ov, 0.40)
         except Exception:
             img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
     else:
