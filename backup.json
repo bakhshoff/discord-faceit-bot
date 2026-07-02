@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782978853,
+  "exported_at": 1782994036,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -150,6 +150,28 @@
       "deaths": 10,
       "win_streak": 1,
       "max_streak": 1,
+      "is_banned": 0,
+      "peak_elo": 1000,
+      "banned_until": 0,
+      "lang": "az"
+    },
+    {
+      "discord_id": 883061755985670154,
+      "so2_nick": "f0RDY",
+      "so2_id": "210655507",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
+      "win_streak": 0,
+      "max_streak": 0,
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
@@ -452,7 +474,7 @@
       "active_banner": "banner_purple",
       "active_frame": "frame_cyan",
       "zm_balance": 0,
-      "ai_memory": "5 qələbə, 100% win rate, ELO 1083",
+      "ai_memory": "5 qələbə, 100% win rate, ELO 1083, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı NyxZero, yaşı yoxdur, bacarıqları yoxdur, enerjiyə sahib, liderlik ruhu, Sevdiyi silah yoxdur, oyun stili agressiv, məqsədi bilinmir, adı NyxZero, yaşı bilinmir, bacarıqları liderlik, enerjiyə sahibdir, qaydaları pozma meyllidir, aggressiv davranış, qaydaları pozma meylli, təhdidlər edir, qaydaları pozma, təhdidlər, aggressiv davranış, uzaqlaşdırma, uzaqlaşdırıldı, təhdidlər edir, qaydaları pozur, aggressiv davranış, uzaqlaşdırıldı, community qaydalarını pozdu, təhdidlər etdi, aggressiv davranış nümayiş etdirdi, uzaqlaşdırıldı, qaydaları pozdu, təhdidlər etdi, aggressiv davranış nümayiş etdirdi, uzaqlaşdırıldı, qaydaları pozdu, təhdidlər etdi, aggressiv davranış nümayiş etdirdi, hesabı bloklanacaq",
       "kills": 102,
       "assists": 13,
       "deaths": 49,
@@ -668,7 +690,7 @@
       "elo": 1016,
       "wins": 1,
       "losses": 0,
-      "coins": 17,
+      "coins": 27,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -822,7 +844,7 @@
       "elo": 1000,
       "wins": 3,
       "losses": 3,
-      "coins": 237,
+      "coins": 247,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -2727,6 +2749,24 @@
       "log_type": "earn",
       "balance_after": 114,
       "created_at": 1782974369
+    },
+    {
+      "id": 244,
+      "discord_id": 1424104516214849617,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 27,
+      "created_at": 1782993449
+    },
+    {
+      "id": 245,
+      "discord_id": 1478002530284736687,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 247,
+      "created_at": 1782993970
     }
   ],
   "active_boosts": []
