@@ -1302,12 +1302,13 @@ class VetoView(discord.ui.View):
             except Exception as e:
                 print(f"[Veto] _launch_match xetasi: {e}", flush=True)
         else:
-            next_cap = "A" if self.turn % 2 == 0 else "B"
+            next_cap_id = self.captain_a_id if self.turn % 2 == 0 else self.captain_b_id
+            next_cap    = "A" if self.turn % 2 == 0 else "B"
             self._build_buttons()
             bans_done = len(MAPS) - len(self.remaining)
             await interaction.response.edit_message(
                 content=(f"🗺️ **{map_name}** ban edildi! ({bans_done}/{len(MAPS)-1} ban)\n"
-                         f"Sıra: Kapitan **{next_cap}** ban edir."),
+                         f"Sıra: <@{next_cap_id}> (Kapitan **{next_cap}**) ban edir."),
                 view=self
             )
 
@@ -1331,12 +1332,13 @@ async def _start_match(channel, guild):
     mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
 
     veto_embed = discord.Embed(
-        title=f"Matc No{match_number} — Xerite Veto",
+        title=f"Matç No{match_number} — Xəritə Veto",
         description=(
-            f"Kapitanlar novbe ile xeriteni BAN edir.\n"
-            f"7 xeriteden 6 ban edilir, 1 qalir.\n\n"
-            f"Ilk ban: Kapitan A (<@{captain_a['discord_id']}>)\n"
-            f"Sonra: Kapitan B, sonra A... novbe ile."
+            f"Kapitanlar növbə ilə xəritəni BAN edir.\n"
+            f"7 xəritədən 6 ban edilir, 1 qalır.\n\n"
+            f"Kapitan A: <@{captain_a['discord_id']}>\n"
+            f"Kapitan B: <@{captain_b['discord_id']}>\n\n"
+            f"İlk ban: <@{captain_a['discord_id']}> (Kapitan **A**)"
         ),
         color=discord.Color.red()
     )
