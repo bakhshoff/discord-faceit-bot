@@ -8,6 +8,10 @@
 # file: sekil faylinin adi
 
 MARKET_ITEMS = [
+    # Xüsusi — yalnız referral sistemi ilə əldə edilə bilər, marketdə satılmır
+    {"id": "banner_ambassador", "name": "Calestify Ambassador",
+     "type": "banner", "price": 0, "file": "banner_ambassador.png", "exclusive": True},
+
     {"id": "banner_gold", "name": "Qizili Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
     {"id": "banner_red", "name": "Qirmizi Alov Banner", "type": "banner", "price": 200, "file": "banner_red.png"},
     {"id": "banner_purple", "name": "Benovseyi Elite Banner", "type": "banner", "price": 350, "file": "banner_purple.png"},

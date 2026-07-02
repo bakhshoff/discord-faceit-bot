@@ -2453,3 +2453,144 @@ def get_unclaimed_bp_levels(discord_id: int) -> list:
     return [lv for lv in range(1, pd["level"] + 1) if lv not in claimed]
 
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REFERRAL (DAVET) SiSTEMi
+# ═══════════════════════════════════════════════════════════════════════════════
+
+REFERRAL_REWARD_REG     = 200      # Qeydiyyat üçün coin
+REFERRAL_REWARD_3MATCH  = 500      # 3 matç üçün coin
+REFERRAL_BANNER_ID      = "banner_ambassador"   # 10 matç üçün xüsusi banner
+
+def init_referral_tables():
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS referral_invites (
+            invite_code TEXT PRIMARY KEY,
+            inviter_id  INTEGER NOT NULL,
+            created_at  INTEGER NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS referrals (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            inviter_id           INTEGER NOT NULL,
+            invitee_id           INTEGER NOT NULL UNIQUE,
+            invite_code          TEXT,
+            joined_at            INTEGER NOT NULL,
+            registered_at        INTEGER,
+            reward_reg_given     INTEGER DEFAULT 0,
+            reward_3match_given  INTEGER DEFAULT 0,
+            reward_10match_given INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit(); conn.close()
+
+
+def store_referral_invite(invite_code: str, inviter_id: int):
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("INSERT OR REPLACE INTO referral_invites (invite_code,inviter_id,created_at) VALUES (?,?,?)",
+                (invite_code, inviter_id, int(time.time())))
+    conn.commit(); conn.close()
+
+
+def get_referral_inviter(invite_code: str):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT inviter_id FROM referral_invites WHERE invite_code=?", (invite_code,))
+    row = cur.fetchone(); conn.close()
+    return row[0] if row else None
+
+
+def get_inviter_invite_code(inviter_id: int):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT invite_code FROM referral_invites WHERE inviter_id=? ORDER BY created_at DESC LIMIT 1",
+                (inviter_id,))
+    row = cur.fetchone(); conn.close()
+    return row[0] if row else None
+
+
+def create_referral(inviter_id: int, invitee_id: int, invite_code: str):
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("INSERT OR IGNORE INTO referrals (inviter_id,invitee_id,invite_code,joined_at) VALUES (?,?,?,?)",
+                (inviter_id, invitee_id, invite_code, int(time.time())))
+    conn.commit(); conn.close()
+
+
+def get_referral_by_invitee(invitee_id: int):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT inviter_id,invite_code,joined_at,registered_at,reward_reg_given,reward_3match_given,reward_10match_given FROM referrals WHERE invitee_id=?",
+                (invitee_id,))
+    row = cur.fetchone(); conn.close()
+    if not row: return None
+    return {"inviter_id":row[0],"invite_code":row[1],"joined_at":row[2],
+            "registered_at":row[3],"reward_reg":row[4],"reward_3match":row[5],"reward_10match":row[6]}
+
+
+def mark_referral_registered(invitee_id: int) -> int:
+    """Qeydiyyat mükafatı ver. Inviter ID qaytarır, ya da 0."""
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT inviter_id,reward_reg_given FROM referrals WHERE invitee_id=?", (invitee_id,))
+    row = cur.fetchone()
+    if not row or row[1]: conn.close(); return 0
+    cur.execute("UPDATE referrals SET registered_at=?,reward_reg_given=1 WHERE invitee_id=?",
+                (int(time.time()), invitee_id))
+    conn.commit(); conn.close()
+    return row[0]
+
+
+def check_referral_match_rewards(invitee_id: int, total_matches: int) -> list:
+    """
+    3 və 10 matç milestone-larını yoxlayır.
+    Qaytarır: [{"inviter_id":int,"reward":"3match"|"10match","banner":bool}]
+    """
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT inviter_id,reward_3match_given,reward_10match_given FROM referrals WHERE invitee_id=? AND registered_at IS NOT NULL",
+                (invitee_id,))
+    row = cur.fetchone()
+    if not row: conn.close(); return []
+    inviter_id, r3, r10 = row
+    rewards = []
+    if total_matches >= 3 and not r3:
+        cur.execute("UPDATE referrals SET reward_3match_given=1 WHERE invitee_id=?", (invitee_id,))
+        rewards.append({"inviter_id": inviter_id, "reward": "3match", "banner": False})
+    if total_matches >= 10 and not r10:
+        cur.execute("UPDATE referrals SET reward_10match_given=1 WHERE invitee_id=?", (invitee_id,))
+        rewards.append({"inviter_id": inviter_id, "reward": "10match", "banner": True})
+    if rewards:
+        conn.commit()
+    conn.close()
+    return rewards
+
+
+def get_referral_stats(inviter_id: int) -> dict:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*),
+               SUM(CASE WHEN registered_at IS NOT NULL THEN 1 ELSE 0 END),
+               SUM(reward_3match_given),
+               SUM(reward_10match_given)
+        FROM referrals WHERE inviter_id=?
+    """, (inviter_id,))
+    row = cur.fetchone(); conn.close()
+    return {"total": row[0] or 0, "registered": row[1] or 0,
+            "milestone_3": row[2] or 0, "milestone_10": row[3] or 0}
+
+
+def get_referral_list(inviter_id: int) -> list:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""
+        SELECT r.invitee_id, p.so2_nick, p.wins+p.losses,
+               r.registered_at, r.reward_3match_given, r.reward_10match_given, r.joined_at
+        FROM referrals r
+        LEFT JOIN players p ON p.discord_id = r.invitee_id
+        WHERE r.inviter_id=?
+        ORDER BY r.joined_at DESC
+    """, (inviter_id,))
+    rows = cur.fetchall(); conn.close()
+    return [{"invitee_id":r[0],"nick":r[1] or "?","matches":r[2] or 0,
+             "registered":bool(r[3]),"r3":bool(r[4]),"r10":bool(r[5]),"joined_at":r[6]}
+            for r in rows]

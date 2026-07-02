@@ -56,8 +56,14 @@ try:
         buy_battle_pass, has_battle_pass, get_pass_data, add_bp_xp,
         get_active_bp_missions, update_bp_mission, BP_SEASON_ID, BP_MAX_LEVEL,
         get_lang, set_lang,
-        claim_bp_rewards, get_unclaimed_bp_levels
+        claim_bp_rewards, get_unclaimed_bp_levels,
+        init_referral_tables, store_referral_invite, get_referral_inviter,
+        get_inviter_invite_code, create_referral, get_referral_by_invitee,
+        mark_referral_registered, check_referral_match_rewards,
+        get_referral_stats, get_referral_list,
+        REFERRAL_REWARD_REG, REFERRAL_REWARD_3MATCH, REFERRAL_BANNER_ID
     )
+    from referral_visual import generate_referral_stats_card
     from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -96,8 +102,12 @@ if DATA_DIR and not os.path.exists(DATA_DIR):
 TEAM_A_VOICE_ID   = 1517460739059617883
 TEAM_B_VOICE_ID   = 1517460822148911124
 LOG_CHANNEL_ID    = 1517460644440313926
-GENERAL_CHAT_ID   = int(os.getenv("GENERAL_CHAT_ID",   "0"))
-RESULTS_CHANNEL_ID = int(os.getenv("RESULTS_CHANNEL_ID", "0"))
+GENERAL_CHAT_ID        = int(os.getenv("GENERAL_CHAT_ID",        "0"))
+RESULTS_CHANNEL_ID     = int(os.getenv("RESULTS_CHANNEL_ID",     "0"))
+REFERRAL_CHANNEL_ID    = int(os.getenv("REFERRAL_CHANNEL_ID",    "0"))
+
+# ── Invite tracking cache {code: uses_count} ─────────────────────────────────
+_invite_uses: dict = {}
 
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
@@ -251,6 +261,23 @@ class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
         success = register_player(interaction.user.id, str(self.nick), str(self.so2_id))
         if success:
             await asyncio.to_thread(backup.export_backup)
+            # Referral: qeydiyyat mükafatı (200 coin)
+            try:
+                inviter_id = mark_referral_registered(interaction.user.id)
+                if inviter_id:
+                    new_bal = add_coins(inviter_id, REFERRAL_REWARD_REG)
+                    add_coin_log(inviter_id, REFERRAL_REWARD_REG,
+                                 f"Davet mukafati — {self.nick} qeydiyyat etdi", "earn", new_bal)
+                    inviter = interaction.guild.get_member(inviter_id) if interaction.guild else None
+                    if inviter:
+                        try:
+                            await inviter.send(
+                                f"🎉 Dəvət etdiyin **{self.nick}** qeydiyyatdan keçdi!\n"
+                                f"**+{REFERRAL_REWARD_REG} coin** balansına əlavə edildi!")
+                        except discord.Forbidden:
+                            pass
+            except Exception as _re:
+                print(f"[REFERRAL register reward]: {_re}", flush=True)
             embed = discord.Embed(
                 title="✅ Qeydiyyat tamamlandı!",
                 description=(
@@ -1194,6 +1221,10 @@ class MatchResultView(discord.ui.View):
         # Matç kilidini aç
         clear_active_match()
 
+        # Referral milestoneları yoxla
+        all_pids = [p["discord_id"] for p in winner_team + loser_team]
+        asyncio.create_task(_check_referral_milestones(interaction.guild, all_pids))
+
         await interaction.response.edit_message(
             content=f"✅ **Matç No{self.match_number}** nəticəsi qeyd edildi — 🏆 **{winner_label}**",
             view=self
@@ -1971,6 +2002,9 @@ class ScanEditView(discord.ui.View):
                     pass
 
         clear_active_match()
+        asyncio.create_task(_check_referral_milestones(
+            interaction.guild,
+            [p["discord_id"] for p in winner_team + loser_team]))
         await asyncio.to_thread(backup.export_backup)
 
         for child in self.children:
@@ -2344,6 +2378,9 @@ class ManuelMatchStatView(discord.ui.View):
                          "earn", new_bal)
 
         clear_active_match()
+        asyncio.create_task(_check_referral_milestones(
+            interaction.guild,
+            [p["discord_id"] for p in winner_team + loser_team]))
         await asyncio.to_thread(backup.export_backup)
 
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
@@ -3344,6 +3381,26 @@ async def pass_missiyalar_cmd(interaction: discord.Interaction):
 
 
 @bot.event
+async def on_member_join(member: discord.Member):
+    """Yeni üzv qoşulduqda hansı invite ilə girdiyini aşkarla."""
+    try:
+        invs = await member.guild.fetch_invites()
+        for inv in invs:
+            cached = _invite_uses.get(inv.code, 0)
+            if inv.uses > cached:
+                inviter_id = get_referral_inviter(inv.code)
+                if inviter_id and inviter_id != member.id:
+                    create_referral(inviter_id, member.id, inv.code)
+                _invite_uses[inv.code] = inv.uses
+                break
+        # Cachi yenilə
+        for inv in invs:
+            _invite_uses[inv.code] = inv.uses
+    except Exception as _e:
+        print(f"[REFERRAL on_member_join]: {_e}", flush=True)
+
+
+@bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
@@ -3386,6 +3443,15 @@ async def on_ready():
         ban_check_task.start()
     if not anti_afk_check.is_running():
         anti_afk_check.start()
+    init_referral_tables()
+    # Invite cache-ni doldur
+    for guild in bot.guilds:
+        try:
+            invs = await guild.fetch_invites()
+            for inv in invs:
+                _invite_uses[inv.code] = inv.uses
+        except Exception:
+            pass
     check_and_lift_bans()
     await bot.tree.sync()
 
@@ -3462,6 +3528,46 @@ async def weekly_stats_task():
         embed.add_field(name=f"{medals[i]} {nick}", value=f"ELO: {elo}  ·  K/D: {kd}", inline=False)
     embed.set_footer(text=f"Calestify FACEIT  ·  {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y %H:%M')}")
     await ch.send(embed=embed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REFERRAL MILESTONE YOXLAMASI — matç bitdikdən sonra çağırılır
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _check_referral_milestones(guild, all_player_ids: list):
+    """Bütün matç oyunçularının referral milestone-larını yoxlayır."""
+    for did in all_player_ids:
+        try:
+            p = get_player(did)
+            if not p: continue
+            total_matches = p[4] + p[5]   # wins + losses
+            rewards = check_referral_match_rewards(did, total_matches)
+            for rw in rewards:
+                inviter_id = rw["inviter_id"]
+                if rw["reward"] == "3match":
+                    nb = add_coins(inviter_id, REFERRAL_REWARD_3MATCH)
+                    add_coin_log(inviter_id, REFERRAL_REWARD_3MATCH,
+                                 f"Davet mukafati — {p[1]} 3 matc oynadı", "earn", nb)
+                    member = guild.get_member(inviter_id) if guild else None
+                    if member:
+                        try:
+                            await member.send(
+                                f"🔥 Dəvət etdiyin **{p[1]}** 3 matç oynadı!\n"
+                                f"**+{REFERRAL_REWARD_3MATCH} coin** balansına əlavə edildi!")
+                        except discord.Forbidden: pass
+                elif rw["reward"] == "10match":
+                    # Xüsusi Ambassador banner ver
+                    if not owns_item(inviter_id, REFERRAL_BANNER_ID):
+                        add_to_inventory(inviter_id, REFERRAL_BANNER_ID)
+                    member = guild.get_member(inviter_id) if guild else None
+                    if member:
+                        try:
+                            await member.send(
+                                f"🏅 Dəvət etdiyin **{p[1]}** 10 matç oynadı!\n"
+                                f"**Calestify Ambassador** banneri inventarına əlavə edildi!")
+                        except discord.Forbidden: pass
+        except Exception as _me:
+            print(f"[REFERRAL milestone {did}]: {_me}", flush=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4891,6 +4997,128 @@ async def skin_siyahi(interaction: discord.Interaction):
 async def skin_siyahi_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REFERRAL (DAVET) KOMANDALAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="davet", description="Şəxsi dəvət linkini al və statistikanı gör")
+async def davet_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    player = get_player(interaction.user.id)
+    if not player:
+        await interaction.followup.send("❌ FACEIT qeydiyyatınız yoxdur. `/register` ilə qeydiyyatdan keçin.", ephemeral=True); return
+
+    # Mövcud invite code-u yoxla, yoxdursa yeni yarat
+    existing_code = get_inviter_invite_code(interaction.user.id)
+    invite_url = None
+
+    if existing_code:
+        invite_url = f"https://discord.gg/{existing_code}"
+    else:
+        # Yeni Discord invite yarat
+        channel = None
+        if REFERRAL_CHANNEL_ID:
+            channel = bot.get_channel(REFERRAL_CHANNEL_ID)
+        if not channel and interaction.guild:
+            channel = interaction.channel
+        if channel:
+            try:
+                inv = await channel.create_invite(
+                    max_age=0,        # sonsuz
+                    max_uses=0,       # limitsiz
+                    unique=True,
+                    reason=f"Referral — {interaction.user.display_name}"
+                )
+                store_referral_invite(inv.code, interaction.user.id)
+                _invite_uses[inv.code] = inv.uses
+                invite_url = inv.url
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    "❌ Bot dəvət linki yarada bilmir. Admin botun `Create Invite` icazəsini yoxlasın.",
+                    ephemeral=True); return
+
+    if not invite_url:
+        await interaction.followup.send("❌ Dəvət linki yaradıla bilmədi. Admin ilə əlaqə saxlayın.", ephemeral=True); return
+
+    stats     = get_referral_stats(interaction.user.id)
+    referrals = get_referral_list(interaction.user.id)
+    path      = os.path.join(DATA_DIR or ".", f"referral_{interaction.user.id}.png")
+    await asyncio.to_thread(
+        generate_referral_stats_card,
+        player[1], stats, referrals, invite_url, path)
+
+    embed = discord.Embed(
+        title="🔗 Şəxsi Dəvət Linkiniz",
+        description=(
+            f"`{invite_url}`\n\n"
+            f"Bu linki yoldaşlarınızla paylaşın!\n\n"
+            f"**Mükafatlar:**\n"
+            f"✅ Qeydiyyat etdikdə: **+{REFERRAL_REWARD_REG} coin**\n"
+            f"🔥 3 matç oynadıqda: **+{REFERRAL_REWARD_3MATCH} coin**\n"
+            f"🏅 10 matç oynadıqda: **Calestify Ambassador** banneri"
+        ),
+        color=discord.Color.purple()
+    )
+    await interaction.followup.send(
+        embed=embed,
+        file=discord.File(path, filename="davet.png"),
+        ephemeral=True)
+
+
+@bot.tree.command(name="davet_izle", description="Dəvət etdiyiniz oyunçuların statistikası")
+async def davet_izle_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    player = get_player(interaction.user.id)
+    if not player:
+        await interaction.followup.send("❌ Qeydiyyat yoxdur.", ephemeral=True); return
+    stats     = get_referral_stats(interaction.user.id)
+    referrals = get_referral_list(interaction.user.id)
+    existing_code = get_inviter_invite_code(interaction.user.id)
+    invite_url = f"https://discord.gg/{existing_code}" if existing_code else "—"
+    path = os.path.join(DATA_DIR or ".", f"referral_{interaction.user.id}.png")
+    await asyncio.to_thread(
+        generate_referral_stats_card,
+        player[1], stats, referrals, invite_url, path)
+    await interaction.followup.send(
+        file=discord.File(path, filename="davet_stats.png"), ephemeral=True)
+
+
+@bot.tree.command(name="davet_panel", description="[Admin] Referral sisteminin ümumi statistikası")
+@app_commands.checks.has_permissions(administrator=True)
+async def davet_panel_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    from database import _get_conn as _grc
+    conn = _grc(); cur = conn.cursor()
+    cur.execute("""
+        SELECT COUNT(*),
+               SUM(CASE WHEN registered_at IS NOT NULL THEN 1 ELSE 0 END),
+               SUM(reward_reg_given), SUM(reward_3match_given), SUM(reward_10match_given),
+               SUM(reward_reg_given)*200 + SUM(reward_3match_given)*500
+        FROM referrals
+    """)
+    row = cur.fetchone()
+    cur.execute("SELECT COUNT(DISTINCT inviter_id) FROM referrals")
+    unique_inviters = cur.fetchone()[0]
+    conn.close()
+    embed = discord.Embed(title="📊 Referral Panel", color=discord.Color.gold())
+    embed.add_field(name="Ümumi dəvət",       value=str(row[0] or 0),  inline=True)
+    embed.add_field(name="Qeydiyyat",          value=str(row[1] or 0),  inline=True)
+    embed.add_field(name="Aktiv dəvət edən",   value=str(unique_inviters), inline=True)
+    embed.add_field(name="200c mükafat",       value=str(row[2] or 0),  inline=True)
+    embed.add_field(name="500c mükafat",       value=str(row[3] or 0),  inline=True)
+    embed.add_field(name="Banner mükafat",     value=str(row[4] or 0),  inline=True)
+    embed.add_field(name="Ümumi coin xərci",   value=f"{row[5] or 0} coin", inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@davet_panel_cmd.error
+async def davet_panel_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
