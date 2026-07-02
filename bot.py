@@ -4903,48 +4903,136 @@ async def skin_siyahi_error(interaction: discord.Interaction, error):
 # TURNİR KOMANDALARı
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class TournamentRegisterModal(discord.ui.Modal, title="Komanda Qeydiyyatı"):
-    team_name = discord.ui.TextInput(label="Komanda adı", placeholder="Məs: Team Alpha", max_length=30)
-    members   = discord.ui.TextInput(
-        label="Komanda üzvlərinin Discord ID-ləri (vergüllə)",
-        placeholder="2v2: 1 ID  |  5v5: 4 ID  |  Məs: 123456789,987654321",
+async def _refresh_tournament_announcement(channel, t, teams):
+    """Kanal mesajını yenilənmiş qeydiyyat kartı ilə redaktə edir."""
+    path = os.path.join(DATA_DIR or ".", "tournament_reg.png")
+    await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
+    return path
+
+
+class TournamentJoinModal(discord.ui.Modal, title="Turnirə Qeydiyyat"):
+    """
+    FACEIT qeydiyyatlı oyunçular üçün sadələşdirilmiş turnir qeydiyyatı.
+    Kapitan öz məlumatlarını avtomatik alır, yalnız komanda adı və
+    digər FACEIT üzvlərinin Discord @mention-larını daxil edir.
+    """
+    team_name = discord.ui.TextInput(
+        label="Komanda adı",
+        placeholder="Məs: Storm Team, Alpha Squad",
+        max_length=30)
+    teammates = discord.ui.TextInput(
+        label="FACEIT üzv(lər)in Discord ID-si  (2v2=1, 5v5=4)",
+        placeholder="Boş buraxın = solo qeydiyyat",
         max_length=300,
         required=False)
 
-    async def on_submit(self, interaction: discord.Interaction):
-        t = get_active_tournament()
-        if not t or t["status"] != "registration":
-            await interaction.response.send_message("❌ Aktiv qeydiyyat yoxdur.", ephemeral=True); return
+    def __init__(self, tid: int):
+        super().__init__()
+        self.tid = tid
 
-        raw = self.members.value.strip() if self.members.value else ""
-        member_ids = []
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        t = get_tournament(self.tid)
+        if not t or t["status"] != "registration":
+            await interaction.followup.send("❌ Qeydiyyat artıq bağlıdır.", ephemeral=True); return
+
+        # Kapitanın FACEIT profilini yoxla
+        cap_player = get_player(interaction.user.id)
+        if not cap_player:
+            await interaction.followup.send(
+                "❌ FACEIT qeydiyyatınız yoxdur. Əvvəlcə `/register` ilə qeydiyyatdan keçin.",
+                ephemeral=True); return
+
+        # Komanda üzvlərini FACEIT-dən yoxla
+        all_ids   = [interaction.user.id]
+        elo_vals  = [cap_player[3]]
+        nicks     = [cap_player[1]]
+        not_found = []
+
+        raw = self.teammates.value.strip() if self.teammates.value else ""
         if raw:
             for s in raw.split(","):
                 s = s.strip()
                 if not s: continue
-                try: member_ids.append(int(s))
+                try:
+                    did = int(s)
                 except ValueError:
-                    await interaction.response.send_message(f"❌ Yanlış Discord ID: `{s}`", ephemeral=True); return
-        if len(member_ids) > 9:
-            await interaction.response.send_message("❌ Maksimum 9 üzv ID-si daxil edilə bilər.", ephemeral=True); return
+                    await interaction.followup.send(
+                        f"❌ Yanlış Discord ID: `{s}`\nID-ni Discord Developer Mode ilə kopyalayın.",
+                        ephemeral=True); return
+                if did == interaction.user.id:
+                    continue
+                member_player = get_player(did)
+                if not member_player:
+                    not_found.append(str(did))
+                    continue
+                all_ids.append(did)
+                elo_vals.append(member_player[3])
+                nicks.append(member_player[1])
 
-        all_ids = [interaction.user.id] + member_ids
-        elo_vals = []
-        for did in all_ids:
-            p = get_player(did)
-            if p: elo_vals.append(p[3])
-        elo_avg = sum(elo_vals) / len(elo_vals) if elo_vals else 1000
+        if not_found:
+            await interaction.followup.send(
+                f"❌ Bu Discord ID-lər FACEIT qeydiyyatında tapılmadı: `{', '.join(not_found)}`\n"
+                f"Həmin oyunçular əvvəlcə `/register` ilə qeydiyyatdan keçməlidir.",
+                ephemeral=True); return
 
+        if len(all_ids) > 10:
+            await interaction.followup.send("❌ Maksimum 10 üzv.", ephemeral=True); return
+
+        elo_avg = sum(elo_vals) / len(elo_vals)
         ok, msg = register_tournament_team(t["id"], str(self.team_name), interaction.user.id, all_ids, elo_avg)
         if not ok:
-            await interaction.response.send_message(f"❌ {msg}", ephemeral=True); return
+            await interaction.followup.send(f"❌ {msg}", ephemeral=True); return
 
         teams = get_tournament_teams(t["id"])
-        path  = os.path.join(DATA_DIR or ".", "tournament_reg.png")
-        await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
-        await interaction.response.send_message(
-            f"✅ **{self.team_name}** turnirə qeydiyyatdan keçdi! ({len(teams)}/{t['max_teams']})",
-            file=discord.File(path, filename="tournament_reg.png"), ephemeral=False)
+        path  = await _refresh_tournament_announcement(interaction.channel, t, teams)
+
+        member_list = "  ·  ".join(nicks)
+        await interaction.followup.send(
+            f"✅ **{self.team_name}** turnirə qeydiyyatdan keçdi!\n"
+            f"👥 Üzvlər: {member_list}\n"
+            f"📊 Orta ELO: {int(elo_avg)}  ·  Komanda: {len(teams)}/{t['max_teams']}",
+            file=discord.File(path, filename="tournament_reg.png"),
+            ephemeral=False)
+
+
+class TournamentJoinView(discord.ui.View):
+    """Turnir elan mesajına əlavə olunan açıq düymə paneli."""
+    def __init__(self, tid: int):
+        super().__init__(timeout=None)   # Persistent — bot yenidən başlayana qədər
+        self.tid = tid
+
+    @discord.ui.button(label="Turnirə Qoşul", style=discord.ButtonStyle.success,
+                       emoji="🏆", custom_id="tournament_join")
+    async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
+        t = get_tournament(self.tid)
+        if not t:
+            await interaction.response.send_message("❌ Turnir tapılmadı.", ephemeral=True); return
+        if t["status"] != "registration":
+            await interaction.response.send_message("❌ Qeydiyyat bağlıdır.", ephemeral=True); return
+        if not get_player(interaction.user.id):
+            await interaction.response.send_message(
+                "❌ FACEIT qeydiyyatınız yoxdur. `/register` ilə qeydiyyatdan keçin.",
+                ephemeral=True); return
+        await interaction.response.send_modal(TournamentJoinModal(self.tid))
+
+    @discord.ui.button(label="Turnir Vəziyyəti", style=discord.ButtonStyle.secondary,
+                       emoji="📊", custom_id="tournament_status")
+    async def status(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        t = get_tournament(self.tid)
+        if not t:
+            await interaction.followup.send("❌ Tapılmadı.", ephemeral=True); return
+        teams   = get_tournament_teams(t["id"])
+        matches = get_tournament_matches(t["id"])
+        path    = os.path.join(DATA_DIR or ".", "tournament.png")
+        if t["status"] == "registration":
+            await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
+            fname = "tournament_reg.png"
+        else:
+            await asyncio.to_thread(generate_tournament_card, t, teams, matches, path)
+            fname = "tournament.png"
+        await interaction.followup.send(file=discord.File(path, filename=fname), ephemeral=True)
 
 
 @bot.tree.command(name="turnir_yarat", description="[Admin] Yeni turnir yarat")
@@ -4954,7 +5042,8 @@ async def turnir_yarat_cmd(interaction: discord.Interaction, ad: str, mukafat: i
     await interaction.response.defer()
     existing = get_active_tournament()
     if existing:
-        await interaction.followup.send(f"❌ Artıq aktiv turnir var: **{existing['name']}**. Əvvəlcə onu bitirin.", ephemeral=True); return
+        await interaction.followup.send(
+            f"❌ Artıq aktiv turnir var: **{existing['name']}**. Əvvəlcə onu bitirin.", ephemeral=True); return
     if max_komanda not in (2, 4, 8):
         await interaction.followup.send("❌ Max komanda 2, 4 və ya 8 ola bilər.", ephemeral=True); return
 
@@ -4963,15 +5052,24 @@ async def turnir_yarat_cmd(interaction: discord.Interaction, ad: str, mukafat: i
     teams = []
     path  = os.path.join(DATA_DIR or ".", "tournament_reg.png")
     await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
+
     embed = discord.Embed(
-        title=f"🏆 {ad} — Turnir Yaradıldı!",
-        description=(f"Qeydiyyat açıqdır!\n\n"
-                     f"💰 Mükafat: **{mukafat} coin**\n"
-                     f"👥 Max komanda: **{max_komanda}**\n\n"
-                     f"Qeydiyyat üçün: `/turnir_qeydi`"),
+        title=f"🏆  {ad}",
+        description=(
+            f"**Qeydiyyat açıqdır!**\n\n"
+            f"FACEIT qeydiyyatlı oyunçular aşağıdakı düyməyə basaraq qoşulur.\n"
+            f"Komanda yarat → komanda adı + komanda yoldaşının Discord ID-si.\n\n"
+            f"💰 Mükafat: **{mukafat} coin** *(sonradan `/turnir_mukafat` ilə genişləndirilə bilər)*\n"
+            f"👥 Max komanda: **{max_komanda}**\n"
+            f"📌 Qeydiyyat `Turnirə Qoşul` düyməsi ilə"
+        ),
         color=discord.Color.gold()
     )
-    await interaction.followup.send(embed=embed, file=discord.File(path, filename="tournament_reg.png"))
+    embed.set_footer(text="Calestify FACEIT  •  Season 1 Tournament")
+    await interaction.followup.send(
+        embed=embed,
+        file=discord.File(path, filename="tournament_reg.png"),
+        view=TournamentJoinView(tid))
 
 
 @turnir_yarat_cmd.error
@@ -4980,14 +5078,17 @@ async def turnir_yarat_error(i, e):
         await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
-@bot.tree.command(name="turnir_qeydi", description="Turnirə komanda olaraq qeydiyyatdan keç (kapitan üçün)")
+@bot.tree.command(name="turnir_qeydi", description="Turnirə komanda qeydiyyatı (kapitan üçün)")
 async def turnir_qeydi_cmd(interaction: discord.Interaction):
     t = get_active_tournament()
     if not t:
         await interaction.response.send_message("❌ Aktiv turnir yoxdur.", ephemeral=True); return
     if t["status"] != "registration":
         await interaction.response.send_message("❌ Qeydiyyat bağlıdır.", ephemeral=True); return
-    await interaction.response.send_modal(TournamentRegisterModal())
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message(
+            "❌ FACEIT qeydiyyatınız yoxdur. `/register` ilə qeydiyyatdan keçin.", ephemeral=True); return
+    await interaction.response.send_modal(TournamentJoinModal(t["id"]))
 
 
 @bot.tree.command(name="turnir", description="Aktiv turnirin vəziyyətini göstər")
