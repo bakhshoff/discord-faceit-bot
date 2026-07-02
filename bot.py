@@ -63,7 +63,7 @@ try:
         get_referral_stats, get_referral_list,
         REFERRAL_REWARD_REG, REFERRAL_REWARD_3MATCH, REFERRAL_BANNER_ID
     )
-    from referral_visual import generate_referral_stats_card
+    from referral_visual import generate_referral_card, generate_item_preview_card
     from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -780,6 +780,85 @@ class MarketSubView(discord.ui.View):
 
 
 # ── İnventar alt-menüsü ───────────────────────────────────────────────────────
+class ItemSelectView(discord.ui.View):
+    """Banner / avatar frame önizləmə + aktivləşdirmə paneli."""
+    def __init__(self, discord_id: int, owned: list, active_id: str | None, item_type: str):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+        self.active_id  = active_id
+        self.item_type  = item_type
+        self.selected   = None
+
+        # Dropdown: sahib olunan itemlər
+        opts = []
+        for iid in owned[:25]:
+            it = get_item_by_id(iid)
+            if not it: continue
+            is_act = iid == active_id
+            opts.append(discord.SelectOption(
+                label=it["name"][:25],
+                value=iid,
+                description="▶ Aktiv" if is_act else "Önizlə → Aktivləşdir",
+                emoji="▶️" if is_act else "⬜"))
+        if opts:
+            sel = discord.ui.Select(placeholder="Item seç...", options=opts, row=0)
+            sel.callback = self._on_select
+            self.add_item(sel)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        self.selected = interaction.data["values"][0]
+        item = get_item_by_id(self.selected)
+        if not item:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+
+        # Avatar bytes al
+        avatar_bytes = None
+        try:
+            url  = interaction.user.display_avatar.replace(size=256).url
+            resp = await asyncio.to_thread(__import__("requests").get, url, timeout=8)
+            avatar_bytes = resp.content
+        except Exception:
+            pass
+
+        path = os.path.join(DATA_DIR or ".", f"item_preview_{self.discord_id}.png")
+        await asyncio.to_thread(
+            generate_item_preview_card,
+            interaction.user.display_name, avatar_bytes, item, path)
+        await interaction.followup.send(
+            content=f"**{item['name']}** — önizləmə",
+            file=discord.File(path, filename="preview.png"),
+            view=ItemActivateView(self.discord_id, self.selected, self.item_type),
+            ephemeral=True)
+
+
+class ItemActivateView(discord.ui.View):
+    """Aktivləşdir / Ləğv et düymələri."""
+    def __init__(self, discord_id: int, item_id: str, item_type: str):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.item_id    = item_id
+        self.item_type  = item_type
+
+    @discord.ui.button(label="Aktivləşdir ✅", style=discord.ButtonStyle.success)
+    async def activate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        if self.item_type == "banner":
+            set_active_banner(self.discord_id, self.item_id)
+        else:
+            set_active_frame(self.discord_id, self.item_id)
+        item = get_item_by_id(self.item_id)
+        for child in self.children: child.disabled = True
+        await interaction.response.edit_message(
+            content=f"✅ **{item['name'] if item else self.item_id}** aktiv edildi! `/profile` ilə yoxlayın.",
+            view=self)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content="❌ Ləğv edildi.", view=None)
+
+
 class InventarSubView(discord.ui.View):
     def __init__(self, discord_id):
         super().__init__(timeout=120)
@@ -789,28 +868,25 @@ class InventarSubView(discord.ui.View):
     async def inv_avatar(self, interaction: discord.Interaction, button: discord.ui.Button):
         owned = [i for i in get_inventory(self.discord_id)
                  if get_item_by_id(i) and get_item_by_id(i).get("type") == "banner"]
-        active = get_active_banner(self.discord_id)
         if not owned:
-            await interaction.response.send_message("🖼️ Heç bir banneriniz yoxdur.", ephemeral=True)
-            return
-        lines = [f"{'▶️' if i == active else '⬜'} **{get_item_by_id(i)['name']}**" for i in owned]
-        embed = discord.Embed(title="🖼️ Avatar Bannerlərim", description="\n".join(lines), color=discord.Color.gold())
-        embed.set_footer(text="Aktivləşdirmək üçün aşağıdan seçin")
-        view = InventoryActivateView(self.discord_id)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            await interaction.response.send_message("🖼️ Heç bir banneriniz yoxdur.", ephemeral=True); return
+        active = get_active_banner(self.discord_id)
+        await interaction.response.send_message(
+            embed=discord.Embed(title="🖼️ Bannerlərim", color=discord.Color.gold())
+                  .set_footer(text="Önizləmə üçün seçin → Aktivləşdir"),
+            view=ItemSelectView(self.discord_id, owned, active, "banner"), ephemeral=True)
 
     @discord.ui.button(label="Çərçivə", style=discord.ButtonStyle.secondary, emoji="🔲", row=0)
     async def inv_frame(self, interaction: discord.Interaction, button: discord.ui.Button):
         owned = [i for i in get_inventory(self.discord_id)
                  if get_item_by_id(i) and get_item_by_id(i).get("type") == "avatar_frame"]
-        active = get_active_frame(self.discord_id)
         if not owned:
-            await interaction.response.send_message("🔲 Heç bir çərçivəniz yoxdur.", ephemeral=True)
-            return
-        lines = [f"{'▶️' if i == active else '⬜'} **{get_item_by_id(i)['name']}**" for i in owned]
-        embed = discord.Embed(title="🔲 Çərçivələrim", description="\n".join(lines), color=discord.Color.blurple())
-        view = InventoryActivateView(self.discord_id)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            await interaction.response.send_message("🔲 Heç bir çərçivəniz yoxdur.", ephemeral=True); return
+        active = get_active_frame(self.discord_id)
+        await interaction.response.send_message(
+            embed=discord.Embed(title="🔲 Çərçivələrim", color=discord.Color.blurple())
+                  .set_footer(text="Önizləmə üçün seçin → Aktivləşdir"),
+            view=ItemSelectView(self.discord_id, owned, active, "frame"), ephemeral=True)
 
     @discord.ui.button(label="Skin", style=discord.ButtonStyle.success, emoji="🔫", row=0)
     async def inv_skin(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1038,7 +1114,7 @@ class PlayerProfileView(discord.ui.View):
         referrals = get_referral_list(self.discord_id)
         path      = os.path.join(DATA_DIR or ".", f"referral_{self.discord_id}.png")
         await asyncio.to_thread(
-            generate_referral_stats_card,
+            generate_referral_card,
             player[1], stats, referrals, invite_url, path)
 
         embed = discord.Embed(
@@ -2677,25 +2753,6 @@ class TaskSelectView(discord.ui.View):
             self.add_item(btn)
 
 
-@bot.tree.command(name="gunluk", description="Günlük tapşırıqları göstərir")
-async def gunluk_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    refresh_daily_tasks()
-    fail_expired_tasks()
-    active = get_player_active_task(interaction.user.id)
-    tasks  = get_active_daily_tasks()
-
-    if not active and not tasks:
-        await interaction.followup.send("⏳ Hazırda aktiv tapşırıq yoxdur.", ephemeral=True)
-        return
-
-    path = os.path.join(DATA_DIR or ".", f"tasks_{interaction.user.id}.png")
-    await asyncio.to_thread(generate_tasks_card, active, tasks, path)
-
-    view = TaskSelectView(interaction.user.id, tasks) if not active and tasks else None
-    await interaction.followup.send(file=discord.File(path, filename="tasks.png"), view=view, ephemeral=True)
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # XƏBƏRDARLIQ / BAN SİSTEMİ
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3396,35 +3453,6 @@ async def pass_al_cmd(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
     else:
         await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-
-
-@bot.tree.command(name="pass_missiyalar", description="Battle Pass missiyalarını göstər")
-async def pass_missiyalar_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not has_battle_pass(interaction.user.id):
-        await interaction.followup.send("❌ Pass-iniz yoxdur. `/pass_al` ile alin.", ephemeral=True)
-        return
-
-    missions = get_active_bp_missions(interaction.user.id)
-    pd       = get_pass_data(interaction.user.id)
-
-    embed = discord.Embed(
-        title=f"Missiyalar  |  LVL {pd['level']}/{BP_MAX_LEVEL}",
-        color=0x8C50FF
-    )
-    cats = {"daily": "Gundelik", "weekly": "Hefte", "seasonal": "Sezon"}
-    for cat, cat_label in cats.items():
-        ms = [m for m in missions if m["cat"] == cat]
-        if not ms:
-            continue
-        lines = []
-        for m in ms:
-            icon = "✅" if m["completed"] else "○"
-            pct  = int(m["progress"]/m["target"]*100) if m["target"] else 100
-            lines.append(f"{icon} {m['desc'][:30]} ({m['progress']}/{m['target']}) +{m['xp']} XP")
-        embed.add_field(name=f"{cat_label} Missiyalar", value="\n".join(lines) or "—", inline=False)
-
-    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.event
@@ -5046,126 +5074,132 @@ async def skin_siyahi_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# REFERRAL (DAVET) KOMANDALAR
+# REFERRAL (DAVET) — tək komanda, butonlu panel
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@bot.tree.command(name="davet", description="Şəxsi dəvət linkini al və statistikanı gör")
+async def _get_or_create_invite(inviter_id: int, guild, channel) -> str | None:
+    code = get_inviter_invite_code(inviter_id)
+    if code:
+        return f"https://discord.gg/{code}"
+    ref_ch = bot.get_channel(REFERRAL_CHANNEL_ID) if REFERRAL_CHANNEL_ID else channel
+    if ref_ch:
+        try:
+            inv = await ref_ch.create_invite(max_age=0, max_uses=0, unique=True,
+                                             reason=f"Referral — {inviter_id}")
+            store_referral_invite(inv.code, inviter_id)
+            _invite_uses[inv.code] = inv.uses
+            return inv.url
+        except discord.Forbidden:
+            pass
+    return None
+
+
+class DavetView(discord.ui.View):
+    def __init__(self, discord_id: int, invite_url: str):
+        super().__init__(timeout=300)
+        self.discord_id = discord_id
+        self.invite_url = invite_url
+
+    @discord.ui.button(label="Statistika", emoji="📊", style=discord.ButtonStyle.primary, row=0)
+    async def show_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.discord_id)
+        stats  = get_referral_stats(self.discord_id)
+        refs   = get_referral_list(self.discord_id)
+        path   = os.path.join(DATA_DIR or ".", f"referral_{self.discord_id}.png")
+        await asyncio.to_thread(generate_referral_card,
+                                player[1] if player else "?", stats, refs, self.invite_url, path)
+        await interaction.followup.send(
+            file=discord.File(path, filename="davet.png"),
+            view=DavetView(self.discord_id, self.invite_url), ephemeral=True)
+
+    @discord.ui.button(label="Dəvət Edilənlər", emoji="👥", style=discord.ButtonStyle.secondary, row=0)
+    async def show_list(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        refs = get_referral_list(self.discord_id)
+        if not refs:
+            await interaction.response.send_message("Hələ heç kimi dəvət etməmisiniz.", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.discord_id)
+        stats  = get_referral_stats(self.discord_id)
+        path   = os.path.join(DATA_DIR or ".", f"referral_{self.discord_id}.png")
+        await asyncio.to_thread(generate_referral_card,
+                                player[1] if player else "?", stats, refs, self.invite_url, path)
+        await interaction.followup.send(
+            file=discord.File(path, filename="davet_list.png"),
+            view=DavetView(self.discord_id, self.invite_url), ephemeral=True)
+
+    @discord.ui.button(label="Mükafatlar", emoji="🏆", style=discord.ButtonStyle.secondary, row=0)
+    async def show_prizes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(title="🏆 Dəvət Mükafatları", color=discord.Color.purple())
+        embed.add_field(name="✅ Qeydiyyat", value=f"**+{REFERRAL_REWARD_REG} coin**", inline=True)
+        embed.add_field(name="🔥 3 Matç",    value=f"**+{REFERRAL_REWARD_3MATCH} coin**", inline=True)
+        embed.add_field(name="🏅 10 Matç",   value="**Calestify Ambassador** banneri\n*(Marketdə satılmır)*", inline=True)
+        embed.set_footer(text="Hər dəvət etdiyin oyunçu FACEIT qeydiyyatından keçdikdə 200 coin qazanırsan")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="⚙️ Admin Panel", emoji="📋", style=discord.ButtonStyle.danger, row=1)
+    async def admin_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+        from database import _get_conn as _grc
+        conn = _grc(); cur = conn.cursor()
+        cur.execute("""SELECT COUNT(*),
+                              SUM(CASE WHEN registered_at IS NOT NULL THEN 1 ELSE 0 END),
+                              SUM(reward_reg_given), SUM(reward_3match_given), SUM(reward_10match_given),
+                              SUM(reward_reg_given)*200 + SUM(reward_3match_given)*500
+                       FROM referrals""")
+        row = cur.fetchone()
+        cur.execute("SELECT COUNT(DISTINCT inviter_id) FROM referrals")
+        unique_inv = cur.fetchone()[0]
+        conn.close()
+        embed = discord.Embed(title="📊 Referral Admin Panel", color=discord.Color.gold())
+        embed.add_field(name="Ümumi dəvət",      value=str(row[0] or 0), inline=True)
+        embed.add_field(name="Qeydiyyat",         value=str(row[1] or 0), inline=True)
+        embed.add_field(name="Aktiv dəvət edən",  value=str(unique_inv),  inline=True)
+        embed.add_field(name="200c mükafat",      value=str(row[2] or 0), inline=True)
+        embed.add_field(name="500c mükafat",      value=str(row[3] or 0), inline=True)
+        embed.add_field(name="Banner mükafat",    value=str(row[4] or 0), inline=True)
+        embed.add_field(name="Ümumi coin xərci",  value=f"{row[5] or 0} coin", inline=False)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="davet", description="Dəvət sistemi — link, statistika, mükafatlar")
 async def davet_cmd(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     player = get_player(interaction.user.id)
     if not player:
-        await interaction.followup.send("❌ FACEIT qeydiyyatınız yoxdur. `/register` ilə qeydiyyatdan keçin.", ephemeral=True); return
+        await interaction.followup.send(
+            "❌ FACEIT qeydiyyatınız yoxdur. `/register` ilə qeydiyyatdan keçin.", ephemeral=True); return
 
-    # Mövcud invite code-u yoxla, yoxdursa yeni yarat
-    existing_code = get_inviter_invite_code(interaction.user.id)
-    invite_url = None
-
-    if existing_code:
-        invite_url = f"https://discord.gg/{existing_code}"
-    else:
-        # Yeni Discord invite yarat
-        channel = None
-        if REFERRAL_CHANNEL_ID:
-            channel = bot.get_channel(REFERRAL_CHANNEL_ID)
-        if not channel and interaction.guild:
-            channel = interaction.channel
-        if channel:
-            try:
-                inv = await channel.create_invite(
-                    max_age=0,        # sonsuz
-                    max_uses=0,       # limitsiz
-                    unique=True,
-                    reason=f"Referral — {interaction.user.display_name}"
-                )
-                store_referral_invite(inv.code, interaction.user.id)
-                _invite_uses[inv.code] = inv.uses
-                invite_url = inv.url
-            except discord.Forbidden:
-                await interaction.followup.send(
-                    "❌ Bot dəvət linki yarada bilmir. Admin botun `Create Invite` icazəsini yoxlasın.",
-                    ephemeral=True); return
-
+    invite_url = await _get_or_create_invite(interaction.user.id, interaction.guild, interaction.channel)
     if not invite_url:
-        await interaction.followup.send("❌ Dəvət linki yaradıla bilmədi. Admin ilə əlaqə saxlayın.", ephemeral=True); return
+        invite_url = "discord.gg/... (admin REFERRAL_CHANNEL_ID təyin etməlidir)"
 
-    stats     = get_referral_stats(interaction.user.id)
-    referrals = get_referral_list(interaction.user.id)
-    path      = os.path.join(DATA_DIR or ".", f"referral_{interaction.user.id}.png")
-    await asyncio.to_thread(
-        generate_referral_stats_card,
-        player[1], stats, referrals, invite_url, path)
+    stats = get_referral_stats(interaction.user.id)
+    refs  = get_referral_list(interaction.user.id)
+    path  = os.path.join(DATA_DIR or ".", f"referral_{interaction.user.id}.png")
+    await asyncio.to_thread(generate_referral_card,
+                            player[1], stats, refs, invite_url, path)
 
     embed = discord.Embed(
         title="🔗 Şəxsi Dəvət Linkiniz",
-        description=(
-            f"`{invite_url}`\n\n"
-            f"Bu linki yoldaşlarınızla paylaşın!\n\n"
-            f"**Mükafatlar:**\n"
-            f"✅ Qeydiyyat etdikdə: **+{REFERRAL_REWARD_REG} coin**\n"
-            f"🔥 3 matç oynadıqda: **+{REFERRAL_REWARD_3MATCH} coin**\n"
-            f"🏅 10 matç oynadıqda: **Calestify Ambassador** banneri"
-        ),
+        description=f"`{invite_url}`",
         color=discord.Color.purple()
     )
+    embed.add_field(name="✅ Qeydiyyat", value=f"+{REFERRAL_REWARD_REG} coin",  inline=True)
+    embed.add_field(name="🔥 3 Matç",   value=f"+{REFERRAL_REWARD_3MATCH} coin", inline=True)
+    embed.add_field(name="🏅 10 Matç",  value="Ambassador banner",              inline=True)
     await interaction.followup.send(
         embed=embed,
         file=discord.File(path, filename="davet.png"),
+        view=DavetView(interaction.user.id, invite_url),
         ephemeral=True)
-
-
-@bot.tree.command(name="davet_izle", description="Dəvət etdiyiniz oyunçuların statistikası")
-async def davet_izle_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    player = get_player(interaction.user.id)
-    if not player:
-        await interaction.followup.send("❌ Qeydiyyat yoxdur.", ephemeral=True); return
-    stats     = get_referral_stats(interaction.user.id)
-    referrals = get_referral_list(interaction.user.id)
-    existing_code = get_inviter_invite_code(interaction.user.id)
-    invite_url = f"https://discord.gg/{existing_code}" if existing_code else "—"
-    path = os.path.join(DATA_DIR or ".", f"referral_{interaction.user.id}.png")
-    await asyncio.to_thread(
-        generate_referral_stats_card,
-        player[1], stats, referrals, invite_url, path)
-    await interaction.followup.send(
-        file=discord.File(path, filename="davet_stats.png"), ephemeral=True)
-
-
-@bot.tree.command(name="davet_panel", description="[Admin] Referral sisteminin ümumi statistikası")
-@app_commands.checks.has_permissions(administrator=True)
-async def davet_panel_cmd(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    from database import _get_conn as _grc
-    conn = _grc(); cur = conn.cursor()
-    cur.execute("""
-        SELECT COUNT(*),
-               SUM(CASE WHEN registered_at IS NOT NULL THEN 1 ELSE 0 END),
-               SUM(reward_reg_given), SUM(reward_3match_given), SUM(reward_10match_given),
-               SUM(reward_reg_given)*200 + SUM(reward_3match_given)*500
-        FROM referrals
-    """)
-    row = cur.fetchone()
-    cur.execute("SELECT COUNT(DISTINCT inviter_id) FROM referrals")
-    unique_inviters = cur.fetchone()[0]
-    conn.close()
-    embed = discord.Embed(title="📊 Referral Panel", color=discord.Color.gold())
-    embed.add_field(name="Ümumi dəvət",       value=str(row[0] or 0),  inline=True)
-    embed.add_field(name="Qeydiyyat",          value=str(row[1] or 0),  inline=True)
-    embed.add_field(name="Aktiv dəvət edən",   value=str(unique_inviters), inline=True)
-    embed.add_field(name="200c mükafat",       value=str(row[2] or 0),  inline=True)
-    embed.add_field(name="500c mükafat",       value=str(row[3] or 0),  inline=True)
-    embed.add_field(name="Banner mükafat",     value=str(row[4] or 0),  inline=True)
-    embed.add_field(name="Ümumi coin xərci",   value=f"{row[5] or 0} coin", inline=False)
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-@davet_panel_cmd.error
-async def davet_panel_error(i, e):
-    if isinstance(e, app_commands.MissingPermissions):
-        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

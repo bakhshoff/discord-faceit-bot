@@ -1,21 +1,20 @@
-"""Referral (Dəvət) sistemi vizual kartı — PIL."""
+"""Referral (Dəvət) sistemi vizual kartı — PIL. Tam yenilənmiş dizayn."""
 import os
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-BG_TOP  = (12, 10, 20)
-BG_BOT  = (8,  6, 14)
-PANEL   = (22, 20, 32)
-PANEL2  = (30, 26, 44)
-BORDER  = (55, 48, 75)
+BG      = (10, 8, 18)
+PANEL   = (20, 18, 30)
+PANEL2  = (28, 24, 42)
+BORDER  = (52, 46, 72)
 GOLD    = (240, 185, 40)
 WHITE   = (244, 241, 234)
-GRAY    = (130, 125, 148)
-GREEN   = (88,  210, 110)
-RED     = (200, 60,  55)
-PURPLE  = (160, 90,  255)
-TEAL    = (40,  200, 180)
+GRAY    = (120, 115, 138)
+GREEN   = (72, 200, 100)
+PURPLE  = (155, 85, 255)
+TEAL    = (35, 195, 175)
+ORANGE  = (255, 140, 40)
 
 FONT_B = [os.path.join(BASE_DIR, "fonts", "DejaVuSans-Bold.ttf"),
           "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -32,175 +31,261 @@ def _f(size, bold=False):
     return ImageFont.load_default()
 
 
-def _grad(w, h):
-    img = Image.new("RGB", (w, h), BG_TOP)
-    d   = ImageDraw.Draw(img)
-    for y in range(h):
-        t = y / h
-        c = tuple(int(BG_TOP[i] + (BG_BOT[i] - BG_TOP[i]) * t) for i in range(3))
-        d.line([(0, y), (w, y)], fill=c)
-    return img
+def _vgrad(img, y0, y1, c1, c2):
+    d = ImageDraw.Draw(img)
+    for y in range(y0, y1):
+        t = (y - y0) / max(y1 - y0, 1)
+        c = tuple(int(c1[i] + (c2[i] - c1[i]) * t) for i in range(3))
+        d.line([(0, y), (img.width, y)], fill=c)
 
 
-def _progress_bar(draw, x, y, w, h, pct, color, bg=(30, 26, 44)):
-    draw.rounded_rectangle([(x, y), (x+w, y+h)], radius=h//2, fill=bg)
-    if pct > 0:
-        fw = max(h, int(w * min(pct, 1.0)))
-        draw.rounded_rectangle([(x, y), (x+fw, y+h)], radius=h//2, fill=color)
-
-
-def _load_preview(path: str, w: int, h: int):
-    """Şəkil yükləyib ölçüsünü dəyişir. Xəta olsa None qaytarır."""
+def _load_img(path, w, h):
     try:
-        img = Image.open(path).convert("RGB")
-        img = ImageOps.fit(img, (w, h), Image.LANCZOS)
-        return img
+        im = Image.open(path).convert("RGB")
+        return ImageOps.fit(im, (w, h), Image.LANCZOS)
     except Exception:
         return None
 
 
-def generate_referral_stats_card(nick: str, stats: dict,
-                                  referrals: list, invite_url: str,
-                                  output_path: str) -> str:
-    """
-    stats:    {total, registered, milestone_3, milestone_10}
-    referrals:[{nick, matches, registered, r3, r10, joined_at}]
-    """
-    ROW_H   = 48
-    HEAD_H  = 110
-    STAT_H  = 130
-    PRIZE_H = 190      # Mükafat önizləmə bölməsi
-    SEC_H   = 30
-    FOOT_H  = 36
-    W       = 920
-    n       = max(1, len(referrals))
-    H       = HEAD_H + STAT_H + PRIZE_H + SEC_H + n * ROW_H + FOOT_H
+def _bar(draw, x, y, w, h, pct, col, bg=(28, 24, 42)):
+    draw.rounded_rectangle([(x, y), (x+w, y+h)], radius=h//2, fill=bg)
+    if pct > 0:
+        fw = max(h, int(w * min(pct, 1.0)))
+        draw.rounded_rectangle([(x, y), (x+fw, y+h)], radius=h//2, fill=col)
 
-    img  = _grad(W, H)
+
+# ── ANA KART — tam panel ───────────────────────────────────────────────────────
+
+def generate_referral_card(nick: str, stats: dict, referrals: list,
+                            invite_url: str, output_path: str) -> str:
+    """
+    Bütün məlumatları bir kartda: link, statistika, mükafat roadmap, cədvəl.
+    stats:     {total, registered, milestone_3, milestone_10}
+    referrals: [{nick, matches, registered, r3, r10}]
+    """
+    W = 880
+
+    # Dinamik hündürlük
+    REF_ROWS = max(1, min(len(referrals), 12))
+    HEAD_H   = 90
+    LINK_H   = 60
+    STAT_H   = 110
+    ROAD_H   = 160
+    LIST_H   = 34 + REF_ROWS * 44 + 10
+    FOOT_H   = 30
+    H = HEAD_H + LINK_H + STAT_H + ROAD_H + LIST_H + FOOT_H
+
+    img = Image.new("RGB", (W, H), BG)
+    _vgrad(img, 0, H, (14, 10, 24), (8, 6, 16))
     draw = ImageDraw.Draw(img)
     draw.rectangle([(0, 0), (W-1, H-1)], outline=BORDER, width=2)
 
-    # ── Header ────────────────────────────────────────────────────────────────
-    draw.rectangle([(0, 0), (W, HEAD_H)], fill=(14, 10, 26))
+    y = 0
+
+    # ── HEADER ────────────────────────────────────────────────────────────────
+    _vgrad(img, 0, HEAD_H, (22, 14, 40), (14, 10, 26))
     draw.line([(0, HEAD_H), (W, HEAD_H)], fill=GOLD, width=2)
-    draw.text((28, 14), "CALESTIFY  •  DAVET SİSTEMİ", font=_f(11, True), fill=GOLD)
-    draw.text((28, 36), f"{nick}", font=_f(26, True), fill=WHITE)
-    draw.text((28, 72), "Şəxsi dəvət linkiniz:", font=_f(11), fill=GRAY)
-    # Link (kopyalana bilər, aydın görsənsin)
-    link_bg_w = min(W - 56, len(invite_url) * 8 + 24)
-    draw.rounded_rectangle([(28, 87), (28 + link_bg_w, 107)], radius=4, fill=(28, 22, 44), outline=TEAL, width=1)
-    draw.text((36, 97), invite_url[:60], font=_f(12, True), fill=TEAL, anchor="lm")
-
-    # ── Statistika 4 qutu ─────────────────────────────────────────────────────
-    sy  = HEAD_H + 10
-    sw  = (W - 56) // 4
-    vals = [
-        ("Dəvət edildi", stats["total"],        WHITE,  "👥"),
-        ("Qeydiyyat",    stats["registered"],   GREEN,  "✅"),
-        ("3 Matç",       stats["milestone_3"],  GOLD,   "🔥"),
-        ("10 Matç",      stats["milestone_10"], PURPLE, "🏅"),
-    ]
-    for i, (lbl, val, col, icon) in enumerate(vals):
-        bx = 28 + i * (sw + 4)
-        draw.rounded_rectangle([(bx, sy), (bx+sw, sy+STAT_H-16)],
-                               radius=6, fill=PANEL, outline=BORDER, width=1)
-        draw.text((bx+sw//2, sy+18),  icon,     font=_f(22),       fill=col, anchor="mm")
-        draw.text((bx+sw//2, sy+52),  str(val), font=_f(30, True), fill=col, anchor="mm")
-        draw.text((bx+sw//2, sy+86),  lbl,      font=_f(10, True), fill=GRAY, anchor="mm")
-
+    draw.text((28, 18), "CALESTIFY  ·  DAVET SİSTEMİ", font=_f(11, True), fill=GOLD)
+    draw.text((28, 40), nick[:24], font=_f(28, True), fill=WHITE)
     coins_earned = stats["registered"] * 200 + stats["milestone_3"] * 500
-    rew_y = sy + STAT_H - 8
-    draw.text((28, rew_y), f"💰 Qazanılan: {coins_earned} coin", font=_f(11, True), fill=GOLD)
-    if stats["milestone_10"]:
-        draw.text((W-28, rew_y), "🏅 Ambassador banner alındı!", font=_f(11, True), fill=PURPLE, anchor="rm")
+    draw.text((W-28, 50), f"💰 {coins_earned} coin qazanıldı", font=_f(12, True), fill=GOLD, anchor="rm")
+    y = HEAD_H
 
-    # ── Mükafat önizləmə bölməsi ──────────────────────────────────────────────
-    py = HEAD_H + STAT_H + 4
-    draw.rectangle([(0, py), (W, py + PRIZE_H)], fill=(16, 12, 28))
-    draw.line([(0, py), (W, py)], fill=BORDER, width=1)
-    draw.line([(0, py+PRIZE_H), (W, py+PRIZE_H)], fill=BORDER, width=1)
-    draw.text((28, py+12), "MÜKAFAT ÖNİZLƏMƏLƏRİ", font=_f(11, True), fill=GOLD)
+    # ── DAVET LİNKİ ───────────────────────────────────────────────────────────
+    draw.rectangle([(0, y), (W, y+LINK_H)], fill=(18, 14, 32))
+    draw.line([(0, y+LINK_H), (W, y+LINK_H)], fill=BORDER, width=1)
+    # Link kutusu
+    lx1, lx2 = 28, W-28
+    draw.rounded_rectangle([(lx1, y+10), (lx2, y+LINK_H-10)],
+                           radius=6, fill=(26, 20, 44), outline=TEAL, width=2)
+    draw.text((lx1+14, y+LINK_H//2), "🔗", font=_f(16), fill=TEAL, anchor="lm")
+    draw.text((lx1+40, y+LINK_H//2), invite_url[:70], font=_f(13, True), fill=TEAL, anchor="lm")
+    draw.text((lx2-14, y+LINK_H//2), "⬆ Kopyala", font=_f(10), fill=GRAY, anchor="rm")
+    y += LINK_H
 
-    PREV_W, PREV_H = 200, 130
+    # ── 4 STATİSTİKA QUTU ─────────────────────────────────────────────────────
+    pad = 16
+    sw  = (W - pad*2 - 3*8) // 4
+    sy  = y + 10
+    boxes = [
+        ("Dəvət",      stats["total"],        TEAL,   "👥"),
+        ("Qeydiyyat",  stats["registered"],   GREEN,  "✅"),
+        ("3 Matç",     stats["milestone_3"],  ORANGE, "🔥"),
+        ("10 Matç",    stats["milestone_10"], PURPLE, "🏅"),
+    ]
+    for i, (lbl, val, col, ico) in enumerate(boxes):
+        bx = pad + i*(sw+8)
+        draw.rounded_rectangle([(bx, sy), (bx+sw, sy+STAT_H-20)],
+                               radius=8, fill=PANEL, outline=col, width=2)
+        draw.text((bx+sw//2, sy+18), ico,     font=_f(18),       fill=col,  anchor="mm")
+        draw.text((bx+sw//2, sy+50), str(val),font=_f(28, True), fill=col,  anchor="mm")
+        draw.text((bx+sw//2, sy+80), lbl,     font=_f(10, True), fill=GRAY, anchor="mm")
+    y += STAT_H
 
-    # 1) 200 coin panel
-    _draw_prize_tile(draw, img, 28, py+34, PREV_W, PREV_H,
-                     "✅  Qeydiyyat", "+200 Coin", None, GOLD, GREEN)
+    # ── MÜKAFAT ROADMAP ───────────────────────────────────────────────────────
+    draw.line([(0, y), (W, y)], fill=BORDER, width=1)
+    draw.text((28, y+10), "MÜKAFAT ROADMAP", font=_f(11, True), fill=GOLD)
+    ry = y + 32
 
-    # 2) 500 coin panel
-    _draw_prize_tile(draw, img, 28 + PREV_W + 18, py+34, PREV_W, PREV_H,
-                     "🔥  3 Matç", "+500 Coin", None, GOLD, (255, 140, 40))
+    # 3 milestone tile
+    TILE_W = (W - 56 - 32) // 3
+    TILE_H = ROAD_H - 44
+    milestones = [
+        (1,  "Qeydiyyat",    "+200 Coin",  None,               GREEN,  stats["registered"] > 0),
+        (3,  "3 Matç",       "+500 Coin",  None,               ORANGE, stats["milestone_3"] > 0),
+        (10, "10 Matç",      "Ambassador", "banner_ambassador", PURPLE, stats["milestone_10"] > 0),
+    ]
+    for mi, (req, title, reward, banner_id, col, earned) in enumerate(milestones):
+        tx = 28 + mi * (TILE_W + 16)
+        bg_fill = (20, 28, 20) if earned else PANEL
+        bdr     = col if earned else BORDER
+        draw.rounded_rectangle([(tx, ry), (tx+TILE_W, ry+TILE_H)],
+                               radius=8, fill=bg_fill, outline=bdr, width=2)
 
-    # 3) Ambassador banner önizləmə
-    banner_path = os.path.join(BASE_DIR, "banners", "banner_ambassador.png")
-    banner_prev = _load_preview(banner_path, PREV_W, PREV_H)
-    _draw_prize_tile(draw, img, 28 + (PREV_W + 18)*2, py+34, PREV_W, PREV_H,
-                     "🏅  10 Matç", "Ambassador Banner", banner_prev, PURPLE, PURPLE)
+        if banner_id:
+            bpath = os.path.join(BASE_DIR, "banners", f"{banner_id}.png")
+            bimg  = _load_img(bpath, TILE_W-8, TILE_H-36)
+            if bimg:
+                img.paste(bimg, (tx+4, ry+4))
+                draw.rectangle([(tx, ry+TILE_H-32), (tx+TILE_W, ry+TILE_H)], fill=(12, 8, 24))
+        else:
+            draw.text((tx+TILE_W//2, ry+TILE_H//2-10), reward,
+                      font=_f(20, True), fill=col, anchor="mm")
 
-    # 4) Məlumat mətni
-    tx = 28 + (PREV_W + 18) * 3
-    draw.text((tx, py+40), "Calestify Ambassador", font=_f(13, True), fill=PURPLE)
-    draw.text((tx, py+62), "banneri yalnız bu", font=_f(11), fill=GRAY)
-    draw.text((tx, py+78), "yolla əldə edilir —", font=_f(11), fill=GRAY)
-    draw.text((tx, py+94), "marketdə satılmır.", font=_f(11), fill=GRAY)
-    draw.rounded_rectangle([(tx, py+112), (tx+180, py+134)],
-                           radius=4, fill=(40, 20, 60), outline=PURPLE, width=1)
-    draw.text((tx+90, py+123), "XÜSUSİ  •  NADIR", font=_f(9, True), fill=PURPLE, anchor="mm")
+        draw.text((tx+TILE_W//2, ry+TILE_H-20), f"{'✅ ' if earned else ''}{title}",
+                  font=_f(11, True), fill=col if earned else GRAY, anchor="mm")
 
-    # ── Sütun başlıqları ──────────────────────────────────────────────────────
-    sh_y = py + PRIZE_H
-    draw.rectangle([(0, sh_y), (W, sh_y+SEC_H)], fill=PANEL2)
-    draw.text((28, sh_y+SEC_H//2), "Dəvət olunan oyunçu", font=_f(10, True), fill=GOLD, anchor="lm")
-    for xi, lbl in [(400, "Matç"), (490, "Qeydiyyat"), (600, "3 Matç"), (710, "10 Matç")]:
-        draw.text((xi, sh_y+SEC_H//2), lbl, font=_f(10, True), fill=GRAY, anchor="mm")
+        # Milestone badge
+        draw.ellipse([(tx+TILE_W//2-16, ry-14), (tx+TILE_W//2+16, ry+14)],
+                     fill=col if earned else (40, 36, 56), outline=col, width=2)
+        draw.text((tx+TILE_W//2, ry), str(req), font=_f(11, True),
+                  fill=WHITE if earned else GRAY, anchor="mm")
 
-    # ── Oyunçu sıraları ───────────────────────────────────────────────────────
-    ry = sh_y + SEC_H
+        # Connector arrow (sonuncu tile-dan sonra yoxdur)
+        if mi < 2:
+            ax = tx + TILE_W + 8
+            draw.text((ax, ry+TILE_H//2), "→", font=_f(16, True), fill=BORDER, anchor="mm")
+
+    y += ROAD_H
+
+    # ── DAVET EDİLƏNLƏR CƏDVƏLİ ──────────────────────────────────────────────
+    draw.line([(0, y), (W, y)], fill=BORDER, width=1)
+    draw.rectangle([(0, y), (W, y+34)], fill=PANEL2)
+    draw.text((28, y+17), "Dəvət edilənlər", font=_f(11, True), fill=GOLD, anchor="lm")
+    for cx, lbl in [(420, "Matç"), (510, "Qeydiyyat"), (620, "3 Matç"), (730, "10 Matç")]:
+        draw.text((cx, y+17), lbl, font=_f(10, True), fill=GRAY, anchor="mm")
+    y += 34
+
     if not referrals:
-        draw.text((28, ry+18), "Hələ heç kimi dəvət etməmisiniz.", font=_f(13), fill=GRAY)
+        draw.text((28, y+22), "Hələ heç kimi dəvət etməmisiniz.", font=_f(13), fill=GRAY)
+        y += 44
     else:
-        for i, r in enumerate(referrals[:20]):
+        for i, r in enumerate(referrals[:12]):
             if i % 2 == 0:
-                draw.rectangle([(2, ry), (W-2, ry+ROW_H-1)], fill=(20, 18, 30))
-            draw.text((28, ry+ROW_H//2), r["nick"][:24], font=_f(14, True), fill=WHITE, anchor="lm")
+                draw.rectangle([(2, y), (W-2, y+43)], fill=(18, 16, 28))
+            cy = y + 22
+            draw.text((28, cy), r["nick"][:26], font=_f(14, True), fill=WHITE, anchor="lm")
             m = r["matches"]
-            draw.text((400, ry+ROW_H//2), str(m), font=_f(14, True), fill=TEAL, anchor="mm")
-            _progress_bar(draw, 420, ry+ROW_H//2-4, 140, 8, m/10, GOLD)
-            for xi, val, col in [
-                (490, "✅" if r["registered"] else "—", GREEN  if r["registered"] else GRAY),
-                (600, "✅" if r["r3"]         else "—", GOLD   if r["r3"]         else GRAY),
-                (710, "🏅" if r["r10"]        else "—", PURPLE if r["r10"]        else GRAY),
+            draw.text((420, cy), str(m), font=_f(13, True), fill=TEAL, anchor="mm")
+            _bar(draw, 440, cy-4, 130, 8, m/10, GOLD)
+            for cx, val, col in [
+                (510, "✅" if r["registered"] else "·", GREEN  if r["registered"] else GRAY),
+                (620, "✅" if r["r3"]         else "·", ORANGE if r["r3"]         else GRAY),
+                (730, "🏅" if r["r10"]        else "·", PURPLE if r["r10"]        else GRAY),
             ]:
-                draw.text((xi, ry+ROW_H//2), val, font=_f(13, True), fill=col, anchor="mm")
-            draw.line([(18, ry+ROW_H-1), (W-18, ry+ROW_H-1)], fill=BORDER, width=1)
-            ry += ROW_H
+                draw.text((cx, cy), val, font=_f(13, True), fill=col, anchor="mm")
+            draw.line([(18, y+43), (W-18, y+43)], fill=BORDER, width=1)
+            y += 44
 
-    # ── Footer ────────────────────────────────────────────────────────────────
+    # ── FOOTER ────────────────────────────────────────────────────────────────
     fy = H - FOOT_H
     draw.rectangle([(0, fy), (W, H)], fill=(10, 8, 18))
-    draw.text((28, fy+FOOT_H//2),
-              "200 coin (qeydiyyat)  •  500 coin (3 matç)  •  Ambassador banner (10 matç)",
-              font=_f(11), fill=GRAY, anchor="lm")
+    draw.text((W//2, fy+FOOT_H//2),
+              "200 coin (qeydiyyat)  ·  500 coin (3 matç)  ·  Ambassador banner (10 matç)",
+              font=_f(10), fill=GRAY, anchor="mm")
 
     img.save(output_path)
     return output_path
 
 
-def _draw_prize_tile(draw, img, x, y, w, h,
-                     title, subtitle, preview_img, border_col, text_col):
-    """Mükafat önizləmə kadrı çəkir."""
-    draw.rounded_rectangle([(x, y), (x+w, y+h)], radius=6,
-                           fill=(18, 14, 30), outline=border_col, width=2)
-    if preview_img:
-        # Şəkil var — alt yarıya yapışdır
-        ph = h - 40
-        pimg = preview_img.resize((w-8, ph), Image.LANCZOS)
-        img.paste(pimg, (x+4, y+4))
-        # Başlıq şeridi altta
-        draw.rectangle([(x, y+h-36), (x+w, y+h)], fill=(12, 8, 24, 200))
-        draw.text((x+w//2, y+h-18), title, font=_f(10, True), fill=border_col, anchor="mm")
+# ── ITEM (BANNER / AVATAR) ÖNİZLƏMƏ KARTI ────────────────────────────────────
+
+def generate_item_preview_card(nick: str, avatar_bytes: bytes | None,
+                                item: dict, output_path: str) -> str:
+    """
+    Market item-ini (banner/avatar frame) profil üzərindən önizlə.
+    item: {"id","name","type","file"}
+    """
+    W, H = 700, 340
+    img  = Image.new("RGB", (W, H), BG)
+    _vgrad(img, 0, H, (16, 12, 28), (10, 8, 18))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (W-1, H-1)], outline=BORDER, width=2)
+
+    is_banner = item.get("type") == "banner"
+    item_type = "BANNER ÖNİZLƏMƏ" if is_banner else "AVATAR ÇƏRÇİVƏSİ ÖNİZLƏMƏ"
+
+    # Header
+    _vgrad(img, 0, 52, (22, 14, 40), (14, 10, 26))
+    draw.line([(0, 52), (W, 52)], fill=GOLD, width=2)
+    draw.text((28, 14), "CALESTIFY", font=_f(10, True), fill=GOLD)
+    draw.text((28, 28), item_type, font=_f(16, True), fill=WHITE)
+    draw.text((W-28, 30), item["name"][:30], font=_f(14, True), fill=TEAL, anchor="rm")
+
+    if is_banner:
+        # Banner ekran genişliyinə yayılır
+        bpath = os.path.join(BASE_DIR, "banners", item["file"])
+        bimg  = _load_img(bpath, W-40, 200)
+        if bimg:
+            # Yüngül qaranlıq overlay
+            ov = Image.new("RGB", bimg.size, (0, 0, 0))
+            bimg = Image.blend(bimg, ov, 0.35)
+            img.paste(bimg, (20, 62))
+            draw.rectangle([(20, 62), (W-20, 262)], outline=TEAL, width=2)
+        # Profil simulyasiyası üstündə
+        _draw_profile_sim(draw, img, avatar_bytes, nick, 48, 80)
     else:
-        # Şəkil yox — mərkəzdə mətn
-        draw.text((x+w//2, y+30), title,    font=_f(11, True), fill=GRAY,     anchor="mm")
-        draw.text((x+w//2, y+64), subtitle, font=_f(18, True), fill=text_col, anchor="mm")
-        draw.text((x+w//2, y+h-16), "MÜKAFAT", font=_f(9, True), fill=border_col, anchor="mm")
+        # Avatar frame
+        _draw_profile_sim(draw, img, avatar_bytes, nick, W//2 - 90, 70,
+                          frame_path=os.path.join(BASE_DIR, "frames", item["file"]))
+
+    # Aşağı məlumat
+    draw.text((W//2, 288), f"Bu {item['name']} profil arxa planı kimi görünəcək.",
+              font=_f(11), fill=GRAY, anchor="mm")
+    draw.text((W//2, 310), "Aktivləşdir düyməsinə bas.", font=_f(11, True), fill=GREEN, anchor="mm")
+
+    draw.text((28, H-16), "Calestify Gaming Community", font=_f(10), fill=GRAY)
+
+    img.save(output_path)
+    return output_path
+
+
+def _draw_profile_sim(draw, img, avatar_bytes, nick, ax, ay, frame_path=None):
+    """Kiçik profil simulyasiyası (avatar dairəsi + nick)."""
+    import io
+    av_size = 80
+    # Avatar
+    if avatar_bytes:
+        try:
+            av = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+            av = ImageOps.fit(av, (av_size, av_size), Image.LANCZOS)
+            mask = Image.new("L", (av_size, av_size), 0)
+            ImageDraw.Draw(mask).ellipse((0, 0, av_size, av_size), fill=255)
+            out  = Image.new("RGBA", (av_size, av_size), (0, 0, 0, 0))
+            out.paste(av, mask=mask)
+            img.paste(out, (ax, ay), out)
+        except Exception:
+            draw.ellipse([(ax, ay), (ax+av_size, ay+av_size)], fill=(35, 32, 50))
+    else:
+        draw.ellipse([(ax, ay), (ax+av_size, ay+av_size)], fill=(35, 32, 50))
+
+    # Frame
+    if frame_path:
+        fimg = _load_img(frame_path, av_size+16, av_size+16)
+        if fimg:
+            fimg = fimg.convert("RGBA")
+            img.paste(fimg, (ax-8, ay-8), fimg if fimg.mode == "RGBA" else None)
+
+    # Nick
+    draw.text((ax + av_size//2, ay + av_size + 14), nick[:16],
+              font=_f(12, True), fill=WHITE, anchor="mm")
