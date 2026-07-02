@@ -3486,20 +3486,8 @@ async def on_member_join(member: discord.Member):
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-    is_dm = isinstance(message.channel, discord.DMChannel)
-    is_mentioned = bot.user in message.mentions
-    if not is_dm and not is_mentioned:
-        return
-
-    text = message.content.replace(f"<@{bot.user.id}>", "").strip()
-    if not text:
-        return
-
-    player = get_player(message.author.id)
-    async with message.channel.typing():
-        reply = await asyncio.to_thread(ask_groq, message.author.id, message.author.display_name, text, player)
-
-    await message.reply(reply, mention_author=False)
+    # AI çat müvəqqəti deaktiv edilib
+    return
 
 
 @bot.event
