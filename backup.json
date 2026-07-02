@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783020382,
+  "exported_at": 1783020957,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -10,7 +10,7 @@
       "losses": 7,
       "coins": 125,
       "active_banner": "banner_toxic_green",
-      "active_frame": null,
+      "active_frame": "frame_green",
       "zm_balance": 0,
       "ai_memory": "istifadəçi ilk defe cavab verib, hansı məsələ ilə maraqlandığını deməyib",
       "kills": 170,
@@ -338,8 +338,8 @@
       "elo": 1010,
       "wins": 4,
       "losses": 4,
-      "coins": 546,
-      "active_banner": null,
+      "coins": 146,
+      "active_banner": "banner_cyber_blue",
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": null,
@@ -580,7 +580,7 @@
       "elo": 985,
       "wins": 3,
       "losses": 4,
-      "coins": 338,
+      "coins": 138,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -888,7 +888,7 @@
       "elo": 983,
       "wins": 1,
       "losses": 2,
-      "coins": 62,
+      "coins": 72,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -990,6 +990,18 @@
       "discord_id": 381710974710972416,
       "item_id": "banner_toxic_green",
       "acquired_at": 1783020264
+    },
+    {
+      "id": 12,
+      "discord_id": 1134288537546674238,
+      "item_id": "banner_cyber_blue",
+      "acquired_at": 1783020899
+    },
+    {
+      "id": 13,
+      "discord_id": 1385557493874294855,
+      "item_id": "banner_red",
+      "acquired_at": 1783020957
     }
   ],
   "giveaways": [
@@ -3569,6 +3581,33 @@
       "log_type": "spend",
       "balance_after": 125,
       "created_at": 1783020264
+    },
+    {
+      "id": 323,
+      "discord_id": 1505799748215636089,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 72,
+      "created_at": 1783020455
+    },
+    {
+      "id": 324,
+      "discord_id": 1134288537546674238,
+      "change": -400,
+      "reason": "Market alışı: Cyber Blue Banner",
+      "log_type": "spend",
+      "balance_after": 146,
+      "created_at": 1783020899
+    },
+    {
+      "id": 325,
+      "discord_id": 1385557493874294855,
+      "change": -200,
+      "reason": "Market alışı: Qirmizi Alov Banner",
+      "log_type": "spend",
+      "balance_after": 138,
+      "created_at": 1783020957
     }
   ],
   "active_boosts": []
