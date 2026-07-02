@@ -277,6 +277,209 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     return output_path
 
 
+def generate_animated_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
+                                    output_path="profile_card.gif", banner_path=None,
+                                    coins=0, frame_path=None, zm_balance=0,
+                                    kills=0, assists=0, deaths=0,
+                                    season_wins=0, season_losses=0,
+                                    season_kills=0, season_assists=0, season_deaths=0,
+                                    pass_status=None, pass_level=0):
+    """
+    Animasiyalı GIF profil kartı.
+    - Animated banner varsa: banner frame-ləri arxa plan kimi istifadə edilir
+    - Static banner / banner yox: ELO + scan xətti animasiyası
+    """
+    import math
+
+    AFRAMES = 16
+    DELAY   = 80   # ms/frame
+
+    # Banner frame-lərini hazırla
+    banner_frames_raw = []
+    if banner_path and os.path.exists(banner_path):
+        try:
+            raw = Image.open(banner_path)
+            if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
+                n = getattr(raw, "n_frames", 1)
+                for i in range(min(n, AFRAMES)):
+                    raw.seek(int(i * n / AFRAMES))
+                    banner_frames_raw.append(raw.convert("RGB").copy())
+            else:
+                banner_frames_raw = [raw.convert("RGB")] * AFRAMES
+        except Exception:
+            pass
+    if not banner_frames_raw:
+        banner_frames_raw = [None] * AFRAMES
+
+    gif_frames = []
+    for fi in range(AFRAMES):
+        t = fi / AFRAMES  # 0.0 → 1.0
+
+        # ── Arxa plan ─────────────────────────────────────────────────────────
+        braw = banner_frames_raw[fi]
+        if braw:
+            bi  = ImageOps.fit(braw, (WIDTH, HEIGHT), Image.LANCZOS)
+            ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
+            img = Image.blend(bi, ov, 0.40)
+        else:
+            img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+
+        img  = img.convert("RGBA")
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([(0,0),(WIDTH-1,HEIGHT-1)], outline=BORDER, width=2)
+
+        # ── Scan xətti (statik banner üçün animasiya effekti) ─────────────────
+        scan_y = int((t * 1.3 % 1.0) * (HEIGHT + 40)) - 20
+        for dy in range(-4, 5):
+            sy = scan_y + dy
+            if 0 <= sy < HEIGHT:
+                a = max(0, 80 - abs(dy)*18)
+                draw.line([(0, sy), (WIDTH, sy)], fill=(0, 160, 255))
+
+        # ── Pulsasiya edən ELO glow ───────────────────────────────────────────
+        glow_a = int(30 + 20*math.sin(t*2*math.pi))
+        level, level_color = get_level_info(elo)
+        glow_col = level_color + (glow_a,)
+        ex = WIDTH - 220
+        for gr in range(5, 0, -1):
+            ga = int(glow_a * gr / 5)
+            gimg = Image.new("RGBA", img.size, (0,0,0,0))
+            ImageDraw.Draw(gimg).text((ex, 98+gr), str(elo),
+                                      font=_load_font(38,bold=True),
+                                      fill=level_color+(ga,))
+            img = Image.alpha_composite(img, gimg)
+        draw = ImageDraw.Draw(img)
+
+        # ── Qalan statik elementlər ───────────────────────────────────────────
+        matches  = wins + losses
+        wr       = round(wins/matches*100, 1) if matches > 0 else 0.0
+        s_matches= season_wins + season_losses
+        s_wr     = round(season_wins/s_matches*100, 1) if s_matches > 0 else 0.0
+        kd       = round(kills/deaths, 2) if deaths > 0 else float(kills)
+        season_kd= round(season_kills/season_deaths, 2) if season_deaths > 0 else float(season_kills)
+
+        f_brand  = _load_font(13, bold=True)
+        f_title  = _load_font(20, bold=True)
+        f_nick   = _load_font(30, bold=True)
+        f_id     = _load_font(13)
+        f_lvl    = _load_font(18, bold=True)
+        f_elo    = _load_font(38, bold=True)
+        f_elolbl = _load_font(12, bold=True)
+        f_coin   = _load_font(16, bold=True)
+        f_small  = _load_font(11)
+
+        draw.text((28, 18), "CALESTIFY", font=f_brand, fill=GOLD)
+        draw.text((28, 34), "FACEIT PROFILE", font=f_title, fill=WHITE)
+
+        coin_text = str(coins)
+        bbox = draw.textbbox((0,0), coin_text, font=f_coin)
+        tw_c = bbox[2]-bbox[0]
+        ccd  = 14
+        draw.ellipse([(WIDTH-28-tw_c-ccd-6,20),(WIDTH-28-tw_c-6,20+ccd)], fill=GOLD)
+        draw.text((WIDTH-28-tw_c, 18), coin_text, font=f_coin, fill=GOLD)
+        zm_val  = round(float(zm_balance or 0), 2)
+        zm_text = f"{zm_val:.1f} AZN"
+        bbox_zm = draw.textbbox((0,0), zm_text, font=f_coin)
+        draw.text((WIDTH-28-(bbox_zm[2]-bbox_zm[0]), 38), zm_text, font=f_coin, fill=(80,200,120))
+
+        av_size, av_x, av_y = 130, 28, 82
+        if avatar_bytes:
+            try:
+                av = _make_circular_avatar(avatar_bytes, av_size)
+                img.paste(av, (av_x, av_y), av)
+            except Exception:
+                pass
+        else:
+            draw.ellipse([(av_x,av_y),(av_x+av_size,av_y+av_size)], fill=PANEL, outline=BORDER, width=2)
+
+        if frame_path and os.path.exists(frame_path):
+            try:
+                fr_raw = Image.open(frame_path)
+                if getattr(fr_raw, "is_animated", False) or frame_path.lower().endswith(".gif"):
+                    nf = getattr(fr_raw, "n_frames", 1)
+                    fr_raw.seek(int(fi * nf / AFRAMES))
+                fr  = fr_raw.convert("RGBA")
+                fr  = fr.resize((av_size+20, av_size+20), Image.LANCZOS)
+                img.alpha_composite(fr, (av_x-10, av_y-10))
+            except Exception:
+                _ring(draw, av_x, av_y, av_size, level_color)
+        else:
+            _ring(draw, av_x, av_y, av_size, level_color)
+
+        draw = ImageDraw.Draw(img)
+        bs = 40
+        bx, by = av_x+av_size-bs+12, av_y+av_size-bs+12
+        draw.ellipse([(bx,by),(bx+bs,by+bs)], fill=level_color, outline=BG_BOTTOM, width=3)
+        lt = str(level)
+        bbox = draw.textbbox((0,0), lt, font=f_lvl)
+        draw.text((bx+bs/2-(bbox[2]-bbox[0])/2, by+bs/2-(bbox[3]-bbox[1])/2-2), lt,
+                  font=f_lvl, fill=(20,18,22))
+
+        tx = av_x + av_size + 26
+        draw.text((tx, 90), nick[:24],           font=f_nick,   fill=WHITE)
+        draw.text((tx, 130), f"SO2 ID: {so2_id}", font=f_id,   fill=GRAY)
+        _rank_ranges = [(0,900,"Gumus I"),(900,1000,"Gumus II"),(1000,1100,"Qizil I"),
+                        (1100,1200,"Qizil II"),(1200,1350,"Almaz I"),(1350,1500,"Almaz II"),
+                        (1500,1700,"Elite"),(1700,9999,"Master")]
+        rank_name = next((n for lo,hi,n in _rank_ranges if lo<=elo<hi), "Master")
+        draw.text((tx, 150), f"Level {level}  |  {rank_name}", font=f_elolbl, fill=level_color)
+
+        # Pass badge
+        if pass_status in ("free","premium"):
+            is_vip    = pass_status == "premium"
+            badge_bg  = (40,28,0) if is_vip else (20,20,30)
+            badge_bdr = GOLD      if is_vip else (80,80,100)
+            badge_txt = f"VIP PASS  Lv.{pass_level}" if is_vip else f"FREE PASS  Lv.{pass_level}"
+            badge_col = GOLD      if is_vip else (140,140,160)
+            star_col  = GOLD      if is_vip else (80,80,100)
+            f_badge   = _load_font(11, bold=True)
+            tb = draw.textbbox((0,0), badge_txt, font=f_badge)
+            bw2, bh2  = (tb[2]-tb[0])+28, 20
+            bx2, by2  = tx, 172
+            draw.rounded_rectangle([(bx2,by2),(bx2+bw2,by2+bh2)], radius=4, fill=badge_bg, outline=badge_bdr, width=1)
+            sx, sy2 = bx2+9, by2+bh2//2
+            star = [(sx,sy2-5),(sx+2,sy2-2),(sx+5,sy2-2),(sx+3,sy2),(sx+4,sy2+4),
+                    (sx,sy2+2),(sx-4,sy2+4),(sx-3,sy2),(sx-5,sy2-2),(sx-2,sy2-2)]
+            draw.polygon(star, fill=star_col)
+            draw.text((bx2+18, by2+bh2//2), badge_txt, font=f_badge, fill=badge_col, anchor="lm")
+
+        draw.text((ex, 82), "ELO", font=f_elolbl, fill=GRAY)
+        draw.text((ex, 98), str(elo), font=f_elo, fill=GOLD)
+
+        sep1 = 232
+        draw.line([(18,sep1),(WIDTH-18,sep1)], fill=BORDER, width=1)
+        col_w = (WIDTH-36)//2
+        draw.rectangle([18,sep1+4,18+col_w,sep1+78], fill=PANEL, outline=BORDER, width=1)
+        draw.text((26,sep1+7), "ÜMUMI", font=_load_font(10,bold=True), fill=GOLD)
+        draw.text((26,sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
+                  font=_load_font(13), fill=WHITE)
+        draw.text((26,sep1+42), f"Win Rate: {wr}%", font=_load_font(13,bold=True), fill=GREEN)
+        draw.rectangle([18+col_w+6,sep1+4,WIDTH-18,sep1+78], fill=PANEL, outline=BORDER, width=1)
+        draw.text((26+col_w+6,sep1+7), "SEZON", font=_load_font(10,bold=True), fill=CYAN)
+        draw.text((26+col_w+6,sep1+22), f"Matç: {s_matches}   Qələbə: {season_wins}   Məğlubiyyət: {season_losses}",
+                  font=_load_font(13), fill=WHITE)
+        draw.text((26+col_w+6,sep1+42), f"Win Rate: {s_wr}%", font=_load_font(13,bold=True), fill=CYAN)
+
+        sep2 = sep1+86
+        draw.line([(18,sep2),(WIDTH-18,sep2)], fill=BORDER, width=1)
+        box_y, box_h, bw_stat = sep2+6, 90, (WIDTH-36)//5
+        labels_vals = [("KiLL",kills,GREEN),("ASiST",assists,BLUE),
+                       ("ÖLÜM",deaths,RED),("K/D",kd,GOLD),("SEZON K/D",season_kd,CYAN)]
+        for i,(lbl,val,col_s) in enumerate(labels_vals):
+            bx_s = 18+i*bw_stat
+            _stat_box(draw, bx_s+2, box_y, bw_stat-4, box_h, lbl, val, val_color=col_s)
+
+        draw.text((28, HEIGHT-26), "Calestify Gaming Community", font=f_small, fill=GRAY)
+
+        gif_frames.append(img.convert("RGB"))
+
+    # GIF olaraq saxla
+    pal_frames = [f.convert("P", palette=Image.ADAPTIVE, dither=0) for f in gif_frames]
+    pal_frames[0].save(output_path, save_all=True, append_images=pal_frames[1:],
+                       loop=0, duration=DELAY, optimize=False)
+    return output_path
+
+
 def _ring(draw, av_x, av_y, av_size, color):
     pad = 5
     draw.ellipse([(av_x-pad, av_y-pad), (av_x+av_size+pad, av_y+av_size+pad)],
