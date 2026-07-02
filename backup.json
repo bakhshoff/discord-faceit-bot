@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782936745,
+  "exported_at": 1782978853,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -100,7 +100,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": "adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, məqsədi yoxdur, sevdiyi silah yoxdur, oyun stili yoxdur, istifadəçi əyləncə sevən, azərbaycan dilində danışan, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, Faceit-dəki görevi var, 40 kill almali, Faceit-dəki görevi var, 40 kill almali, 100% öldürməyə nail olmaq istəyir, əyləncə sevən, maraqlı dialoqlar yazır, Faceit-dəki görevi var, 40 kill almali",
+      "ai_memory": "adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, məqsədi yoxdur, sevdiyi silah yoxdur, oyun stili yoxdur, istifadəçi əyləncə sevən, azərbaycan dilində danışan, sevdiyi silah yoxdur, oyun stili yoxdur, məqsədi yoxdur, adı yoxdur, yaşı yoxdur, bacarıqları yoxdur, Faceit-dəki görevi var, 40 kill almali, Faceit-dəki görevi var, 40 kill almali, 100% öldürməyə nail olmaq istəyir, əyləncə sevən, maraqlı dialoqlar yazır, Faceit-dəki görevi var, 40 kill almali, TofiqXS, 1062 ELO, 6 qələbə, 3 məğlubiyyət, 66.7% qələbə faiz, 1208 coin, əyləncə sevən, maraqlı dialoqlar yazır",
       "kills": 336,
       "assists": 33,
       "deaths": 118,
@@ -162,7 +162,7 @@
       "elo": 1091,
       "wins": 8,
       "losses": 3,
-      "coins": 448,
+      "coins": 458,
       "active_banner": "banner_purple",
       "active_frame": "frame_purple",
       "zm_balance": 0,
@@ -354,6 +354,28 @@
       "lang": "az"
     },
     {
+      "discord_id": 1212671666782605372,
+      "so2_nick": "dombalbasım",
+      "so2_id": "208092611",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
+      "win_streak": 0,
+      "max_streak": 0,
+      "is_banned": 0,
+      "peak_elo": 1000,
+      "banned_until": 0,
+      "lang": "az"
+    },
+    {
       "discord_id": 1226117959756414986,
       "so2_nick": "Qaqash",
       "so2_id": "284379627",
@@ -536,7 +558,7 @@
       "elo": 1016,
       "wins": 3,
       "losses": 2,
-      "coins": 104,
+      "coins": 114,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -580,7 +602,7 @@
       "elo": 1016,
       "wins": 2,
       "losses": 1,
-      "coins": 22,
+      "coins": 32,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -650,7 +672,7 @@
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
-      "ai_memory": null,
+      "ai_memory": "SeeyouSo2, ELO 1016, 1 qələbə, coin qazanmaq marağı, Azərbaycan dili, danışdığı dil çox güman ki Azərbaycan dili, danışdığı dillər: Azərbaycan dili, İngilis dili",
       "kills": 11,
       "assists": 3,
       "deaths": 18,
@@ -2678,6 +2700,33 @@
       "log_type": "earn",
       "balance_after": 104,
       "created_at": 1782936745
+    },
+    {
+      "id": 241,
+      "discord_id": 964144436374294609,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 458,
+      "created_at": 1782974227
+    },
+    {
+      "id": 242,
+      "discord_id": 1390263674601472041,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 32,
+      "created_at": 1782974238
+    },
+    {
+      "id": 243,
+      "discord_id": 1385557493874294855,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 114,
+      "created_at": 1782974369
     }
   ],
   "active_boosts": []
