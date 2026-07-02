@@ -56,8 +56,12 @@ try:
         buy_battle_pass, has_battle_pass, get_pass_data, add_bp_xp,
         get_active_bp_missions, update_bp_mission, BP_SEASON_ID, BP_MAX_LEVEL,
         get_lang, set_lang,
-        claim_bp_rewards, get_unclaimed_bp_levels
+        claim_bp_rewards, get_unclaimed_bp_levels,
+        init_tournament_tables, create_tournament, get_active_tournament, get_tournament,
+        register_tournament_team, get_tournament_teams, generate_bracket,
+        get_tournament_matches, set_match_winner
     )
+    from tournament_visual import generate_tournament_card, generate_tournament_registration_card
     from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
@@ -72,6 +76,7 @@ try:
                                generate_skin_catalog_card, generate_bet_card)
     from pass_visual import generate_pass_gif, generate_pass_card, generate_pass_levels_card, generate_pass_announcement
     from match_card import generate_match_card, generate_result_card
+    from match_recap import generate_match_recap_card
     from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
     from rules_card import generate_rules_card, generate_register_banner
     from market_config import MARKET_ITEMS, get_item_by_id
@@ -1200,6 +1205,31 @@ class MatchResultView(discord.ui.View):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             await log_channel.send(file=discord.File(result_img_path, filename="result.png"))
+            # Matç xülasəsi kartı
+            try:
+                active_map = "?"
+                _am = get_active_match()
+                if _am: active_map = _am.get("selected_map", "?")
+                recap_a = [{"nick": p["nick"], "kills": 0, "assists": 0, "deaths": 0,
+                             "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                            for p, r in zip(winner_team, results["winners"])]
+                recap_b = [{"nick": p["nick"], "kills": 0, "assists": 0, "deaths": 0,
+                             "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                            for p, r in zip(loser_team, results["losers"])]
+                if winner_label == "Komanda A":
+                    r_team_a, r_team_b = recap_a, recap_b
+                    sc_a, sc_b = 13, 0
+                else:
+                    r_team_a, r_team_b = recap_b, recap_a
+                    sc_a, sc_b = 0, 13
+                recap_path = os.path.join(DATA_DIR or ".", f"recap_{self.match_number}.png")
+                await asyncio.to_thread(
+                    generate_match_recap_card,
+                    self.match_number, active_map, sc_a, sc_b,
+                    winner_label, r_team_a, r_team_b, recap_path)
+                await log_channel.send(file=discord.File(recap_path, filename="recap.png"))
+            except Exception as _re:
+                print(f"[RECAP]: {_re}", flush=True)
 
         # Gözləyən matç varsa avtomatik başlat
         if queue_size() >= 10:
@@ -1953,6 +1983,37 @@ class ScanEditView(discord.ui.View):
             content=f"✅ **Matç No{self.match_number}** tamamlandı — 🏆 **{winner_label_full}**",
             embed=None, view=self)
 
+        # Matç xülasəsi kartı
+        log_ch_r = bot.get_channel(LOG_CHANNEL_ID)
+        if log_ch_r and results:
+            try:
+                sel_map = self.view_ref.parsed[0].get("map", "?") if hasattr(self, "view_ref") else "?"
+                w_team = winner_team if winner_label_full == "Komanda A" else loser_team
+                l_team = loser_team  if winner_label_full == "Komanda A" else winner_team
+                w_res  = results["winners"] if winner_label_full == "Komanda A" else results["losers"]
+                l_res  = results["losers"]  if winner_label_full == "Komanda A" else results["winners"]
+                rc_a = [{"nick": p["nick"],
+                          "kills": self.stats.get(p["discord_id"], {}).get("kills", 0),
+                          "assists": self.stats.get(p["discord_id"], {}).get("assists", 0),
+                          "deaths": self.stats.get(p["discord_id"], {}).get("deaths", 0),
+                          "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                         for p, r in zip(w_team, w_res)]
+                rc_b = [{"nick": p["nick"],
+                          "kills": self.stats.get(p["discord_id"], {}).get("kills", 0),
+                          "assists": self.stats.get(p["discord_id"], {}).get("assists", 0),
+                          "deaths": self.stats.get(p["discord_id"], {}).get("deaths", 0),
+                          "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                         for p, r in zip(l_team, l_res)]
+                sc_w = 13; sc_l = int(winner_label_full.split()[-1][-2:]) if "13" not in winner_label_full else 0
+                rc_path = os.path.join(DATA_DIR or ".", f"recap_{self.match_number}.png")
+                await asyncio.to_thread(
+                    generate_match_recap_card,
+                    self.match_number, getattr(self, "selected_map", "?"),
+                    sc_w, sc_l, winner_label_full, rc_a, rc_b, rc_path)
+                await log_ch_r.send(file=discord.File(rc_path, filename="recap.png"))
+            except Exception as _re:
+                print(f"[SCAN RECAP]: {_re}", flush=True)
+
         if queue_size() >= 10 and interaction.guild:
             await _start_match(interaction.channel, interaction.guild)
 
@@ -2331,6 +2392,29 @@ class ManuelMatchStatView(discord.ui.View):
         log_ch = bot.get_channel(LOG_CHANNEL_ID)
         if log_ch:
             await log_ch.send(file=discord.File(result_img, filename="result.png"))
+            # Matç xülasəsi kartı
+            try:
+                rc_a = [{"nick": p["nick"],
+                          "kills": self.stats.get(p["discord_id"], {}).get("kills", 0),
+                          "assists": self.stats.get(p["discord_id"], {}).get("assists", 0),
+                          "deaths": self.stats.get(p["discord_id"], {}).get("deaths", 0),
+                          "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                         for p, r in zip(winner_team, results["winners"])]
+                rc_b = [{"nick": p["nick"],
+                          "kills": self.stats.get(p["discord_id"], {}).get("kills", 0),
+                          "assists": self.stats.get(p["discord_id"], {}).get("assists", 0),
+                          "deaths": self.stats.get(p["discord_id"], {}).get("deaths", 0),
+                          "old_elo": r["old_elo"], "new_elo": r["new_elo"]}
+                         for p, r in zip(loser_team, results["losers"])]
+                _sel_map = get_active_match().get("selected_map", "?") if get_active_match() else "?"
+                rc_path  = os.path.join(DATA_DIR or ".", f"recap_{self.match_number}.png")
+                await asyncio.to_thread(
+                    generate_match_recap_card,
+                    self.match_number, _sel_map, 13, 0,
+                    winner_label, rc_a, rc_b, rc_path)
+                await log_ch.send(file=discord.File(rc_path, filename="recap.png"))
+            except Exception as _re:
+                print(f"[MANUEL RECAP]: {_re}", flush=True)
 
         if queue_size() >= 10 and interaction.guild:
             await _start_match(interaction.channel, interaction.guild)
@@ -3304,6 +3388,9 @@ async def on_ready():
         weekly_stats_task.start()
     if not ban_check_task.is_running():
         ban_check_task.start()
+    if not anti_afk_check.is_running():
+        anti_afk_check.start()
+    init_tournament_tables()
     check_and_lift_bans()
     await bot.tree.sync()
 
@@ -3380,6 +3467,91 @@ async def weekly_stats_task():
         embed.add_field(name=f"{medals[i]} {nick}", value=f"ELO: {elo}  ·  K/D: {kd}", inline=False)
     embed.set_footer(text=f"Calestify FACEIT  ·  {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y %H:%M')}")
     await ch.send(embed=embed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANTİ-AFK SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_afk_warned: set = set()   # Xəbərdar edilmiş discord_id-lər (DM göndərilib)
+
+class AfkConfirmView(discord.ui.View):
+    """Sırada olduğunu təsdiq etmək üçün düymə."""
+    def __init__(self, discord_id: int):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    @discord.ui.button(label="Sıradayam ✅", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        _afk_warned.discard(self.discord_id)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="✅ Sırada olduğunuz təsdiqləndi! Matç başlayana qədər gözləyin.",
+            view=self)
+
+    @discord.ui.button(label="Sıradan çıx 🚪", style=discord.ButtonStyle.secondary)
+    async def leave(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        remove_from_queue(self.discord_id)
+        _afk_warned.discard(self.discord_id)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="✅ Sıradan çıxdınız.", view=self)
+        await update_queue_status_message()
+
+    async def on_timeout(self):
+        if is_in_queue(self.discord_id) and self.discord_id in _afk_warned:
+            remove_from_queue(self.discord_id)
+            _afk_warned.discard(self.discord_id)
+            await update_queue_status_message()
+            # Log kanalına bildiriş
+            log_ch = bot.get_channel(LOG_CHANNEL_ID)
+            if log_ch:
+                p = get_player(self.discord_id)
+                nick = p[1] if p else str(self.discord_id)
+                await log_ch.send(
+                    f"⏰ **{nick}** AFK olaraq sıradan çıxarıldı (2 dəqiqə cavab vermədi).")
+
+
+@tasks.loop(seconds=60)
+async def anti_afk_check():
+    """Hər 60 saniyədə sıradakı AFK oyunçuları yoxlayır."""
+    import time
+    now = int(time.time())
+    AFK_WARN_AFTER  = 8 * 60   # 8 dəq sonra xəbərdar et
+    queue = get_queue_list()
+    for p in queue:
+        did = p["discord_id"]
+        joined = p.get("joined_at", now)
+        idle   = now - joined
+        if idle >= AFK_WARN_AFTER and did not in _afk_warned:
+            _afk_warned.add(did)
+            member = None
+            for guild in bot.guilds:
+                member = guild.get_member(did)
+                if member: break
+            if not member:
+                continue
+            try:
+                await member.send(
+                    f"⏰ **Calestify FACEIT** — Sırada **{idle//60} dəqiqədir** gözləyirsən!\n"
+                    f"Hələ orada olduğunu təsdiqlə, əks halda 2 dəqiqə sonra sıradan çıxarılacaqsan.",
+                    view=AfkConfirmView(did))
+            except discord.Forbidden:
+                # DM bağlıdırsa birbaşa sıradan çıxar
+                remove_from_queue(did)
+                _afk_warned.discard(did)
+                await update_queue_status_message()
+
+
+@anti_afk_check.before_loop
+async def before_anti_afk():
+    await bot.wait_until_ready()
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -4725,6 +4897,175 @@ async def skin_siyahi_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TURNİR KOMANDALARı
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TournamentRegisterModal(discord.ui.Modal, title="Komanda Qeydiyyatı"):
+    team_name = discord.ui.TextInput(label="Komanda adı", placeholder="Məs: Team Alpha", max_length=30)
+    members   = discord.ui.TextInput(
+        label="4 üzv Discord ID-si (vergüllə)",
+        placeholder="123456789,987654321,111222333,444555666",
+        max_length=200)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        t = get_active_tournament()
+        if not t or t["status"] != "registration":
+            await interaction.response.send_message("❌ Aktiv qeydiyyat yoxdur.", ephemeral=True); return
+
+        raw_ids = [s.strip() for s in self.members.value.split(",")]
+        member_ids = []
+        for s in raw_ids:
+            try: member_ids.append(int(s))
+            except ValueError:
+                await interaction.response.send_message(f"❌ Yanlış Discord ID: `{s}`", ephemeral=True); return
+        if len(member_ids) != 4:
+            await interaction.response.send_message("❌ Tam olaraq 4 üzv ID-si lazımdır.", ephemeral=True); return
+
+        all_ids = [interaction.user.id] + member_ids
+        elo_vals = []
+        for did in all_ids:
+            p = get_player(did)
+            if p: elo_vals.append(p[3])
+        elo_avg = sum(elo_vals) / len(elo_vals) if elo_vals else 1000
+
+        ok, msg = register_tournament_team(t["id"], str(self.team_name), interaction.user.id, all_ids, elo_avg)
+        if not ok:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True); return
+
+        teams = get_tournament_teams(t["id"])
+        path  = os.path.join(DATA_DIR or ".", "tournament_reg.png")
+        await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
+        await interaction.response.send_message(
+            f"✅ **{self.team_name}** turnirə qeydiyyatdan keçdi! ({len(teams)}/{t['max_teams']})",
+            file=discord.File(path, filename="tournament_reg.png"), ephemeral=False)
+
+
+@bot.tree.command(name="turnir_yarat", description="[Admin] Yeni turnir yarat")
+@app_commands.describe(ad="Turnir adı", mukafat="Qalib komandaya coin mükafatı", max_komanda="Max komanda sayı (2-8)")
+@app_commands.checks.has_permissions(administrator=True)
+async def turnir_yarat_cmd(interaction: discord.Interaction, ad: str, mukafat: int = 5000, max_komanda: int = 8):
+    await interaction.response.defer()
+    existing = get_active_tournament()
+    if existing:
+        await interaction.followup.send(f"❌ Artıq aktiv turnir var: **{existing['name']}**. Əvvəlcə onu bitirin.", ephemeral=True); return
+    if max_komanda not in (2, 4, 8):
+        await interaction.followup.send("❌ Max komanda 2, 4 və ya 8 ola bilər.", ephemeral=True); return
+
+    tid   = create_tournament(ad, mukafat, max_komanda, interaction.user.id)
+    t     = get_tournament(tid)
+    teams = []
+    path  = os.path.join(DATA_DIR or ".", "tournament_reg.png")
+    await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
+    embed = discord.Embed(
+        title=f"🏆 {ad} — Turnir Yaradıldı!",
+        description=(f"Qeydiyyat açıqdır!\n\n"
+                     f"💰 Mükafat: **{mukafat} coin**\n"
+                     f"👥 Max komanda: **{max_komanda}**\n\n"
+                     f"Qeydiyyat üçün: `/turnir_qeydi`"),
+        color=discord.Color.gold()
+    )
+    await interaction.followup.send(embed=embed, file=discord.File(path, filename="tournament_reg.png"))
+
+
+@turnir_yarat_cmd.error
+async def turnir_yarat_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="turnir_qeydi", description="Turnirə komanda olaraq qeydiyyatdan keç (kapitan üçün)")
+async def turnir_qeydi_cmd(interaction: discord.Interaction):
+    t = get_active_tournament()
+    if not t:
+        await interaction.response.send_message("❌ Aktiv turnir yoxdur.", ephemeral=True); return
+    if t["status"] != "registration":
+        await interaction.response.send_message("❌ Qeydiyyat bağlıdır.", ephemeral=True); return
+    await interaction.response.send_modal(TournamentRegisterModal())
+
+
+@bot.tree.command(name="turnir", description="Aktiv turnirin vəziyyətini göstər")
+async def turnir_cmd(interaction: discord.Interaction):
+    await interaction.response.defer()
+    t = get_active_tournament()
+    if not t:
+        await interaction.followup.send("❌ Aktiv turnir yoxdur.", ephemeral=True); return
+    teams   = get_tournament_teams(t["id"])
+    matches = get_tournament_matches(t["id"])
+    path    = os.path.join(DATA_DIR or ".", "tournament.png")
+    if t["status"] == "registration":
+        await asyncio.to_thread(generate_tournament_registration_card, t, teams, path)
+    else:
+        await asyncio.to_thread(generate_tournament_card, t, teams, matches, path)
+    fname = "tournament_reg.png" if t["status"] == "registration" else "tournament.png"
+    await interaction.followup.send(file=discord.File(path, filename=fname))
+
+
+@bot.tree.command(name="turnir_baslat", description="[Admin] Qeydiyyatı bağla, bracket yarat")
+@app_commands.checks.has_permissions(administrator=True)
+async def turnir_baslat_cmd(interaction: discord.Interaction):
+    await interaction.response.defer()
+    t = get_active_tournament()
+    if not t or t["status"] != "registration":
+        await interaction.followup.send("❌ Qeydiyyat mərhələsindəki turnir yoxdur.", ephemeral=True); return
+    ok, msg = generate_bracket(t["id"])
+    if not ok:
+        await interaction.followup.send(f"❌ {msg}", ephemeral=True); return
+    t       = get_tournament(t["id"])
+    teams   = get_tournament_teams(t["id"])
+    matches = get_tournament_matches(t["id"])
+    path    = os.path.join(DATA_DIR or ".", "tournament.png")
+    await asyncio.to_thread(generate_tournament_card, t, teams, matches, path)
+    await interaction.followup.send(
+        content="🏆 Turnir başladı! Bracket aşağıda:",
+        file=discord.File(path, filename="tournament.png"))
+
+
+@turnir_baslat_cmd.error
+async def turnir_baslat_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+@bot.tree.command(name="turnir_netice", description="[Admin] Turnir matçının qalib komandası")
+@app_commands.describe(match_id="Matç ID (turnir bracket-dəki sıra nömrəsi)", qalib_id="Qalib komanda DB ID-si")
+@app_commands.checks.has_permissions(administrator=True)
+async def turnir_netice_cmd(interaction: discord.Interaction, match_id: int, qalib_id: int):
+    await interaction.response.defer()
+    t = get_active_tournament()
+    if not t or t["status"] != "active":
+        await interaction.followup.send("❌ Aktiv turnir yoxdur.", ephemeral=True); return
+    finished = set_match_winner(match_id, qalib_id, t["id"])
+    t       = get_tournament(t["id"])
+    teams   = get_tournament_teams(t["id"])
+    matches = get_tournament_matches(t["id"])
+    path    = os.path.join(DATA_DIR or ".", "tournament.png")
+    await asyncio.to_thread(generate_tournament_card, t, teams, matches, path)
+    if finished:
+        winner_team = next((tm for tm in teams if tm["id"] == qalib_id), None)
+        wname = winner_team["team_name"] if winner_team else "?"
+        prize = t["prize_coins"]
+        if winner_team and prize > 0:
+            for did in winner_team.get("members", []):
+                new_bal = add_coins(did, prize // 5)
+                add_coin_log(did, prize // 5, f"Turnir qalibi — {t['name']}", "earn", new_bal)
+        await interaction.followup.send(
+            content=f"🏆 **{t['name']}** Turniri TAMAMLANDI!\n\n🥇 Qalib: **{wname}** — +{prize} coin!",
+            file=discord.File(path, filename="tournament.png"))
+    else:
+        await interaction.followup.send(
+            content="✅ Nəticə qeyd edildi. Bracket yeniləndi:",
+            file=discord.File(path, filename="tournament.png"))
+
+
+@turnir_netice_cmd.error
+async def turnir_netice_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 web_thread = threading.Thread(target=run_web_server, daemon=True)
 web_thread.start()

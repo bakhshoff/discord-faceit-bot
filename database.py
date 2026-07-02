@@ -514,10 +514,12 @@ def get_leaderboard(limit=20):
 queue_list = []      # Müvəqqəti növbə
 
 def add_to_queue(discord_id, nick, elo, so2_id=""):
+    import time
     for p in queue_list:
         if p["discord_id"] == discord_id:
             return False
-    queue_list.append({"discord_id": discord_id, "nick": nick, "elo": elo, "so2_id": so2_id})
+    queue_list.append({"discord_id": discord_id, "nick": nick, "elo": elo,
+                        "so2_id": so2_id, "joined_at": int(time.time())})
     return True
 
 def remove_from_queue(discord_id):
@@ -2449,3 +2451,171 @@ def get_unclaimed_bp_levels(discord_id: int) -> list:
     pd = get_pass_data(discord_id)
     claimed = set(pd["claimed"])
     return [lv for lv in range(1, pd["level"] + 1) if lv not in claimed]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TURNIR SISTEMI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def init_tournament_tables():
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tournaments (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            status       TEXT DEFAULT 'registration',
+            prize_coins  INTEGER DEFAULT 0,
+            created_by   INTEGER NOT NULL,
+            created_at   INTEGER NOT NULL,
+            max_teams    INTEGER DEFAULT 8
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tournament_teams (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER NOT NULL,
+            team_name     TEXT NOT NULL,
+            captain_id    INTEGER NOT NULL,
+            members       TEXT NOT NULL,
+            elo_avg       REAL DEFAULT 0,
+            created_at    INTEGER NOT NULL
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS tournament_matches (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            tournament_id INTEGER NOT NULL,
+            round         INTEGER NOT NULL,
+            match_num     INTEGER NOT NULL,
+            team_a_id     INTEGER,
+            team_b_id     INTEGER,
+            winner_id     INTEGER,
+            status        TEXT DEFAULT 'pending',
+            played_at     INTEGER
+        )
+    """)
+    conn.commit(); conn.close()
+
+
+def create_tournament(name, prize_coins, max_teams, created_by):
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO tournaments (name,prize_coins,max_teams,created_by,created_at) VALUES (?,?,?,?,?)",
+        (name, prize_coins, max_teams, created_by, int(time.time())))
+    tid = cur.lastrowid
+    conn.commit(); conn.close()
+    return tid
+
+
+def get_active_tournament():
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT id,name,status,prize_coins,created_by,created_at,max_teams FROM tournaments WHERE status!='finished' ORDER BY id DESC LIMIT 1")
+    row = cur.fetchone(); conn.close()
+    if not row: return None
+    return {"id":row[0],"name":row[1],"status":row[2],"prize_coins":row[3],
+            "created_by":row[4],"created_at":row[5],"max_teams":row[6]}
+
+
+def get_tournament(tid):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT id,name,status,prize_coins,created_by,created_at,max_teams FROM tournaments WHERE id=?", (tid,))
+    row = cur.fetchone(); conn.close()
+    if not row: return None
+    return {"id":row[0],"name":row[1],"status":row[2],"prize_coins":row[3],
+            "created_by":row[4],"created_at":row[5],"max_teams":row[6]}
+
+
+def register_tournament_team(tournament_id, team_name, captain_id, member_ids, elo_avg):
+    import time, json
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT id FROM tournament_teams WHERE tournament_id=? AND captain_id=?",
+                (tournament_id, captain_id))
+    if cur.fetchone():
+        conn.close(); return False, "Bu kapitan artiq komanda qeydiyyat etdirib."
+    cur.execute("SELECT COUNT(*) FROM tournament_teams WHERE tournament_id=?", (tournament_id,))
+    count = cur.fetchone()[0]
+    cur.execute("SELECT max_teams FROM tournaments WHERE id=?", (tournament_id,))
+    row = cur.fetchone()
+    if row and count >= row[0]:
+        conn.close(); return False, "Turnirde komanda limiti dolub."
+    cur.execute(
+        "INSERT INTO tournament_teams (tournament_id,team_name,captain_id,members,elo_avg,created_at) VALUES (?,?,?,?,?,?)",
+        (tournament_id, team_name, captain_id, json.dumps(member_ids), elo_avg, int(time.time())))
+    conn.commit(); conn.close()
+    return True, "Qeydiyyat ugurlu oldu."
+
+
+def get_tournament_teams(tournament_id):
+    import json
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT id,team_name,captain_id,members,elo_avg FROM tournament_teams WHERE tournament_id=? ORDER BY id", (tournament_id,))
+    rows = cur.fetchall(); conn.close()
+    return [{"id":r[0],"team_name":r[1],"captain_id":r[2],
+             "members":json.loads(r[3]),"elo_avg":r[4]} for r in rows]
+
+
+def generate_bracket(tournament_id):
+    import random
+    teams = get_tournament_teams(tournament_id)
+    if len(teams) < 2: return False, "En az 2 komanda lazimdir."
+    random.shuffle(teams)
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("DELETE FROM tournament_matches WHERE tournament_id=?", (tournament_id,))
+    for i in range(0, len(teams) - 1, 2):
+        ta = teams[i]["id"]
+        tb = teams[i+1]["id"] if i+1 < len(teams) else None
+        cur.execute(
+            "INSERT INTO tournament_matches (tournament_id,round,match_num,team_a_id,team_b_id,status) VALUES (?,?,?,?,?,?)",
+            (tournament_id, 1, i//2 + 1, ta, tb, "pending" if tb else "bye"))
+    cur.execute("UPDATE tournaments SET status='active' WHERE id=?", (tournament_id,))
+    conn.commit(); conn.close()
+    return True, "Bracket yaradildi."
+
+
+def get_tournament_matches(tournament_id):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""
+        SELECT tm.id,tm.round,tm.match_num,tm.team_a_id,tm.team_b_id,tm.winner_id,tm.status,
+               ta.team_name,tb.team_name,tw.team_name
+        FROM tournament_matches tm
+        LEFT JOIN tournament_teams ta ON ta.id=tm.team_a_id
+        LEFT JOIN tournament_teams tb ON tb.id=tm.team_b_id
+        LEFT JOIN tournament_teams tw ON tw.id=tm.winner_id
+        WHERE tm.tournament_id=? ORDER BY tm.round,tm.match_num
+    """, (tournament_id,))
+    rows = cur.fetchall(); conn.close()
+    return [{"id":r[0],"round":r[1],"match_num":r[2],"team_a_id":r[3],"team_b_id":r[4],
+             "winner_id":r[5],"status":r[6],
+             "team_a_name":r[7] or "TBD","team_b_name":r[8] or "TBD","winner_name":r[9]} for r in rows]
+
+
+def set_match_winner(match_id, winner_team_id, tournament_id):
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE tournament_matches SET winner_id=?,status='finished',played_at=? WHERE id=?",
+                (winner_team_id, int(time.time()), match_id))
+    cur.execute("SELECT round,match_num FROM tournament_matches WHERE id=?", (match_id,))
+    row = cur.fetchone()
+    if row:
+        nxt_rnd  = row[0] + 1
+        nxt_slot = (row[1] - 1) // 2 + 1
+        nxt_is_a = (row[1] % 2 == 1)
+        cur.execute("SELECT id FROM tournament_matches WHERE tournament_id=? AND round=? AND match_num=?",
+                    (tournament_id, nxt_rnd, nxt_slot))
+        nxt = cur.fetchone()
+        col = "team_a_id" if nxt_is_a else "team_b_id"
+        if nxt:
+            cur.execute(f"UPDATE tournament_matches SET {col}=? WHERE id=?", (winner_team_id, nxt[0]))
+        else:
+            cur.execute(
+                f"INSERT INTO tournament_matches (tournament_id,round,match_num,{col},status) VALUES (?,?,?,?,'pending')",
+                (tournament_id, nxt_rnd, nxt_slot, winner_team_id))
+    conn.commit()
+    cur.execute("SELECT COUNT(*) FROM tournament_matches WHERE tournament_id=? AND status NOT IN ('finished','bye')",
+                (tournament_id,))
+    pending = cur.fetchone()[0]
+    if pending == 0:
+        cur.execute("UPDATE tournaments SET status='finished' WHERE id=?", (tournament_id,))
+    conn.commit(); conn.close()
+    return pending == 0
+
