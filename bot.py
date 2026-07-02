@@ -67,7 +67,7 @@ try:
     from i18n import t as _t
     from leaderboard_image import generate_leaderboard_image, generate_season_leaderboard_image
     from web_server import run_web_server
-    from profile_card import generate_profile_card, generate_animated_profile_card
+    from profile_card import generate_profile_card
     from visual_cards import (generate_match_history_card, generate_coin_logs_card,
                                generate_inventory_card, generate_tasks_card,
                                generate_stats_card, generate_warnings_card,
@@ -3779,28 +3779,13 @@ async def profile(interaction: discord.Interaction):
         _pass_level  = _pd.get("level", 0)
         _pass_status = "premium" if _pd.get("is_premium") else "free"
 
-    # Animasiyalı GIF profil kartı
-    card_gif = card_path.replace(".png", ".gif")
-    try:
-        await asyncio.to_thread(
-            generate_animated_profile_card,
-            nick, so2_id, elo, wins, losses, avatar_bytes, card_gif,
-            banner_full_path, coins, frame_full_path, zm_balance,
-            combat["kills"], combat["assists"], combat["deaths"],
-            ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"],
-            _pass_status, _pass_level
-        )
-        send_path, send_name = card_gif, "profile.gif"
-    except Exception as _gif_err:
-        print(f"[PROFILE GIF]: {_gif_err}", flush=True)
-        await asyncio.to_thread(
-            generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
-            banner_full_path, coins, frame_full_path, zm_balance,
-            combat["kills"], combat["assists"], combat["deaths"],
-            ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"],
-            _pass_status, _pass_level
-        )
-        send_path, send_name = card_path, "profile.png"
+    await asyncio.to_thread(
+        generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
+        banner_full_path, coins, frame_full_path, zm_balance,
+        combat["kills"], combat["assists"], combat["deaths"],
+        ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"],
+        _pass_status, _pass_level
+    )
 
     active_task = get_player_active_task(discord_id)
     boosts      = get_all_active_boosts(discord_id)
@@ -3820,7 +3805,7 @@ async def profile(interaction: discord.Interaction):
             boost_embed.add_field(name=bn, value=f"{h}s {mn}dəq  ·  {edt.strftime('%H:%M')}", inline=True)
 
     await interaction.followup.send(
-        file=discord.File(send_path, filename=send_name),
+        file=discord.File(card_path, filename="profile.png"),
         embed=boost_embed,
         view=PlayerProfileView(discord_id)
     )

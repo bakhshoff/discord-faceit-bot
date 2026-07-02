@@ -17,9 +17,6 @@ MARKET_ITEMS = [
     {"id": "banner_purple", "name": "Benovseyi Elite Banner", "type": "banner", "price": 350, "file": "banner_purple.png"},
     {"id": "banner_cyber_blue", "name": "Cyber Blue Banner", "type": "banner", "price": 400, "file": "banner_cyber_blue.png"},
     {"id": "banner_toxic_green", "name": "Toxic Green Banner", "type": "banner", "price": 400, "file": "banner_toxic_green.png"},
-    {"id": "frame_s2_gif",  "name": "S2 Animated Frame", "type": "avatar_frame", "price": 1000, "file": "avatar_frame.gif", "animated": True},
-    {"id": "frame_s2_png",  "name": "S2 Tactical Frame",  "type": "avatar_frame", "price": 600,  "file": "avatar_frame.png"},
-
     {"id": "frame_cyan", "name": "Neon Mavi Cercive", "type": "avatar_frame", "price": 300, "file": "frame_cyan.png"},
     {"id": "frame_pink", "name": "Neon Cehrayi Cercive", "type": "avatar_frame", "price": 300, "file": "frame_pink.png"},
     {"id": "frame_green", "name": "Neon Yasil Cercive", "type": "avatar_frame", "price": 300, "file": "frame_green.png"},
