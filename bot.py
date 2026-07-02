@@ -357,6 +357,11 @@ class MarketItemDetailView(discord.ui.View):
 
     @discord.ui.button(label="🛒 Al", style=discord.ButtonStyle.success)
     async def buy_item(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.item.get("exclusive"):
+            await interaction.response.send_message(
+                "🔒 Bu əşya yalnız xüsusi yolla əldə edilə bilər — marketdə satılmır.",
+                ephemeral=True)
+            return
         if owns_item(self.discord_id, self.item["id"]):
             await interaction.response.send_message("⚠️ Bu əşyaya artıq sahibsiniz.", ephemeral=True)
             return
@@ -386,7 +391,9 @@ class MarketItemView(discord.ui.View):
         """item_type: None = hamısı, 'banner' = yalnız bannerlər, 'avatar_frame' = yalnız çərçivələr"""
         super().__init__(timeout=120)
         self.discord_id = discord_id
-        items = [i for i in MARKET_ITEMS if item_type is None or i.get("type") == item_type]
+        items = [i for i in MARKET_ITEMS
+                 if (item_type is None or i.get("type") == item_type)
+                 and not i.get("exclusive")]
         for item in items:
             owned = owns_item(discord_id, item["id"])
             label = f"👁 {item['name']} — {item['price']} 🪙" if not owned else f"{item['name']} (Sahibsiniz)"
@@ -715,7 +722,7 @@ class DizaynMarketView(discord.ui.View):
     @discord.ui.button(label="Avatar (Bannerlər)", style=discord.ButtonStyle.primary, emoji="🖼️", row=0)
     async def open_banners(self, interaction: discord.Interaction, button: discord.ui.Button):
         coins = get_coins(self.discord_id)
-        banners = [i for i in MARKET_ITEMS if i.get("type") == "banner"]
+        banners = [i for i in MARKET_ITEMS if i.get("type") == "banner" and not i.get("exclusive")]
         lines = [f"**{i['name']}**" + (" ✅" if owns_item(self.discord_id, i["id"]) else f" — 🪙 {i['price']}") for i in banners]
         embed = discord.Embed(title="🖼️ Avatar Bannerlər", description="\n".join(lines), color=discord.Color.gold())
         embed.set_footer(text=f"Balansınız: 🪙 {coins}")
@@ -724,7 +731,7 @@ class DizaynMarketView(discord.ui.View):
     @discord.ui.button(label="Çərçivə", style=discord.ButtonStyle.secondary, emoji="🔲", row=0)
     async def open_frames(self, interaction: discord.Interaction, button: discord.ui.Button):
         coins = get_coins(self.discord_id)
-        frames = [i for i in MARKET_ITEMS if i.get("type") == "avatar_frame"]
+        frames = [i for i in MARKET_ITEMS if i.get("type") == "avatar_frame" and not i.get("exclusive")]
         lines = [f"**{i['name']}**" + (" ✅" if owns_item(self.discord_id, i["id"]) else f" — 🪙 {i['price']}") for i in frames]
         embed = discord.Embed(title="🔲 Çərçivələr", description="\n".join(lines), color=discord.Color.blurple())
         embed.set_footer(text=f"Balansınız: 🪙 {coins}")
@@ -4905,6 +4912,29 @@ async def mehsul_ver_cmd(interaction: discord.Interaction, uzv: discord.Member, 
 async def mehsul_ver_error(i, e):
     if isinstance(e, app_commands.MissingPermissions):
         await i.response.send_message("❌", ephemeral=True)
+
+
+@bot.tree.command(name="mehsul_sil", description="[Admin] Oyunçunun inventarından market məhsulunu sil")
+@app_commands.describe(uzv="Üzv", item_id="Silinəcək item ID-si (məs: banner_ambassador)")
+@app_commands.checks.has_permissions(administrator=True)
+async def mehsul_sil_cmd(interaction: discord.Interaction, uzv: discord.Member, item_id: str):
+    from database import _get_conn as _gc2
+    conn = _gc2(); cur = conn.cursor()
+    cur.execute("DELETE FROM inventory WHERE discord_id=? AND item_id=?", (uzv.id, item_id))
+    deleted = cur.rowcount
+    conn.commit(); conn.close()
+    if deleted:
+        await interaction.response.send_message(
+            f"✅ `{item_id}` {uzv.mention}-in inventarından silindi.", ephemeral=True)
+    else:
+        await interaction.response.send_message(
+            f"❌ {uzv.mention}-in inventarında `{item_id}` tapılmadı.", ephemeral=True)
+
+
+@mehsul_sil_cmd.error
+async def mehsul_sil_error(i, e):
+    if isinstance(e, app_commands.MissingPermissions):
+        await i.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
 
 
 # ── /ara, /toplu_bildiris, ELO admin log ─────────────────────────────────────
