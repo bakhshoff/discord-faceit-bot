@@ -1,5 +1,5 @@
 {
-  "exported_at": 1782994036,
+  "exported_at": 1782995744,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -162,7 +162,7 @@
       "elo": 1000,
       "wins": 0,
       "losses": 0,
-      "coins": 0,
+      "coins": 10,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -956,6 +956,12 @@
       "discord_id": 1066686022500495420,
       "item_id": "banner_red",
       "acquired_at": 1782936256
+    },
+    {
+      "id": 9,
+      "discord_id": 964144436374294609,
+      "item_id": "banner_ambassador",
+      "acquired_at": 1782995744
     }
   ],
   "giveaways": [
@@ -2767,6 +2773,24 @@
       "log_type": "earn",
       "balance_after": 247,
       "created_at": 1782993970
+    },
+    {
+      "id": 246,
+      "discord_id": 883061755985670154,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 10,
+      "created_at": 1782994052
+    },
+    {
+      "id": 247,
+      "discord_id": 964144436374294609,
+      "change": 0,
+      "reason": "Market alışı: Calestify Ambassador",
+      "log_type": "spend",
+      "balance_after": 458,
+      "created_at": 1782995744
     }
   ],
   "active_boosts": []
