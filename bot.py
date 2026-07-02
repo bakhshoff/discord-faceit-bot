@@ -1009,6 +1009,53 @@ class PlayerProfileView(discord.ui.View):
         embed.add_field(name="Dil / Dil", value=_t(lang, 'current_lang'), inline=False)
         await interaction.response.send_message(embed=embed, view=SettingsView(self.discord_id), ephemeral=True)
 
+    @discord.ui.button(label="Dəvətlər", style=discord.ButtonStyle.secondary, emoji="🔗", custom_id="profile_referral", row=3)
+    async def open_referral(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu profil sizə aid deyil.", ephemeral=True); return
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.discord_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+
+        existing_code = get_inviter_invite_code(self.discord_id)
+        invite_url = f"https://discord.gg/{existing_code}" if existing_code else "—"
+
+        # Link yoxdursa yarat
+        if not existing_code and interaction.guild:
+            channel = bot.get_channel(REFERRAL_CHANNEL_ID) if REFERRAL_CHANNEL_ID else interaction.channel
+            if channel:
+                try:
+                    inv = await channel.create_invite(max_age=0, max_uses=0, unique=True,
+                                                      reason=f"Referral — {interaction.user.display_name}")
+                    store_referral_invite(inv.code, self.discord_id)
+                    _invite_uses[inv.code] = inv.uses
+                    invite_url = inv.url
+                except discord.Forbidden:
+                    pass
+
+        stats     = get_referral_stats(self.discord_id)
+        referrals = get_referral_list(self.discord_id)
+        path      = os.path.join(DATA_DIR or ".", f"referral_{self.discord_id}.png")
+        await asyncio.to_thread(
+            generate_referral_stats_card,
+            player[1], stats, referrals, invite_url, path)
+
+        embed = discord.Embed(
+            title="🔗 Dəvət Linkiniz",
+            description=(
+                f"`{invite_url}`\n\n"
+                f"✅ Qeydiyyat: **+{REFERRAL_REWARD_REG} coin**\n"
+                f"🔥 3 matç: **+{REFERRAL_REWARD_3MATCH} coin**\n"
+                f"🏅 10 matç: **Calestify Ambassador** banneri"
+            ),
+            color=discord.Color.purple()
+        )
+        await interaction.followup.send(
+            embed=embed,
+            file=discord.File(path, filename="davet.png"),
+            ephemeral=True)
+
 
 class SettingsView(discord.ui.View):
     def __init__(self, discord_id: int):
