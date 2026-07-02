@@ -4906,23 +4906,27 @@ async def skin_siyahi_error(interaction: discord.Interaction, error):
 class TournamentRegisterModal(discord.ui.Modal, title="Komanda Qeydiyyatı"):
     team_name = discord.ui.TextInput(label="Komanda adı", placeholder="Məs: Team Alpha", max_length=30)
     members   = discord.ui.TextInput(
-        label="4 üzv Discord ID-si (vergüllə)",
-        placeholder="123456789,987654321,111222333,444555666",
-        max_length=200)
+        label="Komanda üzvlərinin Discord ID-ləri (vergüllə)",
+        placeholder="2v2: 1 ID  |  5v5: 4 ID  |  Məs: 123456789,987654321",
+        max_length=300,
+        required=False)
 
     async def on_submit(self, interaction: discord.Interaction):
         t = get_active_tournament()
         if not t or t["status"] != "registration":
             await interaction.response.send_message("❌ Aktiv qeydiyyat yoxdur.", ephemeral=True); return
 
-        raw_ids = [s.strip() for s in self.members.value.split(",")]
+        raw = self.members.value.strip() if self.members.value else ""
         member_ids = []
-        for s in raw_ids:
-            try: member_ids.append(int(s))
-            except ValueError:
-                await interaction.response.send_message(f"❌ Yanlış Discord ID: `{s}`", ephemeral=True); return
-        if len(member_ids) != 4:
-            await interaction.response.send_message("❌ Tam olaraq 4 üzv ID-si lazımdır.", ephemeral=True); return
+        if raw:
+            for s in raw.split(","):
+                s = s.strip()
+                if not s: continue
+                try: member_ids.append(int(s))
+                except ValueError:
+                    await interaction.response.send_message(f"❌ Yanlış Discord ID: `{s}`", ephemeral=True); return
+        if len(member_ids) > 9:
+            await interaction.response.send_message("❌ Maksimum 9 üzv ID-si daxil edilə bilər.", ephemeral=True); return
 
         all_ids = [interaction.user.id] + member_ids
         elo_vals = []
@@ -5067,24 +5071,24 @@ async def turnir_netice_cmd(interaction: discord.Interaction, match_id: int, qal
                 add_zm(did, share_azn)
             prize_lines.append(f"💵 {prize_azn:.2f} AZN ({share_azn:.2f}/nəfər)")
 
-        # ── Market itemlər (bannerlər, çərçivələr) — kapitana verilir ─────────
+        # ── Market itemlər (bannerlər, çərçivələr) — bütün üzvlərə ─────────────
         for iid in t.get("prize_item_ids", []):
             item = get_item_by_id(iid)
             if item and members:
-                cap_id = winner_team["captain_id"] if winner_team else members[0]
-                add_to_inventory(cap_id, iid)
-                prize_lines.append(f"🎨 {item['name']} (Kapitan aldı)")
+                for did in members:
+                    add_to_inventory(did, iid)
+                prize_lines.append(f"🎨 {item['name']} (bütün {n_members} üzv aldı)")
 
-        # ── Skinlər — kapitana verilir ─────────────────────────────────────────
+        # ── Skinlər — bütün üzvlərə ──────────────────────────────────────────
         for sid in t.get("prize_skin_ids", []):
             try:
                 skin = get_skin_by_id(int(sid))
             except Exception:
                 skin = None
             if skin and members:
-                cap_id = winner_team["captain_id"] if winner_team else members[0]
-                add_skin_to_inventory(cap_id, skin["id"], skin["name"], skin.get("price", 0))
-                prize_lines.append(f"🔫 {skin['name']} (Kapitan aldı)")
+                for did in members:
+                    add_skin_to_inventory(did, skin["id"], skin["name"], skin.get("price", 0))
+                prize_lines.append(f"🔫 {skin['name']} (bütün {n_members} üzv aldı)")
 
         prize_text = "\n".join(prize_lines) if prize_lines else "Mükafat təyin edilməmişdi"
         await asyncio.to_thread(backup.export_backup)
