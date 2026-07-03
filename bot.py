@@ -26,6 +26,7 @@ try:
         get_inventory, owns_item, add_to_inventory,
         set_active_banner, get_active_banner,
         set_active_frame, get_active_frame,
+        set_active_theme, get_active_theme,
         record_match_history, get_player_match_history, get_total_match_count,
         admin_set_player_field,
         add_skin, get_active_skins, get_skin_by_id, remove_skin,
@@ -738,6 +739,23 @@ class DizaynMarketView(discord.ui.View):
         embed.set_footer(text=f"Balansınız: 🪙 {coins}")
         await interaction.response.send_message(embed=embed, view=MarketItemView(self.discord_id, item_type="avatar_frame"), ephemeral=True)
 
+    @discord.ui.button(label="Profil Temaları", style=discord.ButtonStyle.primary, emoji="🎨", row=1)
+    async def open_themes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        coins  = get_coins(self.discord_id)
+        themes = [i for i in MARKET_ITEMS if i.get("type") == "profile_theme"]
+        lines  = []
+        for i in themes:
+            owned = owns_item(self.discord_id, i["id"])
+            active = get_active_theme(self.discord_id) == i["id"]
+            status = "▶ Aktiv" if active else ("✅ Var" if owned else f"🪙 {i['price']}")
+            lines.append(f"**{i['name']}** — {status}")
+        embed = discord.Embed(title="🎨 Profil Rəng Temaları",
+                              description="\n".join(lines) or "Tema yoxdur.",
+                              color=discord.Color.purple())
+        embed.set_footer(text=f"Balansınız: 🪙 {coins}  ·  Aldıqdan sonra İnventar → Tema-dan aktivləşdirin")
+        await interaction.response.send_message(embed=embed,
+            view=MarketItemView(self.discord_id, item_type="profile_theme"), ephemeral=True)
+
 
 # ── Market ana alt-menüsü ─────────────────────────────────────────────────────
 class MarketSubView(discord.ui.View):
@@ -922,6 +940,41 @@ class InventarSubView(discord.ui.View):
             lines.append(f"**{bn}** — {h}s {mn}dəq qalıb\n⏰ {exp.strftime('%d.%m %H:%M')}")
         embed = discord.Embed(title="⚡ Premium Envanterim", description="\n\n".join(lines), color=discord.Color.purple())
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Tema", style=discord.ButtonStyle.secondary, emoji="🎨", row=1)
+    async def inv_theme(self, interaction: discord.Interaction, button: discord.ui.Button):
+        owned = [i for i in get_inventory(self.discord_id)
+                 if get_item_by_id(i) and get_item_by_id(i).get("type") == "profile_theme"]
+        if not owned:
+            await interaction.response.send_message(
+                "🎨 Heç bir tema yoxdur. Market → Dizayn Market-dən ala bilərsiniz.", ephemeral=True); return
+        active = get_active_theme(self.discord_id)
+        opts = []
+        for iid in owned[:25]:
+            it = get_item_by_id(iid)
+            if not it: continue
+            opts.append(discord.SelectOption(
+                label=it["name"][:25], value=iid,
+                description="▶ Aktiv" if iid == active else "Aktiv et",
+                emoji="▶️" if iid == active else "🎨"))
+        if not opts:
+            await interaction.response.send_message("❌", ephemeral=True); return
+        sel = discord.ui.Select(placeholder="Tema seç...", options=opts)
+        async def _on_theme_select(inter: discord.Interaction):
+            chosen = sel.values[0]
+            set_active_theme(self.discord_id, chosen)
+            it = get_item_by_id(chosen)
+            await inter.response.send_message(
+                f"✅ **{it['name'] if it else chosen}** aktiv edildi! `/profile` ilə yoxlayın.",
+                ephemeral=True)
+        sel.callback = _on_theme_select
+        v = discord.ui.View(timeout=60)
+        v.add_item(sel)
+        cur_name = get_item_by_id(active)["name"] if active and get_item_by_id(active) else "Yoxdur (default)"
+        embed = discord.Embed(title="🎨 Profil Temaları",
+                              description=f"Aktiv tema: **{cur_name}**\nAşağıdan yeni tema seç:",
+                              color=discord.Color.purple())
+        await interaction.response.send_message(embed=embed, view=v, ephemeral=True)
 
 
 # ── Əsas profil menyusu ───────────────────────────────────────────────────────
@@ -3783,12 +3836,20 @@ async def profile(interaction: discord.Interaction):
         _pass_level  = _pd.get("level", 0)
         _pass_status = "premium" if _pd.get("is_premium") else "free"
 
+    # Aktiv tema
+    _theme_id     = get_active_theme(discord_id)
+    _theme_colors = None
+    if _theme_id:
+        _titem = get_item_by_id(_theme_id)
+        if _titem:
+            _theme_colors = _titem.get("colors")
+
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
         banner_full_path, coins, frame_full_path, zm_balance,
         combat["kills"], combat["assists"], combat["deaths"],
         ss["wins"], ss["losses"], ss["kills"], ss["assists"], ss["deaths"],
-        _pass_status, _pass_level
+        _pass_status, _pass_level, _theme_colors
     )
 
     active_task = get_player_active_task(discord_id)

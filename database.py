@@ -34,6 +34,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN active_banner TEXT DEFAULT NULL")
     if "active_frame" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN active_frame TEXT DEFAULT NULL")
+    if "active_theme" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN active_theme TEXT DEFAULT NULL")
     if "zm_balance" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN zm_balance INTEGER DEFAULT 0")
     if "ai_memory" not in existing_columns:
@@ -703,6 +705,19 @@ def get_active_frame(discord_id):
     cursor.execute("SELECT active_frame FROM players WHERE discord_id = ?", (discord_id,))
     row = cursor.fetchone()
     conn.close()
+    return row[0] if row else None
+
+
+def set_active_theme(discord_id, theme_id):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE players SET active_theme=? WHERE discord_id=?", (theme_id, discord_id))
+    conn.commit(); conn.close()
+
+
+def get_active_theme(discord_id):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT active_theme FROM players WHERE discord_id=?", (discord_id,))
+    row = cur.fetchone(); conn.close()
     return row[0] if row else None
 
 

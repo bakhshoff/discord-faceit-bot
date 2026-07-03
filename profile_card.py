@@ -101,7 +101,8 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           kills=0, assists=0, deaths=0,
                           season_wins=0, season_losses=0,
                           season_kills=0, season_assists=0, season_deaths=0,
-                          pass_status=None, pass_level=0):
+                          pass_status=None, pass_level=0,
+                          theme_colors=None):
 
     # ── Arxa plan ────────────────────────────────────────────────────────────
     if banner_path and os.path.exists(banner_path):
@@ -122,7 +123,16 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
 
     img  = img.convert("RGBA")
     draw = ImageDraw.Draw(img)
-    draw.rectangle([(0,0),(WIDTH-1,HEIGHT-1)], outline=BORDER, width=2)
+
+    # Tema rəngləri tətbiq et (default dəyərlər üzərinə yazılır)
+    t_accent = theme_colors.get("accent", GOLD)   if theme_colors else GOLD
+    t_panel  = theme_colors.get("panel",  PANEL)  if theme_colors else PANEL
+    t_border = theme_colors.get("border", BORDER) if theme_colors else BORDER
+    t_text2  = theme_colors.get("text2",  GRAY)   if theme_colors else GRAY
+
+    draw.rectangle([(0,0),(WIDTH-1,HEIGHT-1)], outline=t_accent, width=2)
+    # Üst rəngli şerid
+    draw.rectangle([(0,0),(WIDTH,4)], fill=t_accent)
 
     level, level_color = get_level_info(elo)
     matches        = wins + losses
@@ -143,7 +153,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     f_small  = _load_font(11)
 
     # ── Header şerid ─────────────────────────────────────────────────────────
-    draw.text((28, 18), "CALESTIFY", font=f_brand, fill=GOLD)
+    draw.text((28, 18), "CALESTIFY", font=f_brand, fill=t_accent)
     draw.text((28, 34), "FACEIT PROFILE", font=f_title, fill=WHITE)
 
     # Coin + AZN (sağ üst)
@@ -151,8 +161,8 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     bbox = draw.textbbox((0,0), coin_text, font=f_coin)
     tw = bbox[2]-bbox[0]
     ccd = 14
-    draw.ellipse([(WIDTH-28-tw-ccd-6, 20), (WIDTH-28-tw-6, 20+ccd)], fill=GOLD)
-    draw.text((WIDTH-28-tw, 18), coin_text, font=f_coin, fill=GOLD)
+    draw.ellipse([(WIDTH-28-tw-ccd-6, 20), (WIDTH-28-tw-6, 20+ccd)], fill=t_accent)
+    draw.text((WIDTH-28-tw, 18), coin_text, font=f_coin, fill=t_accent)
     zm_val  = round(float(zm_balance or 0), 2)
     zm_text = f"{zm_val:.1f} AZN"
     bbox_zm = draw.textbbox((0,0), zm_text, font=f_coin)
@@ -229,16 +239,16 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     # ELO (sağda)
     ex = WIDTH - 220
     draw.text((ex, 82),  "ELO",    font=f_elolbl, fill=GRAY)
-    draw.text((ex, 98),  str(elo), font=f_elo,    fill=GOLD)
+    draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
 
     # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
     sep1 = 232
-    draw.line([(18, sep1), (WIDTH-18, sep1)], fill=BORDER, width=1)
+    draw.line([(18, sep1), (WIDTH-18, sep1)], fill=t_border, width=1)
 
     # ── Ümumi + Sezon statistikası (2 panel yan-yana) ─────────────────────────
     col_w = (WIDTH - 36) // 2
-    draw.rectangle([18, sep1+4, 18+col_w, sep1+78], fill=PANEL, outline=BORDER, width=1)
-    draw.text((26, sep1+7), "ÜMUMI", font=_load_font(10, bold=True), fill=GOLD)
+    draw.rectangle([18, sep1+4, 18+col_w, sep1+78], fill=t_panel, outline=t_border, width=1)
+    draw.text((26, sep1+7), "ÜMUMI", font=_load_font(10, bold=True), fill=t_accent)
     draw.text((26, sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
               font=_load_font(13), fill=WHITE)
     draw.text((26, sep1+42), f"Win Rate: {wr}%", font=_load_font(13, bold=True), fill=GREEN)
