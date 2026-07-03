@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783067856,
+  "exported_at": 1783070166,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -21,7 +21,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 530035951347433474,
@@ -43,7 +44,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 673522186400563210,
@@ -65,7 +67,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 700371111853948968,
@@ -87,7 +90,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 807514987043749919,
@@ -109,7 +113,8 @@
       "is_banned": 0,
       "peak_elo": 1091,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 820700268446482442,
@@ -131,7 +136,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 855719280086876161,
@@ -153,7 +159,8 @@
       "is_banned": 0,
       "peak_elo": 1015,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 883061755985670154,
@@ -175,7 +182,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 964144436374294609,
@@ -184,7 +192,7 @@
       "elo": 1110,
       "wins": 10,
       "losses": 4,
-      "coins": 886,
+      "coins": 486,
       "active_banner": "banner_purple",
       "active_frame": "frame_purple",
       "zm_balance": 0,
@@ -197,7 +205,8 @@
       "is_banned": 0,
       "peak_elo": 1107,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 989097823586893895,
@@ -219,7 +228,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1001110996657651772,
@@ -241,7 +251,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1051918529227665519,
@@ -263,7 +274,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1053637265689157753,
@@ -285,7 +297,8 @@
       "is_banned": 0,
       "peak_elo": 1016,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1060637021565112360,
@@ -307,7 +320,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1066686022500495420,
@@ -329,7 +343,8 @@
       "is_banned": 0,
       "peak_elo": 1001,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1102666334157938728,
@@ -351,7 +366,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1134288537546674238,
@@ -373,7 +389,8 @@
       "is_banned": 0,
       "peak_elo": 1009,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1208089903544672278,
@@ -395,7 +412,8 @@
       "is_banned": 0,
       "peak_elo": 1045,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1212671666782605372,
@@ -417,7 +435,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1226117959756414986,
@@ -439,7 +458,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1228418531951906838,
@@ -461,7 +481,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1247206286056226848,
@@ -483,7 +504,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1263121818244616195,
@@ -505,7 +527,8 @@
       "is_banned": 0,
       "peak_elo": 1099,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1307319883482009690,
@@ -527,7 +550,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1326856754511745156,
@@ -549,7 +573,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1359923868688580789,
@@ -571,7 +596,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1380853826931785808,
@@ -593,7 +619,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1385557493874294855,
@@ -615,7 +642,8 @@
       "is_banned": 0,
       "peak_elo": 1032,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1386319084563726359,
@@ -637,7 +665,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1390263674601472041,
@@ -659,7 +688,8 @@
       "is_banned": 0,
       "peak_elo": 1048,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1399406331714076693,
@@ -681,7 +711,8 @@
       "is_banned": 0,
       "peak_elo": 1016,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1423975179419385928,
@@ -703,7 +734,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1424104516214849617,
@@ -725,7 +757,8 @@
       "is_banned": 0,
       "peak_elo": 1016,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1429511300391764060,
@@ -747,7 +780,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1453750341987209308,
@@ -769,7 +803,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1457800486882382022,
@@ -791,7 +826,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1464500933961453794,
@@ -813,7 +849,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1475723969012437175,
@@ -835,7 +872,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1476543366438191174,
@@ -844,7 +882,7 @@
       "elo": 940,
       "wins": 0,
       "losses": 4,
-      "coins": 66,
+      "coins": 76,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -857,7 +895,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1478002530284736687,
@@ -879,7 +918,8 @@
       "is_banned": 0,
       "peak_elo": 1016,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1482470627397865743,
@@ -901,7 +941,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1505799748215636089,
@@ -923,7 +964,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1513910231212621890,
@@ -945,7 +987,8 @@
       "is_banned": 0,
       "peak_elo": 1001,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     },
     {
       "discord_id": 1518324691117281404,
@@ -967,7 +1010,8 @@
       "is_banned": 0,
       "peak_elo": 1000,
       "banned_until": 0,
-      "lang": "az"
+      "lang": "az",
+      "active_theme": null
     }
   ],
   "inventory": [
@@ -1024,6 +1068,12 @@
       "discord_id": 1385557493874294855,
       "item_id": "banner_red",
       "acquired_at": 1783020957
+    },
+    {
+      "id": 14,
+      "discord_id": 964144436374294609,
+      "item_id": "theme_purple",
+      "acquired_at": 1783070166
     }
   ],
   "giveaways": [
@@ -3648,6 +3698,24 @@
       "log_type": "earn",
       "balance_after": 97,
       "created_at": 1783065167
+    },
+    {
+      "id": 328,
+      "discord_id": 1476543366438191174,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 76,
+      "created_at": 1783068047
+    },
+    {
+      "id": 329,
+      "discord_id": 964144436374294609,
+      "change": -400,
+      "reason": "Market alışı: Benovseyi Tema",
+      "log_type": "spend",
+      "balance_after": 486,
+      "created_at": 1783070166
     }
   ],
   "active_boosts": []
