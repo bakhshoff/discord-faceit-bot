@@ -76,7 +76,8 @@ try:
                                generate_compare_card, generate_elo_graph,
                                generate_activity_card,
                                generate_transfer_card, generate_search_results_card,
-                               generate_skin_catalog_card, generate_bet_card)
+                               generate_skin_catalog_card, generate_bet_card,
+                               generate_share_card)
     from pass_visual import generate_pass_gif, generate_pass_card, generate_pass_levels_card, generate_pass_announcement
     from match_card import generate_match_card, generate_result_card
     from match_recap import generate_match_recap_card
@@ -2904,6 +2905,36 @@ class StatsNavView(discord.ui.View):
         await asyncio.to_thread(generate_achievements_card, player[1], achs, path)
         await interaction.followup.send(file=discord.File(path, filename="achievements.png"),
                                         view=NailiyyetNavView(self.target_id), ephemeral=True)
+
+    @discord.ui.button(label="Paylaş", emoji="📤", style=discord.ButtonStyle.success)
+    async def share_card(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.target_id)
+        if not player:
+            await interaction.followup.send("❌", ephemeral=True); return
+        p = player
+        pdata = {
+            "nick": p[1], "so2_id": p[2], "elo": p[3], "wins": p[4], "losses": p[5],
+            "kills": p[11] if len(p)>11 else 0, "assists": p[12] if len(p)>12 else 0,
+            "deaths": p[13] if len(p)>13 else 0, "win_streak": p[14] if len(p)>14 else 0,
+            "max_streak": p[15] if len(p)>15 else 0, "coins": p[6],
+        }
+        # Avatar bytes al
+        avatar_bytes = None
+        member = interaction.guild.get_member(self.target_id) if interaction.guild else None
+        if member:
+            try:
+                url  = member.display_avatar.replace(size=512).url
+                resp = await asyncio.to_thread(__import__("requests").get, url, timeout=8)
+                avatar_bytes = resp.content
+            except Exception:
+                pass
+        path = os.path.join(DATA_DIR or ".", f"share_{self.target_id}.png")
+        await asyncio.to_thread(generate_share_card, pdata, avatar_bytes, path)
+        await interaction.followup.send(
+            content="📤 **Sosial media üçün paylaşım kartı** — yükləyin və paylaşın!",
+            file=discord.File(path, filename="calestify_stats.png"),
+            ephemeral=True)
 
 
 class EloGrafikView(discord.ui.View):

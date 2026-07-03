@@ -1104,3 +1104,140 @@ def generate_bet_card(match_number, balance, output_path,
     # CTA
     draw.text((W//2, 252), "Komandani secin:", font=_font(11,True), fill=GOLD, anchor="mm")
     img.save(output_path); return output_path
+
+
+# ── SOSIAL MEDIA PAYLAŞIM KARTI (1:1 kvadrat) ───────────────────────────────
+
+def generate_share_card(player_data: dict, avatar_bytes=None, output_path="share.png") -> str:
+    """
+    1080x1080 sosial media paylaşım karti.
+    player_data: {nick, so2_id, elo, wins, losses, kills, assists, deaths,
+                  win_streak, max_streak, coins}
+    """
+    import io, math
+
+    S = 1080   # kare olcut
+    img  = Image.new("RGB", (S, S), (8, 6, 16))
+    draw = ImageDraw.Draw(img)
+
+    # -- Gradient arxa plan --
+    for y in range(S):
+        t = y / S
+        r = int(8  + (14 - 8 ) * t)
+        g = int(6  + (10 - 6 ) * t)
+        b = int(16 + (30 - 16) * t)
+        draw.line([(0, y), (S, y)], fill=(r, g, b))
+
+    # -- Dekor: kose caylar --
+    for corner, (dx, dy) in [((0,0),(1,1)),((S,0),(-1,1)),((0,S),(1,-1)),((S,S),(-1,-1))]:
+        for i in range(8):
+            draw.line([(corner[0], corner[1] + dy*i*14),
+                       (corner[0] + dx*120, corner[1] + dy*i*14)],
+                      fill=(30, 25, 50))
+            draw.line([(corner[0] + dx*i*14, corner[1]),
+                       (corner[0] + dx*i*14, corner[1] + dy*120)],
+                      fill=(30, 25, 50))
+
+    # -- Rank rengi ve bilgiler --
+    wins    = player_data.get("wins", 0)
+    losses  = player_data.get("losses", 0)
+    kills   = player_data.get("kills", 0)
+    assists = player_data.get("assists", 0)
+    deaths  = player_data.get("deaths", 0)
+    elo     = player_data.get("elo", 1000)
+    nick    = player_data.get("nick", "?")
+    streak  = player_data.get("win_streak", 0)
+    matches = wins + losses
+    wr      = round(wins / max(matches, 1) * 100, 1)
+    kd      = round(kills / max(deaths, 1), 2)
+
+    RANK_RANGES = [(0,900,"GUMUS I",(150,150,160)),
+                   (900,1000,"GUMUS II",(170,170,180)),
+                   (1000,1100,"QIZIL I",(240,180,40)),
+                   (1100,1200,"QIZIL II",(240,190,50)),
+                   (1200,1350,"ALMAZ I",(80,200,255)),
+                   (1350,1500,"ALMAZ II",(60,180,255)),
+                   (1500,1700,"ELiTE",(160,90,255)),
+                   (1700,9999,"MASTER",(255,215,0))]
+    rank_name, rank_col = "MASTER", (255,215,0)
+    for lo, hi, rn, rc in RANK_RANGES:
+        if lo <= elo < hi:
+            rank_name, rank_col = rn, rc
+            break
+
+    fB  = lambda sz: _font(sz, bold=True)
+    fR  = lambda sz: _font(sz, bold=False)
+    cx  = S // 2
+
+    # -- Ust serit: CALESTIFY branding --
+    draw.rectangle([(0,0),(S,70)], fill=(12,9,24))
+    draw.line([(0,70),(S,70)], fill=rank_col, width=3)
+    draw.text((cx, 35), "CALESTIFY  ·  STANDOFF 2  FACEIT", font=fB(18), fill=rank_col, anchor="mm")
+
+    # -- Avatar (merkez ust hisse) --
+    AV = 200
+    av_x, av_y = cx - AV//2, 90
+    if avatar_bytes:
+        try:
+            av  = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+            av  = av.resize((AV, AV), Image.LANCZOS)
+            mask = Image.new("L", (AV, AV), 0)
+            from PIL import ImageDraw as ID2
+            ID2.Draw(mask).ellipse((0,0,AV,AV), fill=255)
+            out = Image.new("RGBA", (AV, AV), (0,0,0,0))
+            out.paste(av, mask=mask)
+            img.paste(out, (av_x, av_y), out)
+        except Exception:
+            draw.ellipse([(av_x, av_y),(av_x+AV, av_y+AV)], fill=(30,28,44), outline=rank_col, width=4)
+    else:
+        draw.ellipse([(av_x, av_y),(av_x+AV, av_y+AV)], fill=(30,28,44), outline=rank_col, width=4)
+
+    # Avatar glow halqasi
+    for rr in range(6, 0, -1):
+        a = int(40 * rr/6)
+        draw.ellipse([(av_x-rr*3, av_y-rr*3),(av_x+AV+rr*3, av_y+AV+rr*3)],
+                     outline=rank_col, width=2)
+
+    # -- Nick ve rank --
+    draw.text((cx, av_y+AV+28), nick[:20],   font=fB(52), fill=(240,238,228), anchor="mm")
+    draw.text((cx, av_y+AV+86), rank_name,   font=fB(22), fill=rank_col,      anchor="mm")
+    draw.text((cx, av_y+AV+114), f"ELO: {elo}", font=fB(32), fill=rank_col, anchor="mm")
+
+    # -- Ana stat kutular (2x2 grid) --
+    bw, bh = 220, 110
+    pad    = 24
+    grid_y = av_y + AV + 150
+    grid_x = cx - bw - pad//2
+
+    stats_grid = [
+        ("WIN RATE",  f"{wr}%",    (88,210,110),  grid_x,           grid_y),
+        ("K/D",       str(kd),     (240,185,40),  grid_x+bw+pad,    grid_y),
+        ("KILL",      str(kills),  (88,210,110),  grid_x,           grid_y+bh+pad),
+        ("MATC",      str(matches),(140,135,160), grid_x+bw+pad,    grid_y+bh+pad),
+    ]
+    for lbl, val, col, bx, by in stats_grid:
+        draw.rounded_rectangle([(bx, by),(bx+bw, by+bh)], radius=10,
+                               fill=(18,16,28), outline=col, width=2)
+        draw.text((bx+bw//2, by+30), val,  font=fB(34), fill=col,         anchor="mm")
+        draw.text((bx+bw//2, by+72), lbl,  font=fB(13), fill=(120,115,138), anchor="mm")
+
+    # -- Alt kucuk statlar --
+    sub_y = grid_y + bh*2 + pad*2 + 14
+    sub_stats = [
+        (f"Qalib: {wins}",    (88,210,110)),
+        (f"Seriya: {streak}", (240,185,40)),
+        (f"Asist: {assists}", (80,155,230)),
+        (f"Olum: {deaths}",   (200,65,58)),
+    ]
+    sub_w = (S - 80) // len(sub_stats)
+    for i, (txt, col) in enumerate(sub_stats):
+        sx = 40 + i * sub_w + sub_w//2
+        draw.text((sx, sub_y), txt, font=fB(15), fill=col, anchor="mm")
+
+    # -- Alt serit --
+    draw.rectangle([(0, S-60),(S, S)], fill=(12,9,24))
+    draw.line([(0, S-60),(S, S-60)], fill=rank_col, width=2)
+    draw.text((cx, S-30), "calestify.faceit  ·  discord.gg/calestify", font=fR(16), fill=(80,76,100), anchor="mm")
+
+    img.save(output_path)
+    return output_path
