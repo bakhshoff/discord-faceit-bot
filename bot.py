@@ -3430,7 +3430,7 @@ async def pass_cmd(interaction: discord.Interaction):
                 "- MVP bonusu 2x\n"
                 "- Queue 30 deq erkən acilar\n\n"
                 f"**Qiymet: 7 AZN**\n"
-                "`/pass_al` ile alin!"
+                "/pass → Premium Al duymesine basin!"
             ),
             color=0x8C50FF
         )
@@ -3465,25 +3465,6 @@ async def pass_cmd(interaction: discord.Interaction):
                 color=0x8C50FF
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-@bot.tree.command(name="pass_al", description="Season Pass al (7 AZN)")
-async def pass_al_cmd(interaction: discord.Interaction):
-    ok, msg = buy_battle_pass(interaction.user.id)
-    if ok:
-        embed = discord.Embed(
-            title="Season Pass alindi!",
-            description=(
-                "Season 1 Pass-iniz aktivdir!\n\n"
-                "`/pass` - Pass kartinizi acin\n"
-                "Missiyalar — /pass → Missiyalar duymesi"
-            ),
-            color=0x57F287
-        )
-        await asyncio.to_thread(backup.export_backup)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    else:
-        await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
 
 
 @bot.event
