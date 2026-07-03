@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783020957,
+  "exported_at": 1783067856,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -184,7 +184,7 @@
       "elo": 1110,
       "wins": 10,
       "losses": 4,
-      "coins": 871,
+      "coins": 886,
       "active_banner": "banner_purple",
       "active_frame": "frame_purple",
       "zm_balance": 0,
@@ -236,6 +236,28 @@
       "kills": 17,
       "assists": 4,
       "deaths": 22,
+      "win_streak": 0,
+      "max_streak": 0,
+      "is_banned": 0,
+      "peak_elo": 1000,
+      "banned_until": 0,
+      "lang": "az"
+    },
+    {
+      "discord_id": 1051918529227665519,
+      "so2_nick": "Mykhaylo",
+      "so2_id": "19723382",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
       "win_streak": 0,
       "max_streak": 0,
       "is_banned": 0,
@@ -581,7 +603,7 @@
       "wins": 3,
       "losses": 4,
       "coins": 138,
-      "active_banner": null,
+      "active_banner": "banner_red",
       "active_frame": null,
       "zm_balance": 0,
       "ai_memory": "ibəti, LORD AİZEN-in fiziki görüş tələbi, LORD AİZEN-in Discord botuna olan münasibəti, LORD AİZEN coinləri qazanmaq istəyir, LORD AİZEN əzmlə oyun oynayır, LORD AİZEN, coin qazanmaq istəyir, Standoff 2, əzmlə oyun oynayır, turnirlərdə iştirak edir, LORD AİZEN-in əsəbi oyun stili, LORD AİZEN-in məqsədi aura almaqdır, LORD AİZEN cəmiyyətə bağlıdır, LORD AİZEN könüllüdür, fiziki varlığı yoxdur, proqram tərəfindən idarə olunuram, mənim fiziki varlığım yoxdur, Discord botusam, proqram tərəfindən idarə olunuram, LORD AİZEN-in sevdiyi oyun Standoff 2, LORD AİZEN-in əsəbi oyun stili, LORD AİZEN-in məqsədi aura almaqdır, LORD AİZEN cəmiyyətə bağlıdır, LORD AİZEN könüllüdür, fiziki varlığı yoxdur, proqram tərəfindən idarə olunuram, mənim fiziki varlığım yoxdur, Discord botusam, proqram tərəfindən idarə olunuram, LORD AİZEN fiziki kömək tələb edir, fiziki görüş istəyir, fiziki kömək tələb edir, görüş istəyir, fiziki varlığı yoxdur, proqram tərəfindən idarə olunur, Discord botu, online kömək edir",
@@ -690,7 +712,7 @@
       "elo": 1000,
       "wins": 1,
       "losses": 1,
-      "coins": 82,
+      "coins": 97,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -3608,6 +3630,24 @@
       "log_type": "spend",
       "balance_after": 138,
       "created_at": 1783020957
+    },
+    {
+      "id": 326,
+      "discord_id": 964144436374294609,
+      "change": 15,
+      "reason": "Gundelik giris bonusu (streak 3)",
+      "log_type": "earn",
+      "balance_after": 886,
+      "created_at": 1783064286
+    },
+    {
+      "id": 327,
+      "discord_id": 1424104516214849617,
+      "change": 15,
+      "reason": "Gundelik giris bonusu (streak 3)",
+      "log_type": "earn",
+      "balance_after": 97,
+      "created_at": 1783065167
     }
   ],
   "active_boosts": []
