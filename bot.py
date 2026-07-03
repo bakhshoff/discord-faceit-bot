@@ -426,26 +426,44 @@ class MarketItemView(discord.ui.View):
             except Exception:
                 avatar_bytes = None
             preview_banner_path = None
-            preview_frame_path = None
+            preview_frame_path  = None
+            theme_colors_prev   = None
             base_dir = os.path.dirname(os.path.abspath(__file__))
-            if item.get("type") == "avatar_frame":
+            item_type = item.get("type")
+
+            if item_type == "avatar_frame":
                 preview_frame_path = os.path.join(base_dir, "frames", item["file"])
                 if active_banner:
                     bitem = get_item_by_id(active_banner)
-                    if bitem:
+                    if bitem and bitem.get("file"):
                         preview_banner_path = os.path.join(base_dir, "banners", bitem["file"])
-            else:
-                preview_banner_path = os.path.join(base_dir, "banners", item["file"])
+            elif item_type == "profile_theme":
+                # Tema: mövcud banner+frame saxlanılır, yalnız rənglər dəyişir
+                theme_colors_prev = item.get("colors")
+                if active_banner:
+                    bitem = get_item_by_id(active_banner)
+                    if bitem and bitem.get("file"):
+                        preview_banner_path = os.path.join(base_dir, "banners", bitem["file"])
                 if active_frame:
                     fitem = get_item_by_id(active_frame)
-                    if fitem:
+                    if fitem and fitem.get("file"):
                         preview_frame_path = os.path.join(base_dir, "frames", fitem["file"])
+            else:
+                if item.get("file"):
+                    preview_banner_path = os.path.join(base_dir, "banners", item["file"])
+                if active_frame:
+                    fitem = get_item_by_id(active_frame)
+                    if fitem and fitem.get("file"):
+                        preview_frame_path = os.path.join(base_dir, "frames", fitem["file"])
+
             preview_path = os.path.join(DATA_DIR or ".", f"preview_{discord_id}_{item['id']}.png")
             await asyncio.to_thread(
                 generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, preview_path,
-                preview_banner_path, coins, preview_frame_path, zm_balance
+                preview_banner_path, coins, preview_frame_path, zm_balance,
+                0, 0, 0, 0, 0, 0, 0, 0, None, 0, theme_colors_prev
             )
-            type_label = "Çərçivə" if item.get("type") == "avatar_frame" else "Banner"
+            type_labels = {"avatar_frame": "Çərçivə", "profile_theme": "Profil Teması"}
+            type_label = type_labels.get(item_type, "Banner")
             embed = discord.Embed(
                 title=f"🛍 {item['name']}",
                 description=(
