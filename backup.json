@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783070166,
+  "exported_at": 1783107606,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -8,7 +8,7 @@
       "elo": 984,
       "wins": 6,
       "losses": 7,
-      "coins": 125,
+      "coins": 140,
       "active_banner": "banner_toxic_green",
       "active_frame": "frame_green",
       "zm_balance": 0,
@@ -100,7 +100,7 @@
       "elo": 1046,
       "wins": 6,
       "losses": 4,
-      "coins": 1234,
+      "coins": 1294,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -169,7 +169,7 @@
       "elo": 1000,
       "wins": 0,
       "losses": 0,
-      "coins": 0,
+      "coins": 10,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -347,6 +347,29 @@
       "active_theme": null
     },
     {
+      "discord_id": 1087709683025989642,
+      "so2_nick": "DravixGG",
+      "so2_id": "109654553",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
+      "win_streak": 0,
+      "max_streak": 0,
+      "is_banned": 0,
+      "peak_elo": 1000,
+      "banned_until": 0,
+      "lang": "az",
+      "active_theme": null
+    },
+    {
       "discord_id": 1102666334157938728,
       "so2_nick": "the lu",
       "so2_id": "217198668",
@@ -399,7 +422,7 @@
       "elo": 1045,
       "wins": 7,
       "losses": 4,
-      "coins": 387,
+      "coins": 397,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -675,7 +698,7 @@
       "elo": 1033,
       "wins": 4,
       "losses": 2,
-      "coins": 159,
+      "coins": 169,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -1102,7 +1125,7 @@
       "winner_id": 1060637021565112360,
       "channel_id": 1517459829268938792,
       "message_id": 1522317690075873413,
-      "finished": 0
+      "finished": 1
     },
     {
       "id": 14,
@@ -1111,7 +1134,7 @@
       "winner_id": 1060637021565112360,
       "channel_id": 1517459829268938792,
       "message_id": 1522318643499761696,
-      "finished": 0
+      "finished": 1
     }
   ],
   "match_counter": [
@@ -3716,6 +3739,60 @@
       "log_type": "spend",
       "balance_after": 486,
       "created_at": 1783070166
+    },
+    {
+      "id": 330,
+      "discord_id": 883061755985670154,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 10,
+      "created_at": 1783071041
+    },
+    {
+      "id": 331,
+      "discord_id": 1390263674601472041,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 169,
+      "created_at": 1783097300
+    },
+    {
+      "id": 332,
+      "discord_id": 1208089903544672278,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 2)",
+      "log_type": "earn",
+      "balance_after": 397,
+      "created_at": 1783097740
+    },
+    {
+      "id": 333,
+      "discord_id": 807514987043749919,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 1244,
+      "created_at": 1783104572
+    },
+    {
+      "id": 334,
+      "discord_id": 807514987043749919,
+      "change": 50,
+      "reason": "Milestone:10",
+      "log_type": "earn",
+      "balance_after": 1294,
+      "created_at": 1783104572.8332589
+    },
+    {
+      "id": 335,
+      "discord_id": 381710974710972416,
+      "change": 15,
+      "reason": "Gundelik giris bonusu (streak 3)",
+      "log_type": "earn",
+      "balance_after": 140,
+      "created_at": 1783106686
     }
   ],
   "active_boosts": []
