@@ -147,6 +147,8 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
     return output_path
 
 
+SEASON_TOP3_PRIZES = [500, 300, 150]   # 1-ci, 2-ci, 3-cü üçün coin mükafatları
+
 def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
                                       output_path="season_lb.png"):
     """
@@ -190,15 +192,22 @@ def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
         kd = round(kills/deaths, 2) if deaths > 0 else float(kills)
 
         rank_color = GOLD if idx == 0 else ((200,200,200) if idx == 1 else ((180,120,60) if idx == 2 else WHITE))
-        draw.text((col_x[0], y+2),  f"#{idx+1}",        font=row_font, fill=rank_color)
-        draw.text((col_x[1], y+2),  str(nick)[:20],     font=row_font, fill=WHITE)
-        draw.text((col_x[2], y+2),  str(so2_id)[:12],   font=row_font, fill=(140,170,230))
-        draw.text((col_x[3], y+2),  f"+{elo_gained}",   font=row_font, fill=GREEN)
-        draw.text((col_x[4], y+2),  str(kills),          font=row_font, fill=GREEN)
-        draw.text((col_x[5], y+2),  str(assists),        font=row_font, fill=LIGHT_GRAY)
-        draw.text((col_x[6], y+2),  str(deaths),         font=row_font, fill=RED_C)
-        draw.text((col_x[7], y+2),  str(kd),             font=row_font, fill=GOLD)
-        draw.text((col_x[8], y+2),  str(wins),           font=row_font, fill=LIGHT_GRAY)
+        medals     = ["🥇", "🥈", "🥉"]
+        medal      = medals[idx] if idx < 3 else f"#{idx+1}"
+        draw.text((col_x[0], y+2),  medal,               font=row_font, fill=rank_color)
+        draw.text((col_x[1], y+2),  str(nick)[:20],      font=row_font, fill=WHITE)
+        draw.text((col_x[2], y+2),  str(so2_id)[:12],    font=row_font, fill=(140,170,230))
+        draw.text((col_x[3], y+2),  f"+{elo_gained}",    font=row_font, fill=GREEN)
+        draw.text((col_x[4], y+2),  str(kills),           font=row_font, fill=GREEN)
+        draw.text((col_x[5], y+2),  str(assists),         font=row_font, fill=LIGHT_GRAY)
+        draw.text((col_x[6], y+2),  str(deaths),          font=row_font, fill=RED_C)
+        draw.text((col_x[7], y+2),  str(kd),              font=row_font, fill=GOLD)
+        draw.text((col_x[8], y+2),  str(wins),            font=row_font, fill=LIGHT_GRAY)
+        # Top 3 mükafat miqdarı
+        if idx < len(SEASON_TOP3_PRIZES):
+            prize_t = f"+{SEASON_TOP3_PRIZES[idx]}🪙"
+            draw.text((WIDTH - 20, y + S_ROW_H//2), prize_t,
+                      font=_load_font(12, bold=True), fill=rank_color, anchor="rm")
         y += S_ROW_H
 
     draw.text((30, y + 8), f"Sezon {season_number}  ·  Calestify FACEIT Bot", font=sub_font, fill=FOOTER_GRAY)

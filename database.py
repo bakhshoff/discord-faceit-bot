@@ -1630,18 +1630,41 @@ def get_player_achievements(discord_id):
 # MATÇ MƏRCİ (PREDICTION)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+MAX_BET_PER_MATCH = 25    # bir matça maksimum coin
+MAX_BETS_PER_DAY  = 3     # gündə maksimum mərc sayı
+
 def place_prediction(discord_id, match_number, predicted_team, bet_coins):
     import time
     conn   = _get_conn()
     cursor = conn.cursor()
+
+    # Coin limit
+    if bet_coins < 1:
+        conn.close(); return False, "Mərc miqdarı ən az 1 coin olmalıdır."
+    if bet_coins > MAX_BET_PER_MATCH:
+        conn.close(); return False, f"Bir matça maksimum {MAX_BET_PER_MATCH} coin mərc edə bilərsiniz."
+
+    # Balans yoxlaması
     cursor.execute("SELECT coins FROM players WHERE discord_id=?", (discord_id,))
     row = cursor.fetchone()
     if not row or row[0] < bet_coins:
         conn.close(); return False, "Kifayət qədər coin yoxdur."
+
+    # Eyni matça yenidən mərc yoxlaması
     cursor.execute("SELECT id FROM match_predictions WHERE match_number=? AND discord_id=?",
                    (match_number, discord_id))
     if cursor.fetchone():
-        conn.close(); return False, "Artıq mərc etmisiniz."
+        conn.close(); return False, "Bu matça artıq mərc etmisiniz."
+
+    # Gündəlik limit (UTC gecəyarısından bu yana)
+    day_start = int(time.time()) - (int(time.time()) % 86400)
+    cursor.execute(
+        "SELECT COUNT(*) FROM match_predictions WHERE discord_id=? AND created_at>=?",
+        (discord_id, day_start))
+    daily_count = cursor.fetchone()[0]
+    if daily_count >= MAX_BETS_PER_DAY:
+        conn.close(); return False, f"Gündəlik mərc limitinə çatdınız ({MAX_BETS_PER_DAY} mərc/gün)."
+
     cursor.execute("UPDATE players SET coins=coins-? WHERE discord_id=?", (bet_coins, discord_id))
     cursor.execute(
         "INSERT INTO match_predictions (match_number, discord_id, predicted_team, bet_coins, created_at) VALUES (?,?,?,?,?)",

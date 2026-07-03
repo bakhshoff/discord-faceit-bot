@@ -1060,27 +1060,47 @@ def generate_skin_catalog_card(skins, output_path):
 
 # ── MERC KARTI ──────────────────────────────────────────────────────────────
 
-def generate_bet_card(match_number, balance, output_path):
-    W, H = WIDTH, 248
+def generate_bet_card(match_number, balance, output_path,
+                      daily_used=0, daily_max=3, max_bet=25):
+    W, H = WIDTH, 278
     img = _bg(H); draw = ImageDraw.Draw(img)
     draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+
+    # Header
     draw.rectangle([(0,0),(W,54)], fill=(20,15,30))
     draw.line([(0,54),(W,54)], fill=BORDER, width=1)
     draw.text((28, 12), "CALESTIFY", font=_font(12,True), fill=GOLD)
-    draw.text((28, 30), f"MATC No{match_number} - MERC", font=_font(20,True), fill=WHITE)
+    draw.text((28, 30), f"MATC No{match_number}  —  MERC", font=_font(20,True), fill=WHITE)
+
+    # Komanda panelləri
     cx = W // 2
     ax = (18+cx-16)//2
-    draw.rounded_rectangle([(18,68),(cx-16,176)], radius=8, fill=(12,16,40), outline=BLUE, width=2)
+    draw.rounded_rectangle([(18,68),(cx-16,182)], radius=8, fill=(12,16,40), outline=BLUE, width=2)
     draw.text((ax, 90),  "KOMANDA A", font=_font(13,True), fill=BLUE,  anchor="mm")
-    draw.text((ax, 128), "A",         font=_font(44,True), fill=BLUE,  anchor="mm")
-    draw.text((ax, 162), "2x mukafat",font=_font(11),      fill=GRAY,  anchor="mm")
-    draw.text((cx, 122), "VS", font=_font(20,True), fill=GOLD, anchor="mm")
+    draw.text((ax, 132), "A",         font=_font(44,True), fill=BLUE,  anchor="mm")
+    draw.text((ax, 168), "2x mukafat",font=_font(11),      fill=GRAY,  anchor="mm")
+    draw.text((cx, 125), "VS", font=_font(20,True), fill=GOLD, anchor="mm")
     bx = cx+16+(W-18-(cx+16))//2
-    draw.rounded_rectangle([(cx+16,68),(W-18,176)], radius=8, fill=(40,12,12), outline=RED, width=2)
+    draw.rounded_rectangle([(cx+16,68),(W-18,182)], radius=8, fill=(40,12,12), outline=RED, width=2)
     draw.text((bx, 90),  "KOMANDA B", font=_font(13,True), fill=RED,   anchor="mm")
-    draw.text((bx, 128), "B",         font=_font(44,True), fill=RED,   anchor="mm")
-    draw.text((bx, 162), "2x mukafat",font=_font(11),      fill=GRAY,  anchor="mm")
-    draw.line([(18,183),(W-18,183)], fill=BORDER, width=1)
-    draw.text((W//2, 204), f"Balans: {balance} coin   Duz tapsan 2x qazanirsin!", font=_font(12), fill=GRAY, anchor="mm")
-    draw.text((W//2, 232), "Asagidaki duymelere basin", font=_font(11,True), fill=GOLD, anchor="mm")
+    draw.text((bx, 132), "B",         font=_font(44,True), fill=RED,   anchor="mm")
+    draw.text((bx, 168), "2x mukafat",font=_font(11),      fill=GRAY,  anchor="mm")
+
+    # Limit paneli
+    draw.line([(18,190),(W-18,190)], fill=BORDER, width=1)
+    lp = 18; lh = 40
+    # Balans
+    draw.rounded_rectangle([(lp,196),(lp+190,196+lh)], radius=4, fill=(24,22,34))
+    draw.text((lp+10, 216), f"Balans: {balance} coin", font=_font(12,True), fill=GOLD, anchor="lm")
+    # Gündəlik limit
+    remaining = max(0, daily_max - daily_used)
+    lim_col   = (88,210,110) if remaining > 0 else (210,65,58)
+    draw.rounded_rectangle([(lp+198,196),(lp+420,196+lh)], radius=4, fill=(24,22,34))
+    draw.text((lp+208, 216), f"Gundelik: {daily_used}/{daily_max} merc", font=_font(12,True), fill=lim_col, anchor="lm")
+    # Max mərc
+    draw.rounded_rectangle([(lp+428,196),(W-18,196+lh)], radius=4, fill=(24,22,34))
+    draw.text((lp+438, 216), f"Max: {max_bet} coin/merc", font=_font(12,True), fill=GRAY, anchor="lm")
+
+    # CTA
+    draw.text((W//2, 252), "Komandani secin:", font=_font(11,True), fill=GOLD, anchor="mm")
     img.save(output_path); return output_path

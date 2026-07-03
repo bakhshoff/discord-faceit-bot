@@ -61,7 +61,8 @@ try:
         get_inviter_invite_code, create_referral, get_referral_by_invitee,
         mark_referral_registered, check_referral_match_rewards,
         get_referral_stats, get_referral_list,
-        REFERRAL_REWARD_REG, REFERRAL_REWARD_3MATCH, REFERRAL_BANNER_ID
+        REFERRAL_REWARD_REG, REFERRAL_REWARD_3MATCH, REFERRAL_BANNER_ID,
+        MAX_BET_PER_MATCH, MAX_BETS_PER_DAY
     )
     from referral_visual import generate_referral_card, generate_item_preview_card
     from i18n import t as _t
@@ -3105,7 +3106,9 @@ class PredictionView(discord.ui.View):
 
 
 class BetModal(discord.ui.Modal):
-    amount = discord.ui.TextInput(label="Mərc miqdarı (coin)", placeholder="50", required=True, max_length=5)
+    amount = discord.ui.TextInput(
+        label=f"Mərc miqdarı (max {MAX_BET_PER_MATCH} coin)",
+        placeholder=f"1 – {MAX_BET_PER_MATCH}", required=True, max_length=5)
 
     def __init__(self, match_number, team):
         super().__init__(title=f"{team} üçün mərc")
@@ -3121,12 +3124,20 @@ class BetModal(discord.ui.Modal):
             await interaction.response.send_message("❌ Düzgün məbləğ daxil edin.", ephemeral=True)
             return
         ok, msg = place_prediction(interaction.user.id, self.match_number, self.team, bet)
-        color = discord.Color.green() if ok else discord.Color.red()
-        embed = discord.Embed(description=f"{'✅' if ok else '❌'} {msg}", color=color)
         if ok:
-            embed.add_field(name="Komanda", value=self.team, inline=True)
-            embed.add_field(name="Mərc",   value=f"🪙 {bet}", inline=True)
-            embed.set_footer(text="Düz tapsan 2x qazanırsan!")
+            # Mərc xərcini coin_log-a yaz
+            bal = get_coins(interaction.user.id)
+            add_coin_log(interaction.user.id, -bet,
+                         f"Merc — Matc No{self.match_number} ({self.team})", "spend", bal)
+            embed = discord.Embed(
+                title="✅ Mərc qəbul edildi",
+                color=discord.Color.green())
+            embed.add_field(name="Komanda",  value=self.team,       inline=True)
+            embed.add_field(name="Mərc",     value=f"🪙 {bet}",     inline=True)
+            embed.add_field(name="Balans",   value=f"🪙 {bal}",     inline=True)
+            embed.set_footer(text=f"Düz tapsan +{bet*2} coin qazanırsan!")
+        else:
+            embed = discord.Embed(description=f"❌ {msg}", color=discord.Color.red())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -3140,18 +3151,31 @@ async def merc_cmd(interaction: discord.Interaction):
     if not player:
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisən.", ephemeral=True)
         return
-    coins     = get_coins(interaction.user.id)
-    bet_path  = os.path.join(DATA_DIR or ".", f"bet_{active['match_number']}.png")
+    coins    = get_coins(interaction.user.id)
+    bet_path = os.path.join(DATA_DIR or ".", f"bet_{active['match_number']}.png")
+
+    # Gündəlik istifadəni hesabla
+    import time as _time
+    from database import _get_conn as _bdb
+    _day = int(_time.time()) - (int(_time.time()) % 86400)
+    _bc  = _bdb(); _bcur = _bc.cursor()
+    _bcur.execute("SELECT COUNT(*) FROM match_predictions WHERE discord_id=? AND created_at>=?",
+                  (interaction.user.id, _day))
+    daily_used = _bcur.fetchone()[0]; _bc.close()
+
     await interaction.response.defer(ephemeral=True)
     try:
-        await asyncio.to_thread(generate_bet_card, active["match_number"], coins, bet_path)
+        await asyncio.to_thread(generate_bet_card, active["match_number"], coins, bet_path,
+                                daily_used, MAX_BETS_PER_DAY, MAX_BET_PER_MATCH)
         await interaction.followup.send(
             file=discord.File(bet_path, filename="bet.png"),
             view=PredictionView(active["match_number"]), ephemeral=True)
     except Exception as e:
         embed = discord.Embed(
             title=f"🎲 Matç No{active['match_number']} — Mərc",
-            description=f"Qalibə mərc et, düz tapsan **2x** qazanırsın!\n\n🪙 Balansınız: **{coins} coin**",
+            description=(f"Qalibə mərc et, düz tapsan **2x** qazanırsın!\n\n"
+                         f"🪙 Balans: **{coins} coin**\n"
+                         f"📊 Gündəlik mərc: **{daily_used}/{MAX_BETS_PER_DAY}** · Max mərc: **{MAX_BET_PER_MATCH} coin**"),
             color=discord.Color.gold())
         await interaction.followup.send(embed=embed, view=PredictionView(active["match_number"]), ephemeral=True)
 
@@ -3437,13 +3461,13 @@ async def pass_cmd(interaction: discord.Interaction):
             print(f"[PASS PNG]: {e2}", flush=True)
             embed = discord.Embed(
                 title=f"Season 1 Pass — LVL {pd.get('level',0)}/30",
-                description=f"XP: {pd.get('xp',0)}/500  |  {'GOLD' if pd.get('is_premium') else 'FREE'} PASS\n`/pass_missiyalar` ile missiyalari gor.",
+                description=f"XP: {pd.get('xp',0)}/500  |  {'GOLD' if pd.get('is_premium') else 'FREE'} PASS\nMissiyalar ucun /pass → Missiyalar duyməsinə basin.",
                 color=0x8C50FF
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="pass_al", description="Season Pass al (5 AZN)")
+@bot.tree.command(name="pass_al", description="Season Pass al (7 AZN)")
 async def pass_al_cmd(interaction: discord.Interaction):
     ok, msg = buy_battle_pass(interaction.user.id)
     if ok:
@@ -3452,7 +3476,7 @@ async def pass_al_cmd(interaction: discord.Interaction):
             description=(
                 "Season 1 Pass-iniz aktivdir!\n\n"
                 "`/pass` - Pass kartinizi acin\n"
-                "`/pass_missiyalar` - Missiyalarinizia baxin"
+                "Missiyalar — /pass → Missiyalar duymesi"
             ),
             color=0x57F287
         )
@@ -3507,8 +3531,7 @@ async def on_ready():
         daily_task_refresh.start()
     if not season_end_check.is_running():
         season_end_check.start()
-    if not weekly_stats_task.is_running():
-        weekly_stats_task.start()
+    # weekly_stats_task deaktiv edilib (saatliq Top3 mesajı ləğv olundu)
     if not ban_check_task.is_running():
         ban_check_task.start()
     if not anti_afk_check.is_running():
