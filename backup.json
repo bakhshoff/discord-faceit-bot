@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783141269,
+  "exported_at": 1783178660,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -8,7 +8,7 @@
       "elo": 984,
       "wins": 6,
       "losses": 7,
-      "coins": 140,
+      "coins": 155,
       "active_banner": "banner_toxic_green",
       "active_frame": "frame_green",
       "zm_balance": 0,
@@ -39,6 +39,29 @@
       "kills": 36,
       "assists": 4,
       "deaths": 30,
+      "win_streak": 0,
+      "max_streak": 0,
+      "is_banned": 0,
+      "peak_elo": 1000,
+      "banned_until": 0,
+      "lang": "az",
+      "active_theme": null
+    },
+    {
+      "discord_id": 667307535442771968,
+      "so2_nick": "Lorivoter_",
+      "so2_id": "73531048",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
       "win_streak": 0,
       "max_streak": 0,
       "is_banned": 0,
@@ -514,7 +537,7 @@
       "elo": 1016,
       "wins": 2,
       "losses": 1,
-      "coins": 17,
+      "coins": 27,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -3843,6 +3866,24 @@
       "log_type": "earn",
       "balance_after": 184,
       "created_at": 1783140875
+    },
+    {
+      "id": 339,
+      "discord_id": 381710974710972416,
+      "change": 15,
+      "reason": "Gundelik giris bonusu (streak 4)",
+      "log_type": "earn",
+      "balance_after": 155,
+      "created_at": 1783171084
+    },
+    {
+      "id": 340,
+      "discord_id": 1228418531951906838,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 27,
+      "created_at": 1783171110
     }
   ],
   "active_boosts": []
