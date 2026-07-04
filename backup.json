@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783107606,
+  "exported_at": 1783141269,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -204,6 +204,29 @@
       "max_streak": 3,
       "is_banned": 0,
       "peak_elo": 1107,
+      "banned_until": 0,
+      "lang": "az",
+      "active_theme": null
+    },
+    {
+      "discord_id": 985949251550998611,
+      "so2_nick": "! the Nokia李",
+      "so2_id": "83193767",
+      "elo": 1000,
+      "wins": 0,
+      "losses": 0,
+      "coins": 0,
+      "active_banner": null,
+      "active_frame": null,
+      "zm_balance": 0,
+      "ai_memory": null,
+      "kills": 0,
+      "assists": 0,
+      "deaths": 0,
+      "win_streak": 0,
+      "max_streak": 0,
+      "is_banned": 0,
+      "peak_elo": 1000,
       "banned_until": 0,
       "lang": "az",
       "active_theme": null
@@ -698,7 +721,7 @@
       "elo": 1033,
       "wins": 4,
       "losses": 2,
-      "coins": 169,
+      "coins": 184,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -767,7 +790,7 @@
       "elo": 1000,
       "wins": 1,
       "losses": 1,
-      "coins": 97,
+      "coins": 112,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -1020,7 +1043,7 @@
       "elo": 984,
       "wins": 0,
       "losses": 1,
-      "coins": 5,
+      "coins": 15,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -1140,7 +1163,7 @@
   "match_counter": [
     {
       "id": 1,
-      "last_number": 16
+      "last_number": 17
     }
   ],
   "match_history": [
@@ -3793,6 +3816,33 @@
       "log_type": "earn",
       "balance_after": 140,
       "created_at": 1783106686
+    },
+    {
+      "id": 336,
+      "discord_id": 1518324691117281404,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 15,
+      "created_at": 1783114047
+    },
+    {
+      "id": 337,
+      "discord_id": 1424104516214849617,
+      "change": 15,
+      "reason": "Gundelik giris bonusu (streak 4)",
+      "log_type": "earn",
+      "balance_after": 112,
+      "created_at": 1783127165
+    },
+    {
+      "id": 338,
+      "discord_id": 1390263674601472041,
+      "change": 15,
+      "reason": "Gundelik giris bonusu (streak 3)",
+      "log_type": "earn",
+      "balance_after": 184,
+      "created_at": 1783140875
     }
   ],
   "active_boosts": []
