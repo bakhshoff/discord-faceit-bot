@@ -1,5 +1,5 @@
 {
-  "exported_at": 1783192069,
+  "exported_at": 1783193443,
   "players": [
     {
       "discord_id": 381710974710972416,
@@ -417,12 +417,12 @@
     },
     {
       "discord_id": 1102666334157938728,
-      "so2_nick": "the lu",
+      "so2_nick": "Xinorr",
       "so2_id": "217198668",
       "elo": 1000,
       "wins": 0,
       "losses": 0,
-      "coins": 0,
+      "coins": 10,
       "active_banner": null,
       "active_frame": null,
       "zm_balance": 0,
@@ -3934,6 +3934,15 @@
       "log_type": "earn",
       "balance_after": 501,
       "created_at": 1783191064
+    },
+    {
+      "id": 344,
+      "discord_id": 1102666334157938728,
+      "change": 10,
+      "reason": "Gundelik giris bonusu (streak 1)",
+      "log_type": "earn",
+      "balance_after": 10,
+      "created_at": 1783193418
     }
   ],
   "active_boosts": []
