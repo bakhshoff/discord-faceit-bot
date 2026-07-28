@@ -175,7 +175,7 @@ async def _faceit_gate(interaction: discord.Interaction) -> bool:
     return True
 
 # Bütün slash komandaları üçün qlobal FACEIT yoxlaması
-_FACEIT_EXEMPT = {"faceit_sistemi", "bot_davet", "ping"}
+_FACEIT_EXEMPT = {"faceit_sistemi", "bot_davet", "ping", "giveaway_create", "giveaway_bitir"}
 
 async def _global_faceit_check(interaction: discord.Interaction) -> bool:
     cmd = getattr(interaction.command, "name", None)
