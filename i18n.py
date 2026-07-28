@@ -1,13 +1,13 @@
-"""Calestify FACEIT — AZ / TR lokalizasiya modulu."""
+﻿"""ZENBOT — AZ / TR lokalizasiya modulu."""
 
 STRINGS = {
     # ── AZƏRBAYCANCA ──────────────────────────────────────────────────────────
     'az': {
         # Xəbərdarlıq / Ban / Unban DM
-        'warn_dm':          "⚠️ **Calestify FACEIT** — Xəbərdarlıq #{count}\n**Səbəb:** {reason}",
-        'ban_perm_dm':      "🔴 **Calestify FACEIT** — DAİMİ banlandınız.\n**Səbəb:** {reason}",
-        'ban_temp_dm':      "🔴 **Calestify FACEIT** — {label} banlandınız.\n**Səbəb:** {reason}\n**Bitmə:** {exp}",
-        'unban_dm':         "✅ **Calestify FACEIT** — Banınız açıldı, yenidən qoşula bilərsiniz.",
+        'warn_dm':          "⚠️ **ZENBOT** — Xəbərdarlıq #{count}\n**Səbəb:** {reason}",
+        'ban_perm_dm':      "🔴 **ZENBOT** — DAİMİ banlandınız.\n**Səbəb:** {reason}",
+        'ban_temp_dm':      "🔴 **ZENBOT** — {label} banlandınız.\n**Səbəb:** {reason}\n**Bitmə:** {exp}",
+        'unban_dm':         "✅ **ZENBOT** — Banınız açıldı, yenidən qoşula bilərsiniz.",
 
         # Matç bildirişləri
         'match_start_dm':   "🎮 **Matç No{num}** başladı!\n**Komandanız:** {team}\n**Kanal:** {channel}\n\nTez qoşulun!",
@@ -47,10 +47,10 @@ STRINGS = {
     # ── TÜRKCƏ ────────────────────────────────────────────────────────────────
     'tr': {
         # Uyarı / Ban / Unban DM
-        'warn_dm':          "⚠️ **Calestify FACEIT** — Uyarı #{count}\n**Sebep:** {reason}",
-        'ban_perm_dm':      "🔴 **Calestify FACEIT** — KALİCİ olarak yasaklandınız.\n**Sebep:** {reason}",
-        'ban_temp_dm':      "🔴 **Calestify FACEIT** — {label} yasaklandınız.\n**Sebep:** {reason}\n**Bitiş:** {exp}",
-        'unban_dm':         "✅ **Calestify FACEIT** — Yasağınız kaldırıldı, tekrar katılabilirsiniz.",
+        'warn_dm':          "⚠️ **ZENBOT** — Uyarı #{count}\n**Sebep:** {reason}",
+        'ban_perm_dm':      "🔴 **ZENBOT** — KALİCİ olarak yasaklandınız.\n**Sebep:** {reason}",
+        'ban_temp_dm':      "🔴 **ZENBOT** — {label} yasaklandınız.\n**Sebep:** {reason}\n**Bitiş:** {exp}",
+        'unban_dm':         "✅ **ZENBOT** — Yasağınız kaldırıldı, tekrar katılabilirsiniz.",
 
         # Maç bildirimleri
         'match_start_dm':   "🎮 **Maç No{num}** başladı!\n**Takımınız:** {team}\n**Kanal:** {channel}\n\nHemen katılın!",

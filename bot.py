@@ -270,7 +270,7 @@ async def check_giveaways():
             description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {winner_mention}\n\nTəbriklər!",
             color=discord.Color.green()
         )
-        final_embed.set_footer(text="Calestify Gaming Community")
+        final_embed.set_footer(text="ZENBOT")
         try:
             await message.edit(embed=final_embed)
         except discord.HTTPException:
@@ -1255,7 +1255,7 @@ class PlayerProfileView(discord.ui.View):
                 f"`{invite_url}`\n\n"
                 f"✅ Qeydiyyat: **+{REFERRAL_REWARD_REG} coin**\n"
                 f"🔥 3 matç: **+{REFERRAL_REWARD_3MATCH} coin**\n"
-                f"🏅 10 matç: **Calestify Ambassador** banneri"
+                f"🏅 10 matç: **ZENBOT Ambassador** banneri"
             ),
             color=discord.Color.purple()
         )
@@ -2845,7 +2845,7 @@ async def sezon_elan_cmd(interaction: discord.Interaction, nomre: int, kanal: di
         embed.description += "\n\nBu sezonda matç oynanılmadı."
 
     import datetime as _dt
-    embed.set_footer(text=f"Calestify FACEIT  ·  {_dt.datetime.utcnow().strftime('%d.%m.%Y')}")
+    embed.set_footer(text=f"ZENBOT  ·  {_dt.datetime.utcnow().strftime('%d.%m.%Y')}")
 
     await target.send(embed=embed)
     await interaction.followup.send(f"✅ Sezon {nomre} elanı #{target.name} kanalına göndərildi.", ephemeral=True)
@@ -2875,7 +2875,7 @@ async def pass_elan_cmd(interaction: discord.Interaction, kanal: discord.TextCha
     embed = discord.Embed(
         title="🎮 SEASON 1 BATTLE PASS — AKTİVDİR!",
         description=(
-            "**Calestify FACEIT**-də Season 1 Battle Pass başladı!\n\n"
+            "**ZENBOT**-də Season 1 Battle Pass başladı!\n\n"
             "**FREE PASS** — hamı üçün pulsuz açılır\n"
             "**VIP PASS** — 7 AZN, əlavə xüsusi mükafatlar\n\n"
             "XP qazanmaq üçün matç oynayın, missiyaları tamamlayın!\n"
@@ -2886,7 +2886,7 @@ async def pass_elan_cmd(interaction: discord.Interaction, kanal: discord.TextCha
     embed.add_field(name="📋 Açmaq üçün",   value="`/pass`",           inline=True)
     embed.add_field(name="💰 VIP qiyməti",   value="**7 AZN**",        inline=True)
     embed.add_field(name="🏆 Level 30 mükafat", value="AWM BOOM skin", inline=True)
-    embed.set_footer(text="Calestify Gaming Community  •  Season 1")
+    embed.set_footer(text="ZENBOT  •  Season 1")
 
     await target.send(file=discord.File(card_path, filename="pass_season1.png"), embed=embed)
     await interaction.followup.send(f"✅ Pass elanı #{target.name} kanalına göndərildi.", ephemeral=True)
@@ -3594,7 +3594,7 @@ async def pass_cmd(interaction: discord.Interaction):
 
     if not has_battle_pass(interaction.user.id):
         embed = discord.Embed(
-            title="CALESTIFY SEASON 1 PASS",
+            title="ZENBOT SEASON 1 PASS",
             description=(
                 "**Pass hele alinmayib!**\n\n"
                 "**Ne qazanirsiniz:**\n"
@@ -3788,7 +3788,7 @@ async def weekly_stats_task():
         nick, elo = r[0], r[2]
         kd = round(r[6]/max(r[7],1), 2) if len(r) > 7 else 0
         embed.add_field(name=f"{medals[i]} {nick}", value=f"ELO: {elo}  ·  K/D: {kd}", inline=False)
-    embed.set_footer(text=f"Calestify FACEIT  ·  {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y %H:%M')}")
+    embed.set_footer(text=f"ZENBOT  ·  {(_dt.datetime.utcnow()+_dt.timedelta(hours=4)).strftime('%d.%m.%Y %H:%M')}")
     await ch.send(embed=embed)
 
 
@@ -3826,7 +3826,7 @@ async def _check_referral_milestones(guild, all_player_ids: list):
                         try:
                             await member.send(
                                 f"🏅 Dəvət etdiyin **{p[1]}** 10 matç oynadı!\n"
-                                f"**Calestify Ambassador** banneri inventarına əlavə edildi!")
+                                f"**ZENBOT Ambassador** banneri inventarına əlavə edildi!")
                         except discord.Forbidden: pass
         except Exception as _me:
             print(f"[REFERRAL milestone {did}]: {_me}", flush=True)
@@ -3902,7 +3902,7 @@ async def anti_afk_check():
                 continue
             try:
                 await member.send(
-                    f"⏰ **Calestify FACEIT** — Sırada **{idle//60} dəqiqədir** gözləyirsən!\n"
+                    f"⏰ **ZENBOT** — Sırada **{idle//60} dəqiqədir** gözləyirsən!\n"
                     f"Hələ orada olduğunu təsdiqlə, əks halda 2 dəqiqə sonra sıradan çıxarılacaqsan.",
                     view=AfkConfirmView(did))
             except discord.Forbidden:
@@ -4112,7 +4112,7 @@ async def setup_leaderboard(interaction: discord.Interaction):
     await asyncio.to_thread(generate_leaderboard_image, rows, lb_path, _bdir, _bfiles)
 
     lb_embed = discord.Embed(
-        title="🏆 CALESTIFY FACEIT — ÜMUMİ LEADERBOARD",
+        title="🏆 ZENBOT — ÜMUMİ LEADERBOARD",
         description="Bütün zamanların ELO sıralaması · Hər 60 saniyədə yenilənir",
         color=discord.Color.gold()
     )
@@ -4253,7 +4253,7 @@ async def giveaway_create(
         description=f"**Mükafat:** {mukafat}\n\nQoşulmaq üçün 🎉 emojisinə bas!\n\n⏰ Bitmə vaxtı: <t:{end_unix}:R>",
         color=discord.Color.gold()
     )
-    embed.set_footer(text="Calestify Gaming Community")
+    embed.set_footer(text="ZENBOT")
 
     message = await elan_kanal.send(embed=embed)
     await message.add_reaction("🎉")
@@ -4290,7 +4290,7 @@ async def giveaway_bitir(
         description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {qalib.mention}\n\nTəbriklər!",
         color=discord.Color.green()
     )
-    final_embed.set_footer(text="Calestify Gaming Community")
+    final_embed.set_footer(text="ZENBOT")
     await elan_kanal.send(embed=final_embed)
     await elan_kanal.send(f"🎉 Təbriklər {qalib.mention}! Sən **{mukafat}** qazandın!")
 
@@ -4755,9 +4755,9 @@ async def elan_cmd(interaction: discord.Interaction,
 
     # ── Əsas elan embedi ──────────────────────────────────────────────────────
     embed = discord.Embed(
-        title="📢 CALESTIFY FACEIT — TAM YENİLƏMƏ",
+        title="📢 ZENBOT — TAM YENİLƏMƏ",
         description=(
-            "Salam **Calestify** cəmiyyəti!\n\n"
+            "Salam **ZENBOT** cəmiyyəti!\n\n"
             "Bot sistemimiz köklü şəkildə yeniləndi — yeni funksiyalar, vizual kartlar, "
             "rəqabət mexanizmləri və daha çox. Aşağıda hamısını oxuyun!"
         ),
@@ -4869,7 +4869,7 @@ async def elan_cmd(interaction: discord.Interaction,
         inline=False
     )
 
-    embed.set_footer(text=f"Calestify Gaming Community  ·  {now_az}")
+    embed.set_footer(text=f"ZENBOT  ·  {now_az}")
 
     await target.send(content="@everyone", embed=embed)
     await interaction.followup.send(f"✅ Elan **#{target.name}** kanalına göndərildi.", ephemeral=True)
@@ -5164,7 +5164,7 @@ async def toplu_bildiris_cmd(interaction: discord.Interaction, mesaj: str):
         if not member:
             continue
         try:
-            await member.send(f"📢 **Calestify FACEIT bildirisi:**\n{mesaj}")
+            await member.send(f"📢 **ZENBOT bildirisi:**\n{mesaj}")
             sent += 1
         except discord.Forbidden:
             fail += 1
@@ -5358,7 +5358,7 @@ class DavetView(discord.ui.View):
         embed = discord.Embed(title="🏆 Dəvət Mükafatları", color=discord.Color.purple())
         embed.add_field(name="✅ Qeydiyyat", value=f"**+{REFERRAL_REWARD_REG} coin**", inline=True)
         embed.add_field(name="🔥 3 Matç",    value=f"**+{REFERRAL_REWARD_3MATCH} coin**", inline=True)
-        embed.add_field(name="🏅 10 Matç",   value="**Calestify Ambassador** banneri\n*(Marketdə satılmır)*", inline=True)
+        embed.add_field(name="🏅 10 Matç",   value="**ZENBOT Ambassador** banneri\n*(Marketdə satılmır)*", inline=True)
         embed.set_footer(text="Hər dəvət etdiyin oyunçu FACEIT qeydiyyatından keçdikdə 200 coin qazanırsan")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

@@ -1,4 +1,4 @@
-"""Referral (Dəvət) sistemi vizual kartı — PIL. Tam yenilənmiş dizayn."""
+﻿"""Referral (Dəvət) sistemi vizual kartı — PIL. Tam yenilənmiş dizayn."""
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 
@@ -85,7 +85,7 @@ def generate_referral_card(nick: str, stats: dict, referrals: list,
     # ── HEADER ────────────────────────────────────────────────────────────────
     _vgrad(img, 0, HEAD_H, (22, 14, 40), (14, 10, 26))
     draw.line([(0, HEAD_H), (W, HEAD_H)], fill=GOLD, width=2)
-    draw.text((28, 18), "CALESTIFY  ·  DAVET SİSTEMİ", font=_f(11, True), fill=GOLD)
+    draw.text((28, 18), "ZENBOT  ·  DAVET SİSTEMİ", font=_f(11, True), fill=GOLD)
     draw.text((28, 40), nick[:24], font=_f(28, True), fill=WHITE)
     coins_earned = stats["registered"] * 200 + stats["milestone_3"] * 500
     draw.text((W-28, 50), f"💰 {coins_earned} coin qazanıldı", font=_f(12, True), fill=GOLD, anchor="rm")
@@ -228,7 +228,7 @@ def generate_item_preview_card(nick: str, avatar_bytes: bytes | None,
     # Header
     _vgrad(img, 0, 52, (22, 14, 40), (14, 10, 26))
     draw.line([(0, 52), (W, 52)], fill=GOLD, width=2)
-    draw.text((28, 14), "CALESTIFY", font=_f(10, True), fill=GOLD)
+    draw.text((28, 14), "ZENBOT", font=_f(10, True), fill=GOLD)
     draw.text((28, 28), item_type, font=_f(16, True), fill=WHITE)
     draw.text((W-28, 30), item["name"][:30], font=_f(14, True), fill=TEAL, anchor="rm")
 
@@ -254,7 +254,7 @@ def generate_item_preview_card(nick: str, avatar_bytes: bytes | None,
               font=_f(11), fill=GRAY, anchor="mm")
     draw.text((W//2, 310), "Aktivləşdir düyməsinə bas.", font=_f(11, True), fill=GREEN, anchor="mm")
 
-    draw.text((28, H-16), "Calestify Gaming Community", font=_f(10), fill=GRAY)
+    draw.text((28, H-16), "ZENBOT", font=_f(10), fill=GRAY)
 
     img.save(output_path)
     return output_path

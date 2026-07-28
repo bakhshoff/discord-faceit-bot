@@ -1,4 +1,4 @@
-from PIL import Image, ImageDraw, ImageFont
+﻿from PIL import Image, ImageDraw, ImageFont
 import os
 
 WIDTH = 900
@@ -80,7 +80,7 @@ def generate_match_card(match_number, selected_map, team_a, team_b, captain_a_id
     footer_font = _load_font(13)
 
     # Header
-    draw.text((30, 20), "CALESTIFY", font=brand_font, fill=GOLD)
+    draw.text((30, 20), "ZENBOT", font=brand_font, fill=GOLD)
     draw.text((30, 38), f"MATÇ No{match_number}", font=title_font, fill=WHITE)
     draw.ellipse([(30, 80), (40, 90)], fill=GOLD)
     draw.text((48, 76), selected_map, font=map_font, fill=GRAY)
@@ -161,7 +161,7 @@ def generate_result_card(match_number, winner_label, loser_label,
     footer_font      = _load_font(12)
 
     # ── Header ────────────────────────────────────────────────────────────────
-    draw.text((30, 18), "CALESTIFY", font=brand_font, fill=GOLD)
+    draw.text((30, 18), "ZENBOT", font=brand_font, fill=GOLD)
     draw.text((30, 36), f"MATÇ No{match_number}  —  NƏTİCƏ", font=title_font, fill=WHITE)
     draw.text((30, 78), f"Qalib: {winner_label}   ·   {timestamp_str}", font=sub_font, fill=GRAY)
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=BORDER, width=2)
@@ -212,7 +212,7 @@ def generate_result_card(match_number, winner_label, loser_label,
     # ── Footer ────────────────────────────────────────────────────────────────
     footer_y = height - FOOTER_HEIGHT
     draw.line([(0, footer_y), (WIDTH, footer_y)], fill=BORDER, width=1)
-    draw.text((30, footer_y + 18), "Calestify Gaming Community  ·  ELO & Coin yeniləndi", font=footer_font, fill=GRAY)
+    draw.text((30, footer_y + 18), "ZENBOT  ·  ELO & Coin yeniləndi", font=footer_font, fill=GRAY)
 
     img.save(output_path)
     return output_path

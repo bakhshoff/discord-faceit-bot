@@ -1,4 +1,4 @@
-"""
+﻿"""
 Matç sonu xülasə kartı — PIL vizual.
 Göstərir: skor, hər oyunçu K/A/D + ELO±, MVP / Top Fragger / Best Assist badge-ləri.
 """
@@ -78,7 +78,7 @@ def generate_match_recap_card(
 
     # ── Header ────────────────────────────────────────────────────────────────
     draw.rectangle([(0, 0), (W, HEAD_H)], fill=(14, 12, 22))
-    draw.text((28, 14), "CALESTIFY", font=_f(12, True), fill=GOLD)
+    draw.text((28, 14), "ZENBOT", font=_f(12, True), fill=GOLD)
     draw.text((28, 32), f"MATÇ XÜLASƏSI — No{match_number}", font=_f(26, True), fill=WHITE)
     draw.text((28, 66), f"Xəritə: {map_name}", font=_f(14), fill=GRAY)
     draw.line([(0, HEAD_H), (W, HEAD_H)], fill=BORDER, width=1)
@@ -184,7 +184,7 @@ def generate_match_recap_card(
     # ── Footer ────────────────────────────────────────────────────────────────
     fy = by + BADGE_H
     draw.rectangle([(0, fy), (W, H)], fill=(10, 8, 16))
-    draw.text((28, fy + FOOT_H // 2), "Calestify Gaming Community  •  Season 1",
+    draw.text((28, fy + FOOT_H // 2), "ZENBOT  •  Season 1",
               font=_f(11), fill=GRAY, anchor="lm")
     draw.text((W - 28, fy + FOOT_H // 2), f"Xəritə: {map_name}  •  Matç No{match_number}",
               font=_f(11), fill=GRAY, anchor="rm")

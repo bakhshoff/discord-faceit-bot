@@ -1,4 +1,4 @@
-"""S2-stil Battle Pass vizual kartı — ayrıca fayl."""
+﻿"""S2-stil Battle Pass vizual kartı — ayrıca fayl."""
 import os, math as _math
 from PIL import Image, ImageDraw, ImageFont
 
@@ -213,7 +213,7 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         # Aşağı band: oyunçu adı yer saxlayıcısı
         nby = BY + BH - 18
         draw.rectangle([(BX+4, nby), (BX+BW-4, BY+BH-3)], fill=(0, 30, 28, 200))
-        draw.text((BX + 10, nby + 6), "[ Calestify S1 ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
+        draw.text((BX + 10, nby + 6), "[ ZENBOT S1 ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
 
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
         return img
@@ -322,7 +322,7 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
     # Header
     draw.rectangle([(0, 0), (W, 62)], fill=PASS_HEADER)
     draw.line([(0, 60), (W, 60)], fill=PASS_GOLD, width=2)
-    draw.text((14, 8),  "CALESTIFY",       font=_f(11, True), fill=PASS_GOLD)
+    draw.text((14, 8),  "ZENBOT",       font=_f(11, True), fill=PASS_GOLD)
     draw.text((14, 24), "SEASON 1 PASS",   font=_f(20, True), fill=WHITE2)
     tier     = "GOLD PASS" if is_premium else "FREE PASS"
     tier_col = PASS_GOLD  if is_premium else (140, 140, 160)
@@ -433,7 +433,7 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
 
     # Footer
     draw.rectangle([(0, H - FOOT_H), (W, H)], fill=PASS_HEADER)
-    draw.text((14, H - FOOT_H + 8), "Calestify FACEIT  •  Season 1", font=_f(9), fill=GRAY2)
+    draw.text((14, H - FOOT_H + 8), "ZENBOT  •  Season 1", font=_f(9), fill=GRAY2)
     if not is_premium:
         draw.text((W - 14, H - FOOT_H + 8), "/pass_al ile Premium al — 7 AZN",
                   font=_f(9, True), fill=PASS_GOLD, anchor="rm")
@@ -482,7 +482,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
     # Header
     draw.rectangle([(0,0),(W,HEAD)], fill=PASS_HEADER)
     draw.line([(0,HEAD-2),(W,HEAD-2)], fill=PASS_GOLD, width=2)
-    draw.text((PAD, 10), "CALESTIFY", font=_f(11, True), fill=PASS_GOLD)
+    draw.text((PAD, 10), "ZENBOT", font=_f(11, True), fill=PASS_GOLD)
     draw.text((PAD, 26), "SEASON 1 — BUTUN LEVELLERIN MUKAFATLARI", font=_f(14, True), fill=WHITE2)
     tier = "GOLD PASS" if is_premium else "FREE PASS"
     draw.text((W-PAD, 30), tier, font=_f(12, True), fill=PASS_GOLD if is_premium else GRAY2, anchor="rm")
@@ -527,7 +527,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
 
     # Footer
     draw.rectangle([(0,H-FOOT),(W,H)], fill=PASS_HEADER)
-    draw.text((PAD, H-FOOT+8), "Calestify Season 1 Pass  •  /pass_al — 7 AZN", font=_f(9), fill=GRAY2)
+    draw.text((PAD, H-FOOT+8), "ZENBOT Season 1 Pass  •  /pass_al — 7 AZN", font=_f(9), fill=GRAY2)
 
     img.save(output_path)
     return output_path
@@ -559,7 +559,7 @@ def generate_pass_announcement(output_path: str):
 
     # ── Sol üst logo şeridi ───────────────────────────────────────────────────
     draw.rectangle([(0,0),(W,5)], fill=PASS_GOLD)
-    draw.text((28,14), "CALESTIFY  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_GOLD)
+    draw.text((28,14), "ZENBOT  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_GOLD)
 
     # ── Mərkəz başlıq ─────────────────────────────────────────────────────────
     draw.text((W//2, 52),  "BATTLE PASS",  font=_f(52,True), fill=WHITE2, anchor="mm")
