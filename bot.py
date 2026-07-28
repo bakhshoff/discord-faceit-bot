@@ -2334,6 +2334,7 @@ class ScanEditView(discord.ui.View):
 @app_commands.describe(qalib="Qalib komanda (A və ya B)")
 @app_commands.checks.has_permissions(administrator=True)
 async def scan_cmd(interaction: discord.Interaction, qalib: str = "A"):
+    if not await _faceit_gate(interaction): return
     active = get_active_match()
     if not active:
         await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
@@ -2400,6 +2401,7 @@ async def ping_cmd(interaction: discord.Interaction):
 
 @bot.tree.command(name="scan_test", description="Scan sistemini test et — kanalın son şəkli istifadə edilir")
 async def scan_test_cmd(interaction: discord.Interaction):
+    if not await _faceit_gate(interaction): return
     if not interaction.user.guild_permissions.administrator:
         await interaction.response.send_message("❌ Yalnız adminlər üçündür.", ephemeral=True)
         return
@@ -2734,6 +2736,7 @@ class ManuelMatchStatView(discord.ui.View):
 @bot.tree.command(name="manuel_stat", description="[Admin] Aktiv matçın statlarını manuel daxil et")
 @app_commands.checks.has_permissions(administrator=True)
 async def manuel_stat_cmd(interaction: discord.Interaction):
+    if not await _faceit_gate(interaction): return
     active = get_active_match()
     if not active:
         await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
@@ -4852,6 +4855,7 @@ async def elan_error(interaction, error):
 @app_commands.describe(matc_no="Ləğv ediləcək matç nömrəsi")
 @app_commands.checks.has_permissions(administrator=True)
 async def matc_legv_cmd(interaction: discord.Interaction, matc_no: int):
+    if not await _faceit_gate(interaction): return
     import json as _j
     await interaction.response.defer(ephemeral=True)
 
@@ -5097,6 +5101,7 @@ async def mehsul_sil_error(i, e):
 @bot.tree.command(name="ara", description="Oyunçu adına görə ax")
 @app_commands.describe(nick="Oyun adı (qismən yazın kifayətdir)")
 async def ara_cmd(interaction: discord.Interaction, nick: str):
+    if not await _faceit_gate(interaction): return
     await interaction.response.defer(ephemeral=True)
     from database import _get_conn as _gac
     conn = _gac(); cur = conn.cursor()
@@ -5356,6 +5361,7 @@ class DavetView(discord.ui.View):
 
 @bot.tree.command(name="davet", description="Dəvət sistemi — link, statistika, mükafatlar")
 async def davet_cmd(interaction: discord.Interaction):
+    if not await _faceit_gate(interaction): return
     await interaction.response.defer(ephemeral=True)
     player = get_player(interaction.user.id)
     if not player:
@@ -5402,11 +5408,11 @@ async def faceit_sistemi_cmd(interaction: discord.Interaction):
         title="⚙️ FACEIT Sistemi İdarəsi",
         description=(
             f"**Cari vəziyyət:** {status}\n\n"
-            "FACEIT sistemi deaktiv olduqda aşağıdakı komandalar bloklanır:\n"
-            "• Qeydiyyat düyməsi\n"
-            "• Sıraya qoşulma düyməsi\n"
+            "FACEIT sistemi deaktiv olduqda bloklanır:\n"
+            "• Qeydiyyat + Sıraya qoşulma düymələri\n"
             "• `/stats` `/nailiyyetler` `/elo_grafik` `/muqayise`\n"
-            "• `/sezon` `/merc` `/pass`"
+            "• `/sezon` `/merc` `/pass` `/ara` `/davet`\n"
+            "• `/scan` `/scan_test` `/manuel_stat` `/matc_legv`"
         ),
         color=color
     )
