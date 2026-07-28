@@ -145,6 +145,36 @@ def is_queue_open():
     return True
 
 
+# ── FACEIT sistemi toggle ─────────────────────────────────────────────────────
+FACEIT_ENABLED = True
+
+def _faceit_flag_path():
+    return os.path.join(DATA_DIR or os.path.dirname(os.path.abspath(__file__)), "faceit_enabled.txt")
+
+def _load_faceit_flag():
+    global FACEIT_ENABLED
+    try:
+        with open(_faceit_flag_path()) as _f:
+            FACEIT_ENABLED = _f.read().strip() != "0"
+    except FileNotFoundError:
+        FACEIT_ENABLED = True
+
+def _save_faceit_flag():
+    with open(_faceit_flag_path(), "w") as _f:
+        _f.write("1" if FACEIT_ENABLED else "0")
+
+async def _faceit_gate(interaction: discord.Interaction) -> bool:
+    if not FACEIT_ENABLED:
+        await interaction.response.send_message(
+            "⚠️ **FACEIT sistemi müvəqqəti deaktiv edilib.**\n"
+            "Admin tərəfindən yenidən aktivləşdirilə bilər.",
+            ephemeral=True
+        )
+        return False
+    return True
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 leaderboard_channel_id        = None
 leaderboard_message_id        = None
 season_lb_channel_id          = None
@@ -322,6 +352,12 @@ class RegisterView(discord.ui.View):
 
     @discord.ui.button(label="Qeydiyyat", style=discord.ButtonStyle.success, emoji="✅", custom_id="reg_open")
     async def open_register(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not FACEIT_ENABLED:
+            await interaction.response.send_message(
+                "⚠️ **FACEIT sistemi müvəqqəti deaktiv edilib.**\nAdmin tərəfindən yenidən aktivləşdirilə bilər.",
+                ephemeral=True
+            )
+            return
         existing = get_player(interaction.user.id)
         if existing:
             await interaction.response.send_message(
@@ -1857,12 +1893,52 @@ async def _launch_match(match_number, selected_map, team_a, team_b, captain_a_id
     await update_queue_status_message()
 
 
+class FaceitControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="✅ Aktivləşdir", style=discord.ButtonStyle.success)
+    async def enable_faceit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        global FACEIT_ENABLED
+        FACEIT_ENABLED = True
+        _save_faceit_flag()
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="⚙️ FACEIT Sistemi",
+                description="✅ **FACEIT sistemi aktivdir.** Bütün komandalar işləyir.",
+                color=discord.Color.green()
+            ),
+            view=FaceitControlView()
+        )
+
+    @discord.ui.button(label="❌ Deaktiv et", style=discord.ButtonStyle.danger)
+    async def disable_faceit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        global FACEIT_ENABLED
+        FACEIT_ENABLED = False
+        _save_faceit_flag()
+        await interaction.response.edit_message(
+            embed=discord.Embed(
+                title="⚙️ FACEIT Sistemi",
+                description="❌ **FACEIT sistemi deaktiv edildi.** İstifadəçilər komandaları istifadə edə bilməz.",
+                color=discord.Color.red()
+            ),
+            view=FaceitControlView()
+        )
+
+
 class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="5v5", style=discord.ButtonStyle.danger, emoji="🔥", custom_id="mm_join")
     async def join_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not FACEIT_ENABLED:
+            await interaction.response.send_message(
+                "⚠️ **FACEIT sistemi müvəqqəti deaktiv edilib.**\nAdmin tərəfindən yenidən aktivləşdirilə bilər.",
+                ephemeral=True
+            )
+            return
+
         if not is_queue_open():
             await interaction.response.send_message(
                 f"🌙 Matchmaking yalnız gecə saatlarında aktivdir.\n🇦🇿 Azərbaycan vaxtı: **20:00 - 02:00**",
@@ -2690,6 +2766,7 @@ async def manuel_stat_error(interaction, error):
 @bot.tree.command(name="sezon", description="Sezon leaderboardunu göstərir")
 @app_commands.describe(nomre="Sezon nömrəsi (boş buraxsanız cari sezon)")
 async def sezon_cmd(interaction: discord.Interaction, nomre: int = 0):
+    if not await _faceit_gate(interaction): return
     await interaction.response.defer()
     import datetime as dt
 
@@ -3083,6 +3160,7 @@ class SezonNavView(discord.ui.View):
 @bot.tree.command(name="stats", description="Oyunçunun statistikasını vizual göstər")
 @app_commands.describe(uzv="Oyunçu (boş = özünüz)")
 async def stats_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    if not await _faceit_gate(interaction): return
     target = uzv or interaction.user
     await interaction.response.defer()
     player = get_player(target.id)
@@ -3141,6 +3219,7 @@ async def stats_cmd(interaction: discord.Interaction, uzv: discord.Member = None
 @bot.tree.command(name="nailiyyetler", description="Nailiyyətlərinizi vizual görün")
 @app_commands.describe(uzv="Oyunçu (boş = özünüz)")
 async def nailiyyetler_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    if not await _faceit_gate(interaction): return
     target = uzv or interaction.user
     await interaction.response.defer(ephemeral=True)
     player = get_player(target.id)
@@ -3214,6 +3293,7 @@ class BetModal(discord.ui.Modal):
 
 @bot.tree.command(name="merc", description="Aktiv matçın qalibi üçün coin mərc et")
 async def merc_cmd(interaction: discord.Interaction):
+    if not await _faceit_gate(interaction): return
     active = get_active_match()
     if not active:
         await interaction.response.send_message("❌ Aktiv matç yoxdur.", ephemeral=True)
@@ -3259,6 +3339,7 @@ async def merc_cmd(interaction: discord.Interaction):
 @app_commands.describe(oyuncu1="Birinci oyunçu", oyuncu2="İkinci oyunçu")
 async def muqayise_cmd(interaction: discord.Interaction,
                        oyuncu1: discord.Member, oyuncu2: discord.Member):
+    if not await _faceit_gate(interaction): return
     await interaction.response.defer()
 
     def _pdata(p):
@@ -3292,6 +3373,7 @@ async def muqayise_cmd(interaction: discord.Interaction,
 @bot.tree.command(name="elo_grafik", description="ELO dəyişim qrafikini göstər")
 @app_commands.describe(uzv="Oyunçu (boş = özünüz)")
 async def elo_grafik_cmd(interaction: discord.Interaction, uzv: discord.Member = None):
+    if not await _faceit_gate(interaction): return
     target = uzv or interaction.user
     await interaction.response.defer(ephemeral=True)
     player = get_player(target.id)
@@ -3481,6 +3563,7 @@ class PassView(discord.ui.View):
 
 @bot.tree.command(name="pass", description="Season Pass kartını göstər")
 async def pass_cmd(interaction: discord.Interaction):
+    if not await _faceit_gate(interaction): return
     await interaction.response.defer(ephemeral=True)
     try:
         # Free pass yarat (hamı üçün avtomatik)
@@ -3589,6 +3672,7 @@ async def on_ready():
     if not anti_afk_check.is_running():
         anti_afk_check.start()
     init_referral_tables()
+    _load_faceit_flag()
     # Invite cache-ni doldur
     for guild in bot.guilds:
         try:
@@ -5301,6 +5385,67 @@ async def davet_cmd(interaction: discord.Interaction):
         file=discord.File(path, filename="davet.png"),
         view=DavetView(interaction.user.id, invite_url),
         ephemeral=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FACEIT SİSTEMİ TOGGLE  +  BOT DƏVƏT LİNKİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="faceit_sistemi", description="[Admin] FACEIT sistemini aktiv/deaktiv et")
+@app_commands.checks.has_permissions(administrator=True)
+async def faceit_sistemi_cmd(interaction: discord.Interaction):
+    status = "✅ Aktiv" if FACEIT_ENABLED else "❌ Deaktiv"
+    color  = discord.Color.green() if FACEIT_ENABLED else discord.Color.red()
+    embed  = discord.Embed(
+        title="⚙️ FACEIT Sistemi İdarəsi",
+        description=(
+            f"**Cari vəziyyət:** {status}\n\n"
+            "FACEIT sistemi deaktiv olduqda aşağıdakı komandalar bloklanır:\n"
+            "• Qeydiyyat düyməsi\n"
+            "• Sıraya qoşulma düyməsi\n"
+            "• `/stats` `/nailiyyetler` `/elo_grafik` `/muqayise`\n"
+            "• `/sezon` `/merc` `/pass`"
+        ),
+        color=color
+    )
+    await interaction.response.send_message(embed=embed, view=FaceitControlView(), ephemeral=True)
+
+
+@faceit_sistemi_cmd.error
+async def faceit_sistemi_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="bot_davet", description="[Admin] Botu başqa serverə dəvət etmək üçün link al")
+@app_commands.checks.has_permissions(administrator=True)
+async def bot_davet_cmd(interaction: discord.Interaction):
+    client_id = bot.user.id
+    url = (
+        f"https://discord.com/oauth2/authorize"
+        f"?client_id={client_id}"
+        f"&permissions=8"
+        f"&scope=bot+applications.commands"
+    )
+    embed = discord.Embed(
+        title="🤖 Bot Dəvət Linki",
+        description=(
+            f"Botu başqa serverə əlavə etmək üçün aşağıdakı linki istifadə edin:\n\n"
+            f"[**Serverə əlavə et →**]({url})\n\n"
+            f"```{url}```"
+        ),
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text="Yalnız administrator icazəsi olan üzv bu linki istifadə edə bilər.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot_davet_cmd.error
+async def bot_davet_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
