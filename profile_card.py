@@ -153,7 +153,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     f_small  = _load_font(11)
 
     # ── Header şerid ─────────────────────────────────────────────────────────
-    draw.text((28, 18), "ZENBOT", font=f_brand, fill=t_accent)
+    draw.text((28, 18), "Zenith's Academy", font=f_brand, fill=t_accent)
     draw.text((28, 34), "FACEIT PROFILE", font=f_title, fill=WHITE)
 
     # Coin + AZN (sağ üst)
@@ -279,7 +279,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         _stat_box(draw, bx2+2, box_y, bw-4, box_h, lbl, val, val_color=col)
 
     # ── Footer ────────────────────────────────────────────────────────────────
-    draw.text((28, HEIGHT-26), "ZENBOT", font=_load_font(11), fill=GRAY)
+    draw.text((28, HEIGHT-26), "Zenith's Academy", font=_load_font(11), fill=GRAY)
 
     draw = ImageDraw.Draw(img)  # refresh after alpha ops
     img  = img.convert("RGB")

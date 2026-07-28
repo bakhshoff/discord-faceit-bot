@@ -67,7 +67,7 @@ def generate_match_history_card(history, output_path):
     f_row   = _font(16, True)
     f_sm    = _font(13)
 
-    draw.text((28, 14), "ZENBOT", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
     draw.text((28, 30), "MATC TARIХCESI", font=f_title, fill=WHITE)
     cnt = f"{len(history)} matc"
     draw.text((WIDTH - 28 - _tw(draw, cnt, f_sub), 40), cnt, font=f_sub, fill=GRAY)
@@ -107,7 +107,7 @@ def generate_match_history_card(history, output_path):
             if i < len(history) - 1:
                 draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
 
-    draw.text((28, height - FOOTER_H + 4), "ZENBOT", font=_font(11), fill=GRAY)
+    draw.text((28, height - FOOTER_H + 4), "Zenith's Academy", font=_font(11), fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -139,7 +139,7 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
     else:
         flbl, fcol = "HAMISI",    GOLD
 
-    draw.text((28, 14), "ZENBOT", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
     draw.text((28, 30), "COiN LOGLARI", font=f_title, fill=WHITE)
 
     bw = _tw(draw, flbl, f_sub) + 16
@@ -183,7 +183,7 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
             if i < len(logs)-1:
                 draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
 
-    draw.text((28, height-FOOTER_H+4), "ZENBOT", font=_font(11), fill=GRAY)
+    draw.text((28, height-FOOTER_H+4), "Zenith's Academy", font=_font(11), fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -225,7 +225,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
     fs = _font(12)
     fx = _font(11)
 
-    draw.text((PAD, 12), "ZENBOT", font=fb, fill=GOLD)
+    draw.text((PAD, 12), "Zenith's Academy", font=fb, fill=GOLD)
     draw.text((PAD, 28), "GÜNDƏLİK TAPŞIRIQLAR", font=ft, fill=WHITE)
     draw.line([(0, HEADER), (WIDTH, HEADER)], fill=BORDER, width=1)
 
@@ -302,7 +302,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
             # Dekorativ rəngli şerit
             draw.rectangle([cx, cy+ch-8, cx+cw, cy+ch-2], fill=col)
 
-    draw.text((PAD, height-FOOTER+6), "ZENBOT  ·  /gunluk", font=fx, fill=GRAY)
+    draw.text((PAD, height-FOOTER+6), "Zenith's Academy  ·  /gunluk", font=fx, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -366,7 +366,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
     rank_name, rank_color, rank_emoji = get_rank(elo)
 
     # Header
-    draw.text((PAD, 14), "ZENBOT", font=fb, fill=GOLD)
+    draw.text((PAD, 14), "Zenith's Academy", font=fb, fill=GOLD)
     draw.text((PAD, 30), f"OYUNÇU STATİSTİKASI", font=ft, fill=WHITE)
     draw.line([(0,72),(W,72)], fill=BORDER, width=1)
 
@@ -417,7 +417,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
     else:
         draw.text((PAD+120, ay+22), "Hele yoxdur", font=fxi, fill=GRAY)
 
-    draw.text((PAD, H-24), "ZENBOT", font=fxi, fill=GRAY)
+    draw.text((PAD, H-24), "Zenith's Academy", font=fxi, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -444,7 +444,7 @@ def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_pa
     fx = _font(12)
 
     status = "[BANLANDI]" if is_banned else f"{len(warnings)} Xeberdarliq"
-    draw.text((20, 12), "ZENBOT  ·  ADMIN PANEL", font=fb, fill=GOLD)
+    draw.text((20, 12), "Zenith's Academy  ·  ADMIN PANEL", font=fb, fill=GOLD)
     draw.text((20, 28), f"{nick} — {status}", font=ft, fill=RED if is_banned else (255,180,0))
     draw.line([(0,72),(800,72)], fill=BORDER, width=1)
 
@@ -460,7 +460,7 @@ def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_pa
             draw.text((20, y+28), dt.strftime("%d.%m.%Y %H:%M"), font=fx, fill=GRAY)
             y += ROW_H
 
-    draw.text((20, H-24), "ZENBOT", font=fx, fill=GRAY)
+    draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -488,7 +488,7 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str):
     fs = _font(13)
     fx = _font(11)
 
-    draw.text((20, 12), "ZENBOT", font=fb, fill=GOLD)
+    draw.text((20, 12), "Zenith's Academy", font=fb, fill=GOLD)
     draw.text((20, 28), f"{nick} — Nailiyyətlər ({len(achievements)})", font=ft, fill=WHITE)
     draw.line([(0,68),(W,68)], fill=BORDER, width=1)
 
@@ -507,7 +507,7 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str):
     if not achievements:
         draw.text((20, HEADER+10), "Hələ heç bir nailiyyət yoxdur.", font=fs, fill=GRAY)
 
-    draw.text((20, H-24), "ZENBOT", font=fx, fill=GRAY)
+    draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -528,7 +528,7 @@ def generate_compare_card(p1: dict, p2: dict, output_path: str):
     fb = _font(13, True); ft = _font(22, True)
     fm = _font(15, True); fs = _font(13); fx = _font(11)
 
-    draw.text((PAD, 12), "ZENBOT", font=fb, fill=GOLD)
+    draw.text((PAD, 12), "Zenith's Academy", font=fb, fill=GOLD)
     draw.text((PAD, 28), "OYUNCU MUQAYİSƏSİ", font=ft, fill=WHITE)
     draw.line([(0,70),(W,70)], fill=BORDER, width=1)
 
@@ -579,7 +579,7 @@ def generate_compare_card(p1: dict, p2: dict, output_path: str):
         draw.line([(PAD, y+12),(W-PAD, y+12)], fill=(35,33,42), width=1)
         y += 28
 
-    draw.text((PAD, H-24), "ZENBOT", font=fx, fill=GRAY)
+    draw.text((PAD, H-24), "Zenith's Academy", font=fx, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -604,7 +604,7 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
 
     fb = _font(13, True); ft = _font(20, True); fx = _font(10)
 
-    draw.text((PAD, 12), "ZENBOT", font=fb, fill=GOLD)
+    draw.text((PAD, 12), "Zenith's Academy", font=fb, fill=GOLD)
     draw.text((PAD, 28), f"{nick} — ELO Tarixi  |  Pik: {peak_elo}", font=ft, fill=WHITE)
 
     if len(history) < 2:
@@ -645,7 +645,7 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
     draw.ellipse([(pts[-1][0]-5, pts[-1][1]-5),(pts[-1][0]+5, pts[-1][1]+5)], fill=GOLD)
     draw.text((pts[-1][0]+8, pts[-1][1]), str(elos[-1]), font=fx, fill=GOLD)
 
-    draw.text((PAD, H-24), "ZENBOT", font=fx, fill=GRAY)
+    draw.text((PAD, H-24), "Zenith's Academy", font=fx, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -664,7 +664,7 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
     fb = _font(13, True); ft = _font(22, True); fm = _font(15); fs = _font(13); fx = _font(11)
 
     days = stats["days"]
-    draw.text((20, 12), "ZENBOT", font=fb, fill=GOLD)
+    draw.text((20, 12), "Zenith's Academy", font=fb, fill=GOLD)
     draw.text((20, 28), f"FEALIYYET PANELİ — Son {days} Gun", font=ft, fill=WHITE)
     draw.line([(0,70),(W,70)], fill=BORDER, width=1)
 
@@ -704,7 +704,7 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
             if hour % 4 == 0:
                 draw.text((bx, gy+54), str(hour), font=_font(9), fill=GRAY)
 
-    draw.text((20, H-24), "ZENBOT", font=fx, fill=GRAY)
+    draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -748,7 +748,7 @@ def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(
     draw.rectangle([(0, 0), (W, 56)], fill=PASS_PANEL)
     hdr_col = PASS_GOLD if is_premium else (120, 120, 140)
     draw.rectangle([(0, 54), (W, 57)], fill=hdr_col)
-    draw.text((20, 10), "ZENBOT", font=fb, fill=PASS_GOLD)
+    draw.text((20, 10), "Zenith's Academy", font=fb, fill=PASS_GOLD)
     draw.text((20, 24), "SEASON 1 PASS", font=ft, fill=WHITE)
     # Pass tipi + Level badge
     tier_txt = "PREMIUM" if is_premium else "FREE"
@@ -864,7 +864,7 @@ def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(
 
     # Footer
     prog_pct = int(level / max_lvl * 100)
-    draw.text((PAD, H-18), f"ZENBOT Season 1 Pass  ·  {prog_pct}% tamamlandi", font=fxi, fill=GRAY)
+    draw.text((PAD, H-18), f"Zenith's Academy Season 1 Pass  ·  {prog_pct}% tamamlandi", font=fxi, fill=GRAY)
     draw.text((W-PAD, H-18), "5 AZN", font=fb, fill=PASS_GOLD, anchor="ra")
 
     return img
@@ -922,7 +922,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
     f_row   = _font(15, True)
     f_sm    = _font(13)
 
-    draw.text((28, 14), "ZENBOT", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
     draw.text((28, 30), "iNVENTAR",  font=f_title, fill=WHITE)
     tot_t = f"{len(faceit)+len(skins)} esya"
     draw.text((WIDTH-28-_tw(draw, tot_t, f_sm), 40), tot_t, font=f_sm, fill=GRAY)
@@ -971,7 +971,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
                     draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
                 y += ROW_H
 
-    draw.text((28, height-FOOTER_H+4), "ZENBOT", font=_font(11), fill=GRAY)
+    draw.text((28, height-FOOTER_H+4), "Zenith's Academy", font=_font(11), fill=GRAY)
     img.save(output_path)
     return output_path
 
@@ -985,7 +985,7 @@ def generate_transfer_card(from_nick, to_nick, amount, commission, receiver_gets
     draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
     f_brand = _font(12, True); f_title = _font(22, True); f_big = _font(20, True)
     f_med = _font(15, True);   f_sm = _font(12);          f_lbl = _font(11)
-    draw.text((28, 14), "ZENBOT", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
     draw.text((28, 30), "COiN TRANSFERi", font=f_title, fill=WHITE)
     draw.line([(18, 65), (W-18, 65)], fill=BORDER, width=1)
     cx = W // 2
@@ -1004,7 +1004,7 @@ def generate_transfer_card(from_nick, to_nick, amount, commission, receiver_gets
     draw.text((rc, 163), "Alan",               font=f_lbl, fill=GRAY,  anchor="mm")
     draw.line([(18, 175), (W-18, 175)], fill=BORDER, width=1)
     draw.text((W//2, 195), f"Komissiya: {commission} coin (20%)   |   Balans: {from_balance} coin", font=f_lbl, fill=GRAY, anchor="mm")
-    draw.text((28, H-18), "ZENBOT", font=f_lbl, fill=GRAY)
+    draw.text((28, H-18), "Zenith's Academy", font=f_lbl, fill=GRAY)
     img.save(output_path); return output_path
 
 
@@ -1015,7 +1015,7 @@ def generate_search_results_card(query, results, output_path):
     H = HEADER_H + max(1, len(results)) * ROW_H + FOOTER_H
     img = _bg(H); draw = ImageDraw.Draw(img)
     draw.rectangle([(0,0),(WIDTH-1,H-1)], outline=BORDER, width=2)
-    draw.text((28, 14), "ZENBOT", font=_font(12,True), fill=GOLD)
+    draw.text((28, 14), "Zenith's Academy", font=_font(12,True), fill=GOLD)
     draw.text((28, 30), f"AXTARIS: '{query[:18]}'  -  {len(results)} netice", font=_font(20,True), fill=WHITE)
     draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
     y = HEADER_H
@@ -1029,7 +1029,7 @@ def generate_search_results_card(query, results, output_path):
         draw.text((WIDTH-28, y+ROW_H//2), str(elo), font=_font(16,True), fill=ec, anchor="rm")
         draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
         y += ROW_H
-    draw.text((28, H-FOOTER_H+6), "ZENBOT", font=_font(11), fill=GRAY)
+    draw.text((28, H-FOOTER_H+6), "Zenith's Academy", font=_font(11), fill=GRAY)
     img.save(output_path); return output_path
 
 
@@ -1040,7 +1040,7 @@ def generate_skin_catalog_card(skins, output_path):
     H = HEADER_H + max(1, len(skins)) * ROW_H + FOOTER_H
     img = _bg(H); draw = ImageDraw.Draw(img)
     draw.rectangle([(0,0),(WIDTH-1,H-1)], outline=BORDER, width=2)
-    draw.text((28, 14), "ZENBOT", font=_font(12,True), fill=GOLD)
+    draw.text((28, 14), "Zenith's Academy", font=_font(12,True), fill=GOLD)
     draw.text((28, 30), "SKiN KATALOQU", font=_font(22,True), fill=WHITE)
     cnt_t = f"{len(skins)} skin"
     draw.text((WIDTH-28-_tw(draw,cnt_t,_font(12)), 42), cnt_t, font=_font(12), fill=GRAY)
@@ -1054,7 +1054,7 @@ def generate_skin_catalog_card(skins, output_path):
         draw.text((WIDTH-28, y+ROW_H//2), f"{s.get('price','?')} coin", font=_font(16,True), fill=GOLD, anchor="rm")
         draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
         y += ROW_H
-    draw.text((28, H-FOOTER_H+6), "ZENBOT", font=_font(11), fill=GRAY)
+    draw.text((28, H-FOOTER_H+6), "Zenith's Academy", font=_font(11), fill=GRAY)
     img.save(output_path); return output_path
 
 
@@ -1069,7 +1069,7 @@ def generate_bet_card(match_number, balance, output_path,
     # Header
     draw.rectangle([(0,0),(W,54)], fill=(20,15,30))
     draw.line([(0,54),(W,54)], fill=BORDER, width=1)
-    draw.text((28, 12), "ZENBOT", font=_font(12,True), fill=GOLD)
+    draw.text((28, 12), "Zenith's Academy", font=_font(12,True), fill=GOLD)
     draw.text((28, 30), f"MATC No{match_number}  —  MERC", font=_font(20,True), fill=WHITE)
 
     # Komanda panelləri

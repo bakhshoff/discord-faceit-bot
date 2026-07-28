@@ -115,7 +115,7 @@ def generate_rules_card(sections, output_path="rules_card.png"):
     draw = ImageDraw.Draw(img)
     draw.rectangle([(0, 0), (WIDTH - 1, total_h - 1)], outline=BORDER, width=2)
 
-    draw.text((pad_x, 28), "ZENBOT", font=brand_font, fill=GOLD)
+    draw.text((pad_x, 28), "Zenith's Academy", font=brand_font, fill=GOLD)
     draw.text((pad_x, 50), "FACEIT QAYDALARI", font=title_font, fill=WHITE)
     draw.text((pad_x, 92), "Standoff 2 Competitive — bütün oyunçular bu qaydalara əməl etməlidir", font=sub_font, fill=GRAY)
     draw.line([(pad_x, header_height - 10), (WIDTH - pad_x, header_height - 10)], fill=BORDER, width=1)
@@ -142,7 +142,7 @@ def generate_rules_card(sections, output_path="rules_card.png"):
 
     footer_y = total_h - footer_h
     draw.line([(pad_x, footer_y), (WIDTH - pad_x, footer_y)], fill=BORDER, width=1)
-    draw.text((pad_x, footer_y + 16), "ZENBOT  ·  FACEIT Rules", font=sub_font, fill=GRAY)
+    draw.text((pad_x, footer_y + 16), "Zenith's Academy  ·  FACEIT Rules", font=sub_font, fill=GRAY)
 
     img.save(output_path)
     return output_path
@@ -159,7 +159,7 @@ def generate_register_banner(logo_path=None, output_path="register_banner.png"):
     sub_font = _load_font(16)
     value_font = _load_font(16)
 
-    draw.text((36, 28), "ZENBOT", font=brand_font, fill=GOLD)
+    draw.text((36, 28), "Zenith's Academy", font=brand_font, fill=GOLD)
     draw.text((36, 50), "FACEIT QEYDİYYAT", font=title_font, fill=WHITE)
     draw.text((36, 96), "Standoff 2 Competitive sisteminə qoşulmaq üçün qeydiyyatdan keç", font=sub_font, fill=GRAY)
 

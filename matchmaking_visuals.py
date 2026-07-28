@@ -63,7 +63,7 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
     label_font = _load_font(14, bold=True)
     value_font = _load_font(16)
 
-    draw.text((36, 28), "ZENBOT", font=brand_font, fill=GOLD)
+    draw.text((36, 28), "Zenith's Academy", font=brand_font, fill=GOLD)
     draw.text((36, 50), "FACEIT MATCHMAKING", font=title_font, fill=WHITE)
     draw.text((36, 98), "Standoff 2 · Competitive 5v5", font=sub_font, fill=GRAY)
 
@@ -137,7 +137,7 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
 
     footer_y = height - footer_height
     draw.line([(0, footer_y), (WIDTH, footer_y)], fill=BORDER, width=1)
-    draw.text((30, footer_y + 12), "ZENBOT", font=sub_font, fill=GRAY)
+    draw.text((30, footer_y + 12), "Zenith's Academy", font=sub_font, fill=GRAY)
 
     img.save(output_path)
     return output_path

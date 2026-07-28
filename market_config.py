@@ -1,4 +1,4 @@
-# Market mehsullari konfiqurasiyasi.
+﻿# Market mehsullari konfiqurasiyasi.
 # Yeni banner/avatar elave etmek ucun bu siyahiya yeni setir elave edin.
 #
 # id: unikal identifikator
@@ -9,7 +9,7 @@
 
 MARKET_ITEMS = [
     # Xüsusi — yalnız referral sistemi ilə əldə edilə bilər, marketdə satılmır
-    {"id": "banner_ambassador", "name": "ZenBot Ambassador",
+    {"id": "banner_ambassador", "name": "Zenith's Academy Ambassador",
      "type": "banner", "price": 0, "file": "banner_ambassador.png", "exclusive": True},
 
 {"id": "banner_gold", "name": "Qizili Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
