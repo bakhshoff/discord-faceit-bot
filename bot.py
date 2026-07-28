@@ -165,6 +165,23 @@ def _save_faceit_flag():
 
 async def _faceit_gate(interaction: discord.Interaction) -> bool:
     if not FACEIT_ENABLED:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "⚠️ **FACEIT sistemi müvəqqəti deaktiv edilib.**\n"
+                "Admin tərəfindən yenidən aktivləşdirilə bilər.",
+                ephemeral=True
+            )
+        return False
+    return True
+
+# Bütün slash komandaları üçün qlobal FACEIT yoxlaması
+_FACEIT_EXEMPT = {"faceit_sistemi", "bot_davet", "ping"}
+
+async def _global_faceit_check(interaction: discord.Interaction) -> bool:
+    cmd = getattr(interaction.command, "name", None)
+    if cmd in _FACEIT_EXEMPT:
+        return True
+    if not FACEIT_ENABLED:
         await interaction.response.send_message(
             "⚠️ **FACEIT sistemi müvəqqəti deaktiv edilib.**\n"
             "Admin tərəfindən yenidən aktivləşdirilə bilər.",
@@ -3685,7 +3702,20 @@ async def on_ready():
         except Exception:
             pass
     check_and_lift_bans()
+    bot.tree.interaction_check = _global_faceit_check
     await bot.tree.sync()
+
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "⚠️ **FACEIT sistemi müvəqqəti deaktiv edilib.**\n"
+                "Admin tərəfindən yenidən aktivləşdirilə bilər.",
+                ephemeral=True
+            )
+        return
 
 
 @tasks.loop(minutes=5)
