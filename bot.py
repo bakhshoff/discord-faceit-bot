@@ -25,7 +25,14 @@ from database import (
     get_queue_list,
     set_active_match, clear_active_match, get_active_match,
     add_combat_stats, record_match_history,
-    save_scan_result, get_scan_result, confirm_scan
+    save_scan_result, get_scan_result, confirm_scan,
+    add_coins, get_coins, spend_coins, get_inventory, owns_item, add_to_inventory,
+    set_active_banner, get_active_banner, set_active_frame, get_active_frame,
+    set_active_theme, get_active_theme, add_coin_log, get_coin_logs,
+    refresh_daily_tasks, get_active_daily_tasks, get_player_active_task,
+    assign_task_to_player, update_task_progress,
+    check_and_grant_achievements, get_player_achievements,
+    update_streak, get_streak_bonus
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -34,6 +41,11 @@ from match_card import generate_match_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 from rules_card import generate_rules_card, generate_register_banner
 from scan_system import ocr_scoreboard, match_to_registered, apply_defaults_for_missing
+from market_config import MARKET_ITEMS, get_item_by_id
+from visual_cards import (
+    generate_inventory_card, generate_coin_logs_card,
+    generate_tasks_card, generate_achievements_card
+)
 import requests
 
 load_dotenv()
@@ -138,6 +150,11 @@ async def check_giveaways():
         except discord.HTTPException:
             pass
         await channel.send(f"🎉 Təbriklər {winner_mention}! Sən **{mukafat}** qazandın!")
+
+
+@tasks.loop(seconds=3600)
+async def refresh_tasks_loop():
+    refresh_daily_tasks()
 
 
 class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
@@ -279,6 +296,32 @@ class MatchResultView(discord.ui.View):
                 add_combat_stats(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0))
                 stats_by_id[did] = s
 
+        # Coin mükafatı, seriya, günlük tapşırıq irəliləyişi, nailiyyətlər
+        new_achievements = []
+        for p, r in zip(winner_team, results["winners"]):
+            did = p["discord_id"]
+            streak, _ = update_streak(did, True)
+            bonus_coins, _bonus_elo = get_streak_bonus(streak)
+            earned = random.randint(5, 10) + bonus_coins
+            new_bal = add_coins(did, earned)
+            reason = f"Matç No{self.match_number} qələbə" + (f" (seriya {streak})" if bonus_coins else "")
+            add_coin_log(did, earned, reason, "earn", new_bal)
+            s = stats_by_id.get(did, {})
+            update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
+            for ach in check_and_grant_achievements(did):
+                new_achievements.append((p["nick"], ach))
+
+        for p, r in zip(loser_team, results["losers"]):
+            did = p["discord_id"]
+            update_streak(did, False)
+            earned = random.randint(0, 5)
+            new_bal = add_coins(did, earned)
+            add_coin_log(did, earned, f"Matç No{self.match_number} iştirak", "earn", new_bal)
+            s = stats_by_id.get(did, {})
+            update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
+            for ach in check_and_grant_achievements(did):
+                new_achievements.append((p["nick"], ach))
+
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
         embed = discord.Embed(
             title=f"✅ Matç No{self.match_number} — Nəticə qeyd edildi",
@@ -303,6 +346,12 @@ class MatchResultView(discord.ui.View):
             value="\n".join([_fmt_line(p, r) for p, r in zip(loser_team, results["losers"])]),
             inline=False
         )
+        if new_achievements:
+            embed.add_field(
+                name="🏆 Yeni nailiyyətlər",
+                value="\n".join(f"{ach['icon']} **{ach['name']}** — {nick}" for nick, ach in new_achievements),
+                inline=False
+            )
 
         await asyncio.to_thread(
             record_match_history, "2v2", winner_ids, loser_ids,
@@ -533,7 +582,7 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
-        discord_id, nick, so2_id, elo, wins, losses = player
+        discord_id, nick, so2_id, elo, wins, losses = player[:6]
         added = add_to_queue(discord_id, nick, elo)
         if not added:
             await interaction.response.send_message("⚠️ Siz artıq sıradasınız.", ephemeral=True)
@@ -620,7 +669,17 @@ async def on_ready():
     bot.add_view(RegisterView())
     if not check_giveaways.is_running():
         check_giveaways.start()
+    refresh_daily_tasks()
+    if not refresh_tasks_loop.is_running():
+        refresh_tasks_loop.start()
+    for guild in bot.guilds:
+        bot.tree.copy_global_to(guild=guild)
+        await bot.tree.sync(guild=guild)
+        print(f"[SYNC] {guild.name} üçün komandalar dərhal sinxronlaşdı.", flush=True)
+
+    bot.tree.clear_commands(guild=None)
     await bot.tree.sync()
+    print("[SYNC] Qlobal komandalar təmizləndi (dublikatların qarşısı alındı).", flush=True)
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -632,7 +691,7 @@ async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    discord_id, nick, so2_id, elo, wins, losses = player
+    discord_id, nick, so2_id, elo, wins, losses = player[:6]
 
     avatar_bytes = None
     try:
@@ -937,6 +996,202 @@ async def giveaway_create(
 async def giveaway_create_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.MissingPermissions):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKET / COIN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class MarketView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+        options = []
+        for item in MARKET_ITEMS:
+            if item.get("exclusive"):
+                continue
+            owned = owns_item(discord_id, item["id"])
+            desc = "Artıq sahibsiniz" if owned else f"{item['price']} coin"
+            options.append(discord.SelectOption(label=item["name"][:100], value=item["id"], description=desc[:100]))
+        sel = discord.ui.Select(placeholder="Almaq istədiyiniz əşyanı seçin...", options=options[:25])
+        sel.callback = self._on_select
+        self.add_item(sel)
+        self.select_menu = sel
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu market yalnız sizin üçündür — `/market` ilə özününüzü açın.", ephemeral=True)
+            return
+        item_id = self.select_menu.values[0]
+        item = get_item_by_id(item_id)
+        if not item:
+            await interaction.response.send_message("❌ Əşya tapılmadı.", ephemeral=True)
+            return
+        if owns_item(self.discord_id, item_id):
+            await interaction.response.send_message(f"⚠️ **{item['name']}** əşyasına artıq sahibsiniz.", ephemeral=True)
+            return
+        balance = get_coins(self.discord_id)
+        if balance < item["price"]:
+            await interaction.response.send_message(
+                f"❌ Balansınız kifayət etmir. **{item['name']}** — {item['price']} coin, sizdə **{balance}** coin var.",
+                ephemeral=True
+            )
+            return
+        spend_coins(self.discord_id, item["price"])
+        add_to_inventory(self.discord_id, item_id)
+        new_bal = get_coins(self.discord_id)
+        add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_bal)
+        await interaction.response.send_message(
+            f"✅ **{item['name']}** alındı! Qalan balans: **{new_bal}** coin.\n`/equip` ilə taxa bilərsiniz.",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(name="market", description="Market — banner, çərçivə və tema satın al")
+async def market_cmd(interaction: discord.Interaction):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    balance = get_coins(interaction.user.id)
+    embed = discord.Embed(
+        title="🛒 Zenith's Academy Market",
+        description=f"Balansınız: **{balance} coin**",
+        color=discord.Color.gold()
+    )
+    for item in MARKET_ITEMS:
+        if item.get("exclusive"):
+            continue
+        owned = owns_item(interaction.user.id, item["id"])
+        value = "✅ Sahibsiniz" if owned else f"**{item['price']} coin**"
+        embed.add_field(name=item["name"], value=value, inline=True)
+    view = MarketView(interaction.user.id)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@bot.tree.command(name="inventory", description="Sahib olduğunuz əşyaları göstərir")
+async def inventory_cmd(interaction: discord.Interaction):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    owned = get_inventory(interaction.user.id)
+    active_banner = get_active_banner(interaction.user.id)
+    active_frame = get_active_frame(interaction.user.id)
+    card_path = os.path.join(DATA_DIR or ".", f"inventory_{interaction.user.id}.png")
+    await asyncio.to_thread(generate_inventory_card, owned, active_banner, active_frame, [], get_item_by_id, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="inventory.png"), ephemeral=True)
+
+
+@bot.tree.command(name="equip", description="Sahib olduğunuz banner/çərçivə/temanı aktiv edir")
+@app_commands.describe(əşya="Aktiv etmək istədiyiniz əşyanın ID-si (/inventory-də görə bilərsiniz)")
+async def equip_cmd(interaction: discord.Interaction, əşya: str):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    item = get_item_by_id(əşya)
+    if not item:
+        await interaction.response.send_message("❌ Belə əşya tapılmadı.", ephemeral=True)
+        return
+    if not owns_item(interaction.user.id, əşya):
+        await interaction.response.send_message(f"❌ **{item['name']}** əşyasına sahib deyilsiniz. `/market` ilə ala bilərsiniz.", ephemeral=True)
+        return
+    if item["type"] == "banner":
+        set_active_banner(interaction.user.id, əşya)
+    elif item["type"] == "avatar_frame":
+        set_active_frame(interaction.user.id, əşya)
+    elif item["type"] == "profile_theme":
+        set_active_theme(interaction.user.id, əşya)
+    else:
+        await interaction.response.send_message("❌ Bu əşya növü aktiv edilə bilmir.", ephemeral=True)
+        return
+    await interaction.response.send_message(f"✅ **{item['name']}** aktiv edildi!", ephemeral=True)
+
+
+@bot.tree.command(name="coins", description="Coin balansınızı və son əməliyyatları göstərir")
+async def coins_cmd(interaction: discord.Interaction):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    balance = get_coins(interaction.user.id)
+    logs = get_coin_logs(interaction.user.id, limit=15)
+    card_path = os.path.join(DATA_DIR or ".", f"coins_{interaction.user.id}.png")
+    await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="coins.png"), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NAİLİYYƏTLƏR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="achievements", description="Nailiyyətlərinizi göstərir")
+@app_commands.describe(oyunçu="Baxmaq istədiyiniz oyunçu (boş buraxsanız özünüz)")
+async def achievements_cmd(interaction: discord.Interaction, oyunçu: discord.Member = None):
+    target = oyunçu or interaction.user
+    if not get_player(target.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    achievements = get_player_achievements(target.id)
+    card_path = os.path.join(DATA_DIR or ".", f"achievements_{target.id}.png")
+    await asyncio.to_thread(generate_achievements_card, target.display_name, achievements, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="achievements.png"), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GÜNDƏLİK TAPŞIRIQ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class TaskSelectView(discord.ui.View):
+    def __init__(self, discord_id, tasks_list):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+        options = [
+            discord.SelectOption(
+                label=t["description"][:100], value=str(t["id"]),
+                description=f"Mükafat: {t['reward_coins']} coin"
+            )
+            for t in tasks_list
+        ]
+        sel = discord.ui.Select(placeholder="Bir tapşırıq seçin...", options=options[:25])
+        sel.callback = self._on_select
+        self.add_item(sel)
+        self.select_menu = sel
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu tapşırıq seçimi yalnız sizin üçündür.", ephemeral=True)
+            return
+        task_id = int(self.select_menu.values[0])
+        assigned = assign_task_to_player(self.discord_id, task_id)
+        if not assigned:
+            await interaction.response.send_message("⚠️ Artıq aktiv bir tapşırığınız var.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="✅ Tapşırıq seçildi! `/gunluk` ilə irəliləyişinizi izləyə bilərsiniz.",
+            view=self
+        )
+
+
+@bot.tree.command(name="gunluk", description="Günlük tapşırığınızı göstərir və ya seçir")
+async def gunluk_cmd(interaction: discord.Interaction):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    active = get_player_active_task(interaction.user.id)
+    card_path = os.path.join(DATA_DIR or ".", f"tasks_{interaction.user.id}.png")
+    if active:
+        await asyncio.to_thread(generate_tasks_card, active, [], card_path)
+        await interaction.followup.send(file=discord.File(card_path, filename="tasks.png"), ephemeral=True)
+        return
+
+    available = get_active_daily_tasks()
+    await asyncio.to_thread(generate_tasks_card, None, available, card_path)
+    view = TaskSelectView(interaction.user.id, available) if available else None
+    await interaction.followup.send(file=discord.File(card_path, filename="tasks.png"), view=view, ephemeral=True)
 
 
 web_thread = threading.Thread(target=run_web_server, daemon=True)
