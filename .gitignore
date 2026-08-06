@@ -1,5 +1,6 @@
 .venv/
 .venv-1/
+.venv-fresh/
 __pycache__/
 .env
 bot_database.db

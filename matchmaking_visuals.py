@@ -65,13 +65,13 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
 
     draw.text((36, 28), "Zenith's Academy", font=brand_font, fill=GOLD)
     draw.text((36, 50), "FACEIT MATCHMAKING", font=title_font, fill=WHITE)
-    draw.text((36, 98), "Standoff 2 · Competitive 5v5", font=sub_font, fill=GRAY)
+    draw.text((36, 98), "Standoff 2 · Competitive 2v2", font=sub_font, fill=GRAY)
 
     draw.line([(36, 140), (WIDTH - 36, 140)], fill=BORDER, width=1)
 
     info_y = 160
     draw.ellipse([(36, info_y + 4), (46, info_y + 14)], fill=GOLD)
-    draw.text((58, info_y), "Format: 5v5  ·  10 oyunçu lazımdır", font=value_font, fill=WHITE)
+    draw.text((58, info_y), "Format: 2v2  ·  4 oyunçu lazımdır", font=value_font, fill=WHITE)
 
     draw.ellipse([(36, info_y + 34), (46, info_y + 44)], fill=GOLD)
     draw.text((58, info_y + 30), "7/24 açıq  ·  istənilən vaxt qoşula bilərsən", font=value_font, fill=WHITE)
@@ -105,8 +105,8 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
     wait_txt = f"Real vaxtda yenilenir  |  Orta gozleme: ~{avg_wait_min} deq" if avg_wait_min else "Real vaxtda yenilenir"
     draw.text((30, 54), wait_txt, font=sub_font, fill=GRAY)
 
-    count_text = f"{size}/10"
-    count_color = GREEN if size >= 10 else GOLD
+    count_text = f"{size}/4"
+    count_color = GREEN if size >= 4 else GOLD
     bbox = draw.textbbox((0, 0), count_text, font=count_font)
     tw = bbox[2] - bbox[0]
     draw.text((WIDTH - 30 - tw, 28), count_text, font=count_font, fill=count_color)
@@ -114,7 +114,7 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
     # Progress bar
     bar_x, bar_y, bar_w, bar_h = 30, 70, WIDTH - 60, 8
     draw.rounded_rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], radius=4, fill=PANEL_ALT)
-    fill_w = int(bar_w * min(size / 10, 1.0))
+    fill_w = int(bar_w * min(size / 4, 1.0))
     if fill_w > 0:
         draw.rounded_rectangle([(bar_x, bar_y), (bar_x + fill_w, bar_y + bar_h)], radius=4, fill=count_color)
 

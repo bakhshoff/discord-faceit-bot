@@ -544,16 +544,16 @@ def clear_queue():
 def is_in_queue(discord_id):
     return any(p["discord_id"] == discord_id for p in queue_list)
 
-def pop_10_and_balance():
+def pop_4_and_balance():
     global queue_list
-    if len(queue_list) < 10:
+    if len(queue_list) < 4:
         return None
     import random
 
-    players    = queue_list[:10]
-    queue_list = queue_list[10:]
+    players    = queue_list[:4]
+    queue_list = queue_list[4:]
 
-    # Saf ELO balansı — yüksəkdən aşağıya sırala, snake draft
+    # Saf ELO balansı — yüksəkdən aşağıya sırala, snake draft (1+4 vs 2+3)
     players_sorted = sorted(players, key=lambda p: p["elo"], reverse=True)
     team_a, team_b = [], []
     for i, p in enumerate(players_sorted):
