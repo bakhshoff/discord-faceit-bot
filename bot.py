@@ -424,12 +424,16 @@ class MatchResultView(discord.ui.View):
             [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
             self.match_number
         )
-        clear_active_match()
+        active = get_active_match()
+        if active and active.get("match_number") == self.match_number:
+            clear_active_match()
 
         await interaction.response.edit_message(embed=embed, view=self)
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         if log_channel and log_channel.id != interaction.channel.id:
             await log_channel.send(embed=embed)
+
+        await _start_match_if_ready(log_channel or interaction.channel, interaction.guild)
 
     @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a")
     async def team_a_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -626,6 +630,61 @@ async def update_queue_status_message():
         pass
 
 
+async def _start_match_if_ready(channel, guild):
+    """Sırada 4 nəfər varsa VƏ aktiv matç yoxdursa, yeni matç başladır."""
+    if get_active_match() or queue_size() < 4:
+        return
+
+    result = pop_4_and_balance()
+    if result is None:
+        return
+    team_a, team_b, captain_a, captain_b = result
+    selected_map = random.choice(MAPS)
+    match_number = get_next_match_number()
+
+    set_active_match(
+        match_number,
+        team_a_json=json.dumps(team_a, ensure_ascii=False),
+        team_b_json=json.dumps(team_b, ensure_ascii=False),
+        selected_map=selected_map
+    )
+
+    card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
+    await asyncio.to_thread(
+        generate_match_card, match_number, selected_map, team_a, team_b,
+        captain_a["discord_id"], captain_b["discord_id"], card_path
+    )
+
+    mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
+    ready_view = TeamReadyView(match_number, team_a, team_b, captain_a["discord_id"], captain_b["discord_id"])
+    await channel.send(
+        content=mentions,
+        file=discord.File(card_path, filename="match.png"),
+        view=ready_view
+    )
+
+    team_a_channel = bot.get_channel(TEAM_A_VOICE_ID)
+    team_b_channel = bot.get_channel(TEAM_B_VOICE_ID)
+
+    for p in team_a:
+        member = guild.get_member(p["discord_id"]) if guild else None
+        if member and member.voice and team_a_channel:
+            try:
+                await member.move_to(team_a_channel)
+            except discord.Forbidden:
+                pass
+
+    for p in team_b:
+        member = guild.get_member(p["discord_id"]) if guild else None
+        if member and member.voice and team_b_channel:
+            try:
+                await member.move_to(team_b_channel)
+            except discord.Forbidden:
+                pass
+
+    await update_queue_status_message()
+
+
 class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -647,6 +706,13 @@ class MatchmakingView(discord.ui.View):
             )
             return
 
+        if queue_size() >= 4:
+            await interaction.response.send_message(
+                "⏳ Sıra doludur (4/4). Zəhmət olmasa gözləyin, yer boşalan kimi qoşula bilərsiniz.",
+                ephemeral=True
+            )
+            return
+
         discord_id, nick, so2_id, elo, wins, losses = player[:6]
         added = add_to_queue(discord_id, nick, elo)
         if not added:
@@ -654,58 +720,18 @@ class MatchmakingView(discord.ui.View):
             return
 
         size = queue_size()
+        if get_active_match():
+            await interaction.response.send_message(
+                f"✅ {nick} sıraya qoşuldu! ({size}/4)\n"
+                "⏳ Hazırda aktiv matç davam edir — nəticəsi qeyd olunan kimi növbəti matç avtomatik başlayacaq.",
+                ephemeral=True
+            )
+            await update_queue_status_message()
+            return
+
         await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/4)", ephemeral=True)
         await update_queue_status_message()
-
-        if size >= 4:
-            result = pop_4_and_balance()
-            if result is None:
-                return
-            team_a, team_b, captain_a, captain_b = result
-            selected_map = random.choice(MAPS)
-            match_number = get_next_match_number()
-
-            set_active_match(
-                match_number,
-                team_a_json=json.dumps(team_a, ensure_ascii=False),
-                team_b_json=json.dumps(team_b, ensure_ascii=False),
-                selected_map=selected_map
-            )
-
-            card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
-            await asyncio.to_thread(
-                generate_match_card, match_number, selected_map, team_a, team_b,
-                captain_a["discord_id"], captain_b["discord_id"], card_path
-            )
-
-            mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
-            ready_view = TeamReadyView(match_number, team_a, team_b, captain_a["discord_id"], captain_b["discord_id"])
-            await interaction.channel.send(
-                content=mentions,
-                file=discord.File(card_path, filename="match.png"),
-                view=ready_view
-            )
-
-            team_a_channel = bot.get_channel(TEAM_A_VOICE_ID)
-            team_b_channel = bot.get_channel(TEAM_B_VOICE_ID)
-
-            for p in team_a:
-                member = interaction.guild.get_member(p["discord_id"])
-                if member and member.voice and team_a_channel:
-                    try:
-                        await member.move_to(team_a_channel)
-                    except discord.Forbidden:
-                        pass
-
-            for p in team_b:
-                member = interaction.guild.get_member(p["discord_id"])
-                if member and member.voice and team_b_channel:
-                    try:
-                        await member.move_to(team_b_channel)
-                    except discord.Forbidden:
-                        pass
-
-            await update_queue_status_message()
+        await _start_match_if_ready(interaction.channel, interaction.guild)
 
     @discord.ui.button(label="Sıradan çıx", style=discord.ButtonStyle.secondary, emoji="🚪", custom_id="mm_leave")
     async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1669,6 +1695,40 @@ async def admin_matc_sil_cmd(interaction: discord.Interaction, matc_no: int):
 
 @admin_matc_sil_cmd.error
 async def admin_matc_sil_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="admin_matc_netice", description="[Admin] Aktiv matç üçün nəticə düymələrini yenidən göstərir (bot restart olduqdan sonra)")
+@staff_check()
+async def admin_matc_netice_cmd(interaction: discord.Interaction):
+    active = get_active_match()
+    if not active:
+        await interaction.response.send_message("❌ Hazırda aktiv matç yoxdur.", ephemeral=True)
+        return
+    team_a = active.get("team_a", [])
+    team_b = active.get("team_b", [])
+    if not team_a or not team_b:
+        await interaction.response.send_message("❌ Aktiv matçın komanda məlumatı tapılmadı.", ephemeral=True)
+        return
+    match_number = active["match_number"]
+    view = MatchResultView(match_number, team_a, team_b)
+    embed = discord.Embed(
+        title=f"🔁 Matç No{match_number} — Nəticə düymələri yeniləndi",
+        description=(
+            f"Xəritə: {active.get('selected_map', '?')}\n"
+            f"🔵 Komanda A: {', '.join(p['nick'] for p in team_a)}\n"
+            f"🔴 Komanda B: {', '.join(p['nick'] for p in team_b)}\n\n"
+            "Aşağıdakı düymələrlə nəticəni qeyd edə bilərsiniz (`/scan` ilə əvvəlcədən "
+            "statistika əlavə etmisinizsə, o da tətbiq olunacaq)."
+        ),
+        color=discord.Color.blurple()
+    )
+    await interaction.response.send_message(embed=embed, view=view)
+
+
+@admin_matc_netice_cmd.error
+async def admin_matc_netice_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
