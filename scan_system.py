@@ -80,7 +80,7 @@ def _claude_ocr(image_bytes: bytes) -> list:
 
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{
                 "role": "user",
                 "content": [
@@ -91,10 +91,17 @@ def _claude_ocr(image_bytes: bytes) -> list:
             }]
         )
         raw = msg.content[0].text.strip()
-        m   = re.search(r'\[[\s\S]*?\]', raw)
+        # Qeyd: greedy uyğunlaşdırma istifadə olunur, çünki oyunçu adında "]" kimi
+        # simvol ola bilər — non-greedy bu halda array-i vaxtından əvvəl kəsirdi
+        # ("Unterminated string" xətasına səbəb olurdu).
+        m = re.search(r'\[[\s\S]*\]', raw)
         if m:
             raw = m.group(0)
-        parsed = json.loads(raw)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as je:
+            print(f"[SCAN] JSON parse xətası: {je}\n[SCAN] Claude cavabı: {raw[:1000]}", flush=True)
+            raise RuntimeError(f"Claude cavabını oxumaq mümkün olmadı ({je}). Yenidən /scan cəhd edin.") from je
 
         results = []
         for p in parsed:
