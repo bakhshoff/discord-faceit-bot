@@ -1733,6 +1733,132 @@ async def admin_matc_netice_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
+def _parse_kad(text):
+    """'K/A/D' formatını (kills, assists, deaths) tuple-a çevirir, uyğun deyilsə (0,0,0)."""
+    if not text:
+        return 0, 0, 0
+    parts = text.replace(" ", "").split("/")
+    if len(parts) != 3:
+        return 0, 0, 0
+    try:
+        return max(0, int(parts[0])), max(0, int(parts[1])), max(0, int(parts[2]))
+    except ValueError:
+        return 0, 0, 0
+
+
+@bot.tree.command(name="admin_matc_elave_et", description="[Admin] İtirilmiş/əl ilə matç nəticəsini ELO+statistika ilə bazaya əlavə edir")
+@app_commands.describe(
+    komanda_a_1="Komanda A — 1-ci oyunçu", komanda_a_2="Komanda A — 2-ci oyunçu",
+    komanda_b_1="Komanda B — 1-ci oyunçu", komanda_b_2="Komanda B — 2-ci oyunçu",
+    qalib="Qalib komanda",
+    a1_kad="Komanda A 1-ci oyunçunun K/A/D (məs: 9/1/1) — boş buraxıla bilər",
+    a2_kad="Komanda A 2-ci oyunçunun K/A/D — boş buraxıla bilər",
+    b1_kad="Komanda B 1-ci oyunçunun K/A/D — boş buraxıla bilər",
+    b2_kad="Komanda B 2-ci oyunçunun K/A/D — boş buraxıla bilər",
+    matc_no="Matç nömrəsi (boş buraxsanız avtomatik növbəti nömrə verilir)"
+)
+@app_commands.choices(qalib=[
+    app_commands.Choice(name="Komanda A", value="A"),
+    app_commands.Choice(name="Komanda B", value="B"),
+])
+@staff_check()
+async def admin_matc_elave_et_cmd(
+    interaction: discord.Interaction,
+    komanda_a_1: discord.Member, komanda_a_2: discord.Member,
+    komanda_b_1: discord.Member, komanda_b_2: discord.Member,
+    qalib: app_commands.Choice[str],
+    a1_kad: str = None, a2_kad: str = None,
+    b1_kad: str = None, b2_kad: str = None,
+    matc_no: int = None
+):
+    members = [komanda_a_1, komanda_a_2, komanda_b_1, komanda_b_2]
+    if len(set(m.id for m in members)) != 4:
+        await interaction.response.send_message("❌ Eyni oyunçunu bir neçə mövqedə göstərə bilməzsiniz.", ephemeral=True)
+        return
+
+    players = {}
+    for m in members:
+        row = get_player(m.id)
+        if not row:
+            await interaction.response.send_message(f"❌ {m.display_name} qeydiyyatdan keçməyib.", ephemeral=True)
+            return
+        players[m.id] = {"discord_id": m.id, "nick": row[1]}
+
+    team_a = [players[komanda_a_1.id], players[komanda_a_2.id]]
+    team_b = [players[komanda_b_1.id], players[komanda_b_2.id]]
+    winner_team, loser_team = (team_a, team_b) if qalib.value == "A" else (team_b, team_a)
+    winner_ids = [p["discord_id"] for p in winner_team]
+    loser_ids = [p["discord_id"] for p in loser_team]
+
+    results = update_team_elo(winner_ids, loser_ids)
+    if results is None:
+        await interaction.response.send_message("❌ Xəta: oyunçu məlumatları tapılmadı.", ephemeral=True)
+        return
+
+    match_number = matc_no if matc_no is not None else get_next_match_number()
+
+    kad_by_id = {
+        komanda_a_1.id: _parse_kad(a1_kad), komanda_a_2.id: _parse_kad(a2_kad),
+        komanda_b_1.id: _parse_kad(b1_kad), komanda_b_2.id: _parse_kad(b2_kad),
+    }
+    for discord_id, (k, a, d) in kad_by_id.items():
+        add_combat_stats(discord_id, k, a, d)
+
+    new_achievements = []
+    for p, r in zip(winner_team, results["winners"]):
+        streak, _ = update_streak(p["discord_id"], True)
+        bonus_coins, _ = get_streak_bonus(streak)
+        earned = random.randint(5, 10) + bonus_coins
+        new_bal = add_coins(p["discord_id"], earned)
+        add_coin_log(p["discord_id"], earned, f"Matç No{match_number} qələbə (əl ilə əlavə)", "earn", new_bal)
+        for ach in check_and_grant_achievements(p["discord_id"]):
+            new_achievements.append((p["nick"], ach))
+
+    for p, r in zip(loser_team, results["losers"]):
+        update_streak(p["discord_id"], False)
+        earned = random.randint(0, 5)
+        new_bal = add_coins(p["discord_id"], earned)
+        add_coin_log(p["discord_id"], earned, f"Matç No{match_number} iştirak (əl ilə əlavə)", "earn", new_bal)
+        for ach in check_and_grant_achievements(p["discord_id"]):
+            new_achievements.append((p["nick"], ach))
+
+    await asyncio.to_thread(
+        record_match_history, "2v2", winner_ids, loser_ids,
+        [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
+        [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
+        match_number
+    )
+    log_admin_action("admin_matc_elave_et", 0, "match_history", "-", f"matc_no={match_number}", "manual entry", interaction.user.id)
+
+    winner_label = "Komanda A" if qalib.value == "A" else "Komanda B"
+    loser_label = "Komanda B" if qalib.value == "A" else "Komanda A"
+
+    def _fmt(p, r):
+        k, a, d = kad_by_id[p["discord_id"]]
+        return (f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** "
+                f"({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']})  ·  K:{k} A:{a} D:{d}")
+
+    embed = discord.Embed(
+        title=f"✅ Matç No{match_number} əl ilə əlavə edildi",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name=f"✅ {winner_label}", value="\n".join(_fmt(p, r) for p, r in zip(winner_team, results["winners"])), inline=False)
+    embed.add_field(name=f"❌ {loser_label}", value="\n".join(_fmt(p, r) for p, r in zip(loser_team, results["losers"])), inline=False)
+    if new_achievements:
+        embed.add_field(
+            name="🏆 Yeni nailiyyətlər",
+            value="\n".join(f"{ach['icon']} **{ach['name']}** — {nick}" for nick, ach in new_achievements),
+            inline=False
+        )
+    await interaction.response.send_message(embed=embed)
+
+
+@admin_matc_elave_et_cmd.error
+async def admin_matc_elave_et_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # KOMANDA PANELİ
 # ═══════════════════════════════════════════════════════════════════════════════
