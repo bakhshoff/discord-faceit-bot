@@ -59,7 +59,7 @@ def generate_match_history_card(history, output_path):
 
     img  = _bg(height)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([(0, 0), (WIDTH-1, height-1)], outline=BORDER, width=2)
+    draw.rounded_rectangle([(0, 0), (WIDTH-1, height-1)], radius=10, outline=BORDER, width=2)
 
     f_brand = _font(12, True)
     f_title = _font(22, True)
@@ -68,13 +68,13 @@ def generate_match_history_card(history, output_path):
     f_sm    = _font(13)
 
     draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
-    draw.text((28, 30), "MATC TARIХCESI", font=f_title, fill=WHITE)
-    cnt = f"{len(history)} matc"
+    draw.text((28, 30), "MATÇ TARİXÇƏSİ", font=f_title, fill=WHITE)
+    cnt = f"{len(history)} matç"
     draw.text((WIDTH - 28 - _tw(draw, cnt, f_sub), 40), cnt, font=f_sub, fill=GRAY)
     draw.line([(18, HEADER_H - 6), (WIDTH - 18, HEADER_H - 6)], fill=BORDER, width=1)
 
     if not history:
-        draw.text((28, HEADER_H + 16), "Hele hec bir matciniz yoxdur.", font=f_sm, fill=GRAY)
+        draw.text((28, HEADER_H + 16), "Hələ heç bir matçınız yoxdur.", font=f_sm, fill=GRAY)
     else:
         for i, h in enumerate(history):
             y = HEADER_H + i * ROW_H
@@ -85,7 +85,7 @@ def generate_match_history_card(history, output_path):
             color = GREEN if won else RED
             _bar(draw, 20, y, ROW_H, color)
 
-            type_lbl = "5v5" if h["match_type"] == "5v5" else "1v1"
+            type_lbl = h["match_type"]
             no_lbl   = f"  #{h['match_number']}" if h.get("match_number") else ""
             res_lbl  = "QALİB" if won else "MƏĞLUB"
 
@@ -123,7 +123,7 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
 
     img  = _bg(height)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([(0, 0), (WIDTH-1, height-1)], outline=BORDER, width=2)
+    draw.rounded_rectangle([(0, 0), (WIDTH-1, height-1)], radius=10, outline=BORDER, width=2)
 
     f_brand = _font(12, True)
     f_title = _font(22, True)
@@ -135,12 +135,12 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
     if log_type_filter == "earn":
         flbl, fcol = "QAZANMA",   GREEN
     elif log_type_filter == "spend":
-        flbl, fcol = "XERCLƏMƏ",  RED
+        flbl, fcol = "XƏRCLƏMƏ",  RED
     else:
         flbl, fcol = "HAMISI",    GOLD
 
     draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
-    draw.text((28, 30), "COiN LOGLARI", font=f_title, fill=WHITE)
+    draw.text((28, 30), "COİN LOGLARI", font=f_title, fill=WHITE)
 
     bw = _tw(draw, flbl, f_sub) + 16
     draw.rectangle([(196, 32), (196+bw, 54)], fill=fcol)
@@ -217,7 +217,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
 
     img  = _bg(height)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([(0,0),(WIDTH-1,height-1)], outline=BORDER, width=2)
+    draw.rounded_rectangle([(0,0),(WIDTH-1,height-1)], radius=10, outline=BORDER, width=2)
 
     fb = _font(12, True)
     ft = _font(22, True)
@@ -248,12 +248,12 @@ def generate_tasks_card(active_task, available_tasks, output_path):
             time_str = "—"
 
         cx, cy, cw, ch = PAD, y, WIDTH - PAD*2, CARD_H
-        draw.rectangle([cx, cy, cx+cw, cy+ch], fill=PANEL, outline=ORANGE, width=2)
+        draw.rounded_rectangle([cx, cy, cx+cw, cy+ch], radius=8, fill=PANEL, outline=ORANGE, width=2)
         draw.rectangle([cx, cy, cx+cw, cy+28], fill=(50,30,10))
-        draw.text((cx+10, cy+6), "[ AKTiV TAPSIRIQ ]", font=fb, fill=ORANGE)
+        draw.text((cx+10, cy+6), "[ AKTİV TAPŞIRIQ ]", font=fb, fill=ORANGE)
 
         draw.text((cx+10, cy+36), a["description"][:60], font=fm, fill=WHITE)
-        draw.text((cx+10, cy+58), f"Mukafat: {a['reward_coins']} coin", font=fs, fill=GOLD)
+        draw.text((cx+10, cy+58), f"Mükafat: {a['reward_coins']} coin", font=fs, fill=GOLD)
         draw.text((cx+10, cy+76), time_str, font=fx, fill=GRAY)
 
         bar_w = (cw - 30) // 2
@@ -272,15 +272,15 @@ def generate_tasks_card(active_task, available_tasks, output_path):
         pct_txt = f"{int(overall * 100)}%"
         draw.text((cx + cw//2 - _tw(draw, pct_txt, fx)//2, cy+132), pct_txt, font=fx, fill=WHITE)
 
-    else:
+    elif available_tasks:
         # Mövcud tapşırıqlar siyahısı
         colors = [GREEN, CYAN, PURPLE]
         for i, t in enumerate(available_tasks[:3]):
             cx, cy, cw, ch = PAD, y + i*(CARD_H+10), WIDTH-PAD*2, CARD_H
             col = colors[i % len(colors)]
-            draw.rectangle([cx, cy, cx+cw, cy+ch], fill=PANEL, outline=col, width=2)
+            draw.rounded_rectangle([cx, cy, cx+cw, cy+ch], radius=8, fill=PANEL, outline=col, width=2)
             draw.rectangle([cx, cy, cx+cw, cy+28], fill=(10,20,10))
-            draw.text((cx+10, cy+6), f"[ TAPSIRIQ {i+1} ]", font=fb, fill=col)
+            draw.text((cx+10, cy+6), f"[ TAPŞIRIQ {i+1} ]", font=fb, fill=col)
 
             draw.text((cx+10, cy+36), t["description"][:58], font=fm, fill=WHITE)
 
@@ -289,7 +289,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
             if t["assist_target"]: details.append(f"Asist: {t['assist_target']}")
             draw.text((cx+10, cy+62), "  ".join(details) if details else "Hədəf yoxdur", font=fs, fill=GRAY)
 
-            draw.text((cx+10, cy+86), f"Mukafat: {t['reward_coins']} coin", font=fs, fill=GOLD)
+            draw.text((cx+10, cy+86), f"Mükafat: {t['reward_coins']} coin", font=fs, fill=GOLD)
 
             try:
                 exp = datetime.datetime.utcfromtimestamp(t["expires_at"]) + datetime.timedelta(hours=4)
@@ -301,6 +301,8 @@ def generate_tasks_card(active_task, available_tasks, output_path):
 
             # Dekorativ rəngli şerit
             draw.rectangle([cx, cy+ch-8, cx+cw, cy+ch-2], fill=col)
+    else:
+        draw.text((PAD, y+16), "Bu gün üçün aktiv tapşırıq yoxdur.", font=fm, fill=GRAY)
 
     draw.text((PAD, height-FOOTER+6), "Zenith's Academy  ·  /gunluk", font=fx, fill=GRAY)
     img.save(output_path)
@@ -341,7 +343,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
         t = y/H
         c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
         draw.line([(0,y),(W,y)], fill=c)
-    draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
+    draw.rounded_rectangle([(0,0),(W-1,H-1)], radius=10, outline=BORDER, width=2)
 
     fb  = _font(13, True)
     ft  = _font(26, True)
@@ -367,14 +369,14 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
 
     # Header
     draw.text((PAD, 14), "Zenith's Academy", font=fb, fill=GOLD)
-    draw.text((PAD, 30), f"OYUNÇU STATİSTİKASI", font=ft, fill=WHITE)
+    draw.text((PAD, 30), "OYUNÇU STATİSTİKASI", font=ft, fill=WHITE)
     draw.line([(0,72),(W,72)], fill=BORDER, width=1)
 
     # Sol: nick + rank
     draw.text((PAD, 82), nick[:22], font=_font(28, True), fill=WHITE)
     draw.text((PAD, 118), f"SO2 ID: {so2_id}", font=fs, fill=GRAY)
     rc = rank_color
-    draw.rectangle([PAD, 140, PAD+160, 168], fill=tuple(c//4 for c in rc), outline=rc, width=2)
+    draw.rounded_rectangle([PAD, 140, PAD+160, 168], radius=6, fill=tuple(c//4 for c in rc), outline=rc, width=2)
     draw.text((PAD+8, 144), rank_name, font=fx2, fill=rc)
 
     # Streak
@@ -396,13 +398,13 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
     ]
     for i,(lbl,val,col) in enumerate(stats):
         x = PAD + i*bw
-        draw.rectangle([x+2, by, x+bw-2, by+bh], fill=PANEL, outline=BORDER, width=1)
+        draw.rounded_rectangle([x+2, by, x+bw-2, by+bh], radius=6, fill=PANEL, outline=BORDER, width=1)
         draw.text((x+bw//2, by+bh//2-12), str(val), font=_font(22, True), fill=col, anchor="mm")
         draw.text((x+bw//2, by+bh-14),     lbl,       font=_font(10, True), fill=GRAY, anchor="mm")
 
     # Nailiyyətlər
     ay = 310
-    draw.text((PAD, ay), "Nailiyyetler:", font=_font(13, True), fill=GOLD)
+    draw.text((PAD, ay), "Nailiyyətlər:", font=_font(13, True), fill=GOLD)
     if achievements:
         ax = PAD
         for ach in achievements[:10]:
@@ -415,7 +417,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
             if ax > W - 100:
                 break
     else:
-        draw.text((PAD+120, ay+22), "Hele yoxdur", font=fxi, fill=GRAY)
+        draw.text((PAD+120, ay+22), "Hələ yoxdur", font=fxi, fill=GRAY)
 
     draw.text((PAD, H-24), "Zenith's Academy", font=fxi, fill=GRAY)
     img.save(output_path)
@@ -481,7 +483,7 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str):
         t = y/H
         c = tuple(int(BG_TOP[i]+(BG_BOTTOM[i]-BG_TOP[i])*t) for i in range(3))
         draw.line([(0,y),(W,y)], fill=c)
-    draw.rectangle([(0,0),(W-1,H-1)], outline=GOLD, width=2)
+    draw.rounded_rectangle([(0,0),(W-1,H-1)], radius=10, outline=GOLD, width=2)
 
     fb = _font(13, True)
     ft = _font(22, True)
@@ -914,7 +916,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
 
     img  = _bg(height)
     draw = ImageDraw.Draw(img)
-    draw.rectangle([(0, 0), (WIDTH-1, height-1)], outline=BORDER, width=2)
+    draw.rounded_rectangle([(0, 0), (WIDTH-1, height-1)], radius=10, outline=BORDER, width=2)
 
     f_brand = _font(12, True)
     f_title = _font(22, True)
@@ -923,19 +925,19 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
     f_sm    = _font(13)
 
     draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
-    draw.text((28, 30), "iNVENTAR",  font=f_title, fill=WHITE)
-    tot_t = f"{len(faceit)+len(skins)} esya"
+    draw.text((28, 30), "İNVENTAR",  font=f_title, fill=WHITE)
+    tot_t = f"{len(faceit)+len(skins)} əşya"
     draw.text((WIDTH-28-_tw(draw, tot_t, f_sm), 40), tot_t, font=f_sm, fill=GRAY)
     draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
 
     y = HEADER_H
 
     if not faceit and not skins:
-        draw.text((28, y+14), "Inventariniz bosdur.", font=f_sm, fill=GRAY)
+        draw.text((28, y+14), "İnventarınız boşdur.", font=f_sm, fill=GRAY)
     else:
         if faceit:
             draw.rectangle([(0, y), (WIDTH, y+SEC_H)], fill=(28, 26, 34))
-            draw.text((28, y+8), "FACEIT MARKET ESYALARI", font=f_sec, fill=GOLD)
+            draw.text((28, y+8), "FACEIT MARKET ƏŞYALARI", font=f_sec, fill=GOLD)
             y += SEC_H
             for i, (iid, item) in enumerate(faceit):
                 if i % 2 == 0:
@@ -945,7 +947,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
                 is_a  = is_ab or is_af
                 _bar(draw, 20, y, ROW_H, GREEN if is_a else BORDER)
                 itype = item.get("type", "")
-                tlbl  = "Cercive" if itype == "avatar_frame" else "Banner"
+                tlbl  = "Çərçivə" if itype == "avatar_frame" else ("Tema" if itype == "profile_theme" else "Banner")
                 albl  = "  AKTIV" if is_a else ""
                 draw.text((40, y+8),  item.get("name", iid), font=f_row, fill=WHITE)
                 draw.text((40, y+28), f"{tlbl}{albl}",       font=f_sm,  fill=GREEN if is_a else GRAY)
@@ -956,7 +958,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
 
         if skins:
             draw.rectangle([(0, y), (WIDTH, y+SEC_H)], fill=(28, 26, 34))
-            draw.text((28, y+8), "STANDOFF 2 SKiNLERi", font=f_sec, fill=BLUE)
+            draw.text((28, y+8), "STANDOFF 2 SKİNLƏRİ", font=f_sec, fill=BLUE)
             y += SEC_H
             for j, skin in enumerate(skins):
                 if j % 2 == 0:
@@ -964,7 +966,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
                 _bar(draw, 20, y, ROW_H, BLUE)
                 draw.text((40, y+8),  skin["skin_name"], font=f_row, fill=WHITE)
                 dt  = datetime.datetime.utcfromtimestamp(skin["acquired_at"]) + datetime.timedelta(hours=4)
-                draw.text((40, y+28), f"Alinma: {dt.strftime('%d.%m.%Y')}", font=f_sm, fill=GRAY)
+                draw.text((40, y+28), f"Alınma: {dt.strftime('%d.%m.%Y')}", font=f_sm, fill=GRAY)
                 pt = f"{skin['price_paid']} coin"
                 draw.text((WIDTH-28-_tw(draw, pt, f_sm), y+18), pt, font=f_sm, fill=GRAY)
                 if j < len(skins)-1:

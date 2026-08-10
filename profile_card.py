@@ -102,7 +102,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           season_wins=0, season_losses=0,
                           season_kills=0, season_assists=0, season_deaths=0,
                           pass_status=None, pass_level=0,
-                          theme_colors=None):
+                          theme_colors=None, show_season=False):
 
     # ── Arxa plan ────────────────────────────────────────────────────────────
     if banner_path and os.path.exists(banner_path):
@@ -245,19 +245,26 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     sep1 = 232
     draw.line([(18, sep1), (WIDTH-18, sep1)], fill=t_border, width=1)
 
-    # ── Ümumi + Sezon statistikası (2 panel yan-yana) ─────────────────────────
-    col_w = (WIDTH - 36) // 2
-    draw.rectangle([18, sep1+4, 18+col_w, sep1+78], fill=t_panel, outline=t_border, width=1)
-    draw.text((26, sep1+7), "ÜMUMI", font=_load_font(10, bold=True), fill=t_accent)
-    draw.text((26, sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
-              font=_load_font(13), fill=WHITE)
-    draw.text((26, sep1+42), f"Win Rate: {wr}%", font=_load_font(13, bold=True), fill=GREEN)
+    # ── Ümumi statistikası (+ Sezon, yalnız show_season=True olanda) ──────────
+    if show_season:
+        col_w = (WIDTH - 36) // 2
+        draw.rectangle([18, sep1+4, 18+col_w, sep1+78], fill=t_panel, outline=t_border, width=1)
+        draw.text((26, sep1+7), "ÜMUMİ", font=_load_font(10, bold=True), fill=t_accent)
+        draw.text((26, sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
+                  font=_load_font(13), fill=WHITE)
+        draw.text((26, sep1+42), f"Win Rate: {wr}%", font=_load_font(13, bold=True), fill=GREEN)
 
-    draw.rectangle([18+col_w+6, sep1+4, WIDTH-18, sep1+78], fill=PANEL, outline=BORDER, width=1)
-    draw.text((26+col_w+6, sep1+7), "SEZON", font=_load_font(10, bold=True), fill=CYAN)
-    draw.text((26+col_w+6, sep1+22), f"Matç: {s_matches}   Qələbə: {season_wins}   Məğlubiyyət: {season_losses}",
-              font=_load_font(13), fill=WHITE)
-    draw.text((26+col_w+6, sep1+42), f"Win Rate: {s_wr}%", font=_load_font(13, bold=True), fill=CYAN)
+        draw.rectangle([18+col_w+6, sep1+4, WIDTH-18, sep1+78], fill=PANEL, outline=BORDER, width=1)
+        draw.text((26+col_w+6, sep1+7), "SEZON", font=_load_font(10, bold=True), fill=CYAN)
+        draw.text((26+col_w+6, sep1+22), f"Matç: {s_matches}   Qələbə: {season_wins}   Məğlubiyyət: {season_losses}",
+                  font=_load_font(13), fill=WHITE)
+        draw.text((26+col_w+6, sep1+42), f"Win Rate: {s_wr}%", font=_load_font(13, bold=True), fill=CYAN)
+    else:
+        draw.rectangle([18, sep1+4, WIDTH-18, sep1+78], fill=t_panel, outline=t_border, width=1)
+        draw.text((26, sep1+7), "ÜMUMİ", font=_load_font(10, bold=True), fill=t_accent)
+        draw.text((26, sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
+                  font=_load_font(13), fill=WHITE)
+        draw.text((26, sep1+42), f"Win Rate: {wr}%", font=_load_font(13, bold=True), fill=GREEN)
 
     # ── Ayırıcı 2 ─────────────────────────────────────────────────────────────
     sep2 = sep1 + 86
@@ -266,14 +273,15 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     # ── Döyüş statistikaları ─────────────────────────────────────────────────
     box_y = sep2 + 6
     box_h = 90
-    bw    = (WIDTH - 36) // 5
     labels_vals = [
-        ("KİLL",     kills,     GREEN),
-        ("ASİST",    assists,   BLUE),
-        ("ÖLÜM",     deaths,    RED),
-        ("K/D",      kd,        GOLD),
-        ("SEZON K/D",season_kd, CYAN),
+        ("KİLL",  kills,  GREEN),
+        ("ASİST", assists, BLUE),
+        ("ÖLÜM",  deaths, RED),
+        ("K/D",   kd,     GOLD),
     ]
+    if show_season:
+        labels_vals.append(("SEZON K/D", season_kd, CYAN))
+    bw = (WIDTH - 36) // len(labels_vals)
     for i, (lbl, val, col) in enumerate(labels_vals):
         bx2 = 18 + i * bw
         _stat_box(draw, bx2+2, box_y, bw-4, box_h, lbl, val, val_color=col)

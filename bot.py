@@ -1,5 +1,6 @@
 import sys
 import io
+import re
 
 if isinstance(sys.stdout, io.TextIOWrapper):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -32,7 +33,10 @@ from database import (
     refresh_daily_tasks, get_active_daily_tasks, get_player_active_task,
     assign_task_to_player, update_task_progress,
     check_and_grant_achievements, get_player_achievements,
-    update_streak, get_streak_bonus
+    update_streak, get_streak_bonus,
+    get_player_stats_dict, get_player_match_history,
+    get_recent_matches, get_match_by_number, delete_match_and_revert,
+    admin_set_player_field, log_admin_action, is_banned
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -44,8 +48,10 @@ from scan_system import ocr_scoreboard, match_to_registered, apply_defaults_for_
 from market_config import MARKET_ITEMS, get_item_by_id
 from visual_cards import (
     generate_inventory_card, generate_coin_logs_card,
-    generate_tasks_card, generate_achievements_card
+    generate_tasks_card, generate_achievements_card,
+    generate_stats_card, generate_match_history_card
 )
+from referral_visual import generate_item_preview_card
 import requests
 
 load_dotenv()
@@ -61,6 +67,45 @@ if os.environ.get("RESET_DB_ON_BOOT") == "1":
         if os.path.exists(_reset_path):
             os.remove(_reset_path)
             print(f"[RESET] {_reset_path} silindi.", flush=True)
+
+if os.environ.get("DIAGNOSE_KD") == "1":
+    import sqlite3 as _sqlite3
+    import json as _json_diag
+    _dbp = os.path.join(DATA_DIR or ".", "bot_database.db")
+    _c = _sqlite3.connect(_dbp)
+    _cur = _c.cursor()
+    _cur.execute("SELECT COUNT(*), COALESCE(SUM(kills),0), COALESCE(SUM(assists),0), COALESCE(SUM(deaths),0) FROM players")
+    _p_count, _sum_k, _sum_a, _sum_d = _cur.fetchone()
+    print(f"[DIAGNOSE] players={_p_count} sum_kills={_sum_k} sum_assists={_sum_a} sum_deaths={_sum_d}", flush=True)
+    _cur.execute("SELECT COUNT(*) FROM match_history")
+    print(f"[DIAGNOSE] match_history rows={_cur.fetchone()[0]}", flush=True)
+    _cur.execute("SELECT COUNT(*), COALESCE(SUM(confirmed),0) FROM scan_results")
+    _sr_total, _sr_confirmed = _cur.fetchone()
+    print(f"[DIAGNOSE] scan_results total={_sr_total} confirmed={_sr_confirmed}", flush=True)
+    _cur.execute("SELECT match_number, scan_data FROM scan_results WHERE confirmed=1 ORDER BY match_number")
+    _recoverable = {}
+    for _mn, _sd in _cur.fetchall():
+        try:
+            _parsed = _json_diag.loads(_sd)
+        except Exception:
+            continue
+        for _k, _s in _parsed.items():
+            try:
+                _did = int(_k)
+            except ValueError:
+                continue
+            r = _recoverable.setdefault(_did, [0, 0, 0])
+            r[0] += _s.get("kills", 0)
+            r[1] += _s.get("assists", 0)
+            r[2] += _s.get("deaths", 0)
+    print(f"[DIAGNOSE] recoverable_players_from_confirmed_scans={len(_recoverable)}", flush=True)
+    for _did, (_k, _a, _d) in list(_recoverable.items())[:30]:
+        _cur.execute("SELECT so2_nick, kills, assists, deaths FROM players WHERE discord_id=?", (_did,))
+        _row = _cur.fetchone()
+        print(f"[DIAGNOSE] player={_did} nick={_row[0] if _row else '?'} "
+              f"current_kad=({_row[1] if _row else '?'},{_row[2] if _row else '?'},{_row[3] if _row else '?'}) "
+              f"recoverable_kad=({_k},{_a},{_d})", flush=True)
+    _c.close()
 
 TEAM_A_VOICE_ID = 1500827030890221678
 TEAM_B_VOICE_ID = 1500827032261496913
@@ -84,6 +129,26 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+
+STAFF_ROLE_NAMES = {"founder", "co-founder", "head admin", "admin"}
+
+
+def _normalize_role_name(name: str) -> str:
+    return re.sub(r"^[^a-zA-Z]+", "", name).strip().lower()
+
+
+def is_staff(interaction: discord.Interaction) -> bool:
+    if interaction.user.guild_permissions.administrator:
+        return True
+    return any(_normalize_role_name(r.name) in STAFF_ROLE_NAMES
+               for r in getattr(interaction.user, "roles", []))
+
+
+def staff_check():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return is_staff(interaction)
+    return app_commands.check(predicate)
 
 
 def is_queue_open():
@@ -260,7 +325,7 @@ class MatchResultView(discord.ui.View):
         self.finished = False
 
     async def _finish(self, interaction: discord.Interaction, winner_team, loser_team, winner_label, loser_label):
-        if not interaction.user.guild_permissions.administrator:
+        if not is_staff(interaction):
             await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
             return
 
@@ -442,7 +507,7 @@ class ScanEditView(discord.ui.View):
             self.select_menu = sel
 
     async def _on_select(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
+        if not is_staff(interaction):
             await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
             return
         raw_key = self.select_menu.values[0]
@@ -458,7 +523,7 @@ class ScanEditView(discord.ui.View):
 
     @discord.ui.button(label="Yadda saxla ✅", style=discord.ButtonStyle.success, row=1)
     async def save(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not interaction.user.guild_permissions.administrator:
+        if not is_staff(interaction):
             await interaction.response.send_message("❌ Yalnız adminlər.", ephemeral=True)
             return
         if self.saved:
@@ -488,7 +553,7 @@ class ScanEditView(discord.ui.View):
 
 
 @bot.tree.command(name="scan", description="[Admin] Skor ekranını scan edir (şəkli göndərib sonra /scan yazın)")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def scan_cmd(interaction: discord.Interaction):
     active = get_active_match()
     if not active:
@@ -537,7 +602,7 @@ async def scan_cmd(interaction: discord.Interaction):
 
 @scan_cmd.error
 async def scan_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
@@ -653,7 +718,7 @@ class MatchmakingView(discord.ui.View):
 
     @discord.ui.button(label="Queue-dən hamını çıxart - Admins Only", style=discord.ButtonStyle.danger, emoji="🧹", custom_id="mm_clear")
     async def clear_all(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not interaction.user.guild_permissions.administrator:
+        if not is_staff(interaction):
             await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
             return
         clear_queue()
@@ -682,6 +747,56 @@ async def on_ready():
     print("[SYNC] Qlobal komandalar təmizləndi (dublikatların qarşısı alındı).", flush=True)
 
 
+class ProfileHubView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=300)
+        self.discord_id = discord_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu yalnız profil sahibi üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Stats", style=discord.ButtonStyle.secondary, emoji="📊")
+    async def stats_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_stats(interaction, self.discord_id)
+
+    @discord.ui.button(label="Tarixçə", style=discord.ButtonStyle.secondary, emoji="📜")
+    async def history_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_history(interaction, self.discord_id)
+
+    @discord.ui.button(label="İnventar", style=discord.ButtonStyle.secondary, emoji="🎒")
+    async def inventory_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_inventory(interaction, self.discord_id)
+
+    @discord.ui.button(label="Market", style=discord.ButtonStyle.secondary, emoji="🛒")
+    async def market_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_market(interaction, self.discord_id)
+
+    @discord.ui.button(label="Nailiyyətlər", style=discord.ButtonStyle.secondary, emoji="🏆")
+    async def achievements_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        member = interaction.guild.get_member(self.discord_id) if interaction.guild else None
+        name = member.display_name if member else str(self.discord_id)
+        await _render_achievements(interaction, self.discord_id, name)
+
+    @discord.ui.button(label="Gündəlik", style=discord.ButtonStyle.secondary, emoji="📅")
+    async def gunluk_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_gunluk(interaction, self.discord_id)
+
+
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
 async def profile(interaction: discord.Interaction):
     player = get_player(interaction.user.id)
@@ -692,6 +807,7 @@ async def profile(interaction: discord.Interaction):
     await interaction.response.defer()
 
     discord_id, nick, so2_id, elo, wins, losses = player[:6]
+    stats = get_player_stats_dict(discord_id) or {}
 
     avatar_bytes = None
     try:
@@ -701,15 +817,48 @@ async def profile(interaction: discord.Interaction):
     except Exception:
         avatar_bytes = None
 
-    card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
-    await asyncio.to_thread(generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path)
+    banner_path = None
+    active_banner_id = get_active_banner(discord_id)
+    if active_banner_id:
+        banner_item = get_item_by_id(active_banner_id)
+        if banner_item and banner_item.get("file"):
+            p = os.path.join("banners", banner_item["file"])
+            if os.path.exists(p):
+                banner_path = p
 
-    await interaction.followup.send(file=discord.File(card_path, filename="profile.png"))
+    frame_path = None
+    active_frame_id = get_active_frame(discord_id)
+    if active_frame_id:
+        frame_item = get_item_by_id(active_frame_id)
+        if frame_item and frame_item.get("file"):
+            p = os.path.join("frames", frame_item["file"])
+            if os.path.exists(p):
+                frame_path = p
+
+    theme_colors = None
+    active_theme_id = get_active_theme(discord_id)
+    if active_theme_id:
+        theme_item = get_item_by_id(active_theme_id)
+        if theme_item:
+            theme_colors = theme_item.get("colors")
+
+    card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
+    await asyncio.to_thread(
+        generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
+        banner_path=banner_path, coins=stats.get("coins", 0), frame_path=frame_path,
+        kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
+        theme_colors=theme_colors
+    )
+
+    await interaction.followup.send(
+        file=discord.File(card_path, filename="profile.png"),
+        view=ProfileHubView(discord_id)
+    )
 
 
 @bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")
 @app_commands.describe(qalib="Qalib oyunçu", məğlub="Məğlub oyunçu")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def matchresult(interaction: discord.Interaction, qalib: discord.Member, məğlub: discord.Member):
     if not get_player(qalib.id) or not get_player(məğlub.id):
         await interaction.response.send_message("❌ Hər iki oyunçu əvvəlcə `/register` etməlidir.", ephemeral=True)
@@ -733,7 +882,7 @@ async def matchresult(interaction: discord.Interaction, qalib: discord.Member, m
 
 @matchresult.error
 async def matchresult_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
@@ -823,7 +972,7 @@ async def _post_matchmaking(channel):
 
 
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def setup_rules(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await _post_rules(interaction.channel)
@@ -832,12 +981,12 @@ async def setup_rules(interaction: discord.Interaction):
 
 @setup_rules.error
 async def setup_rules_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
 @bot.tree.command(name="setup_leaderboard", description="[Admin] Leaderboard mesajını bu kanalda yaradır və avtomatik yeniləməyə başlayır")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def setup_leaderboard(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await _post_leaderboard(interaction.channel)
@@ -846,12 +995,12 @@ async def setup_leaderboard(interaction: discord.Interaction):
 
 @setup_leaderboard.error
 async def setup_leaderboard_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
 @bot.tree.command(name="setup_register", description="[Admin] Qeydiyyat mesajını bu kanalda yaradır")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def setup_register(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await _post_register(interaction.channel)
@@ -860,12 +1009,12 @@ async def setup_register(interaction: discord.Interaction):
 
 @setup_register.error
 async def setup_register_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
 @bot.tree.command(name="setup", description="[Admin] Matchmaking mesajını bu kanalda yaradır")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def setup(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     await _post_matchmaking(interaction.channel)
@@ -874,12 +1023,12 @@ async def setup(interaction: discord.Interaction):
 
 @setup.error
 async def setup_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
 @bot.tree.command(name="full_setup", description="[Admin] Bütün FACEIT 2v2 kanallarını, mesajlarını və access-lərini avtomatik qurur")
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def full_setup(interaction: discord.Interaction):
     global LOG_CHANNEL_ID, TEAM_A_VOICE_ID, TEAM_B_VOICE_ID
 
@@ -945,7 +1094,7 @@ async def full_setup(interaction: discord.Interaction):
 
 @full_setup.error
 async def full_setup_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
@@ -957,7 +1106,7 @@ async def full_setup_error(interaction: discord.Interaction, error):
     qalib="Gizli qalib (yalnız siz görürsünüz)",
     elan_kanal="Giveaway-in elan olunacağı kanal"
 )
-@app_commands.checks.has_permissions(administrator=True)
+@staff_check()
 async def giveaway_create(
     interaction: discord.Interaction,
     mukafat: str,
@@ -994,7 +1143,7 @@ async def giveaway_create(
 
 @giveaway_create.error
 async def giveaway_create_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.MissingPermissions):
+    if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
@@ -1002,32 +1151,93 @@ async def giveaway_create_error(interaction: discord.Interaction, error):
 # MARKET / COIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class MarketView(discord.ui.View):
-    def __init__(self, discord_id):
+def _market_items_by_type(item_type):
+    return [i for i in MARKET_ITEMS if i.get("type") == item_type and not i.get("exclusive")]
+
+
+class MarketItemView(discord.ui.View):
+    def __init__(self, discord_id, item_type):
         super().__init__(timeout=180)
         self.discord_id = discord_id
+        self.item_type = item_type
+        self.selected_item_id = None
+
         options = []
-        for item in MARKET_ITEMS:
-            if item.get("exclusive"):
-                continue
+        for item in _market_items_by_type(item_type):
             owned = owns_item(discord_id, item["id"])
             desc = "Artıq sahibsiniz" if owned else f"{item['price']} coin"
             options.append(discord.SelectOption(label=item["name"][:100], value=item["id"], description=desc[:100]))
-        sel = discord.ui.Select(placeholder="Almaq istədiyiniz əşyanı seçin...", options=options[:25])
-        sel.callback = self._on_select
-        self.add_item(sel)
-        self.select_menu = sel
+        if options:
+            sel = discord.ui.Select(placeholder="Əşya seçin...", options=options[:25])
+            sel.callback = self._on_select
+            self.add_item(sel)
+            self.select_menu = sel
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message(
+                "❌ Bu market yalnız sizin üçündür — `/market` ilə özününüzü açın.", ephemeral=True
+            )
+            return False
+        return True
 
     async def _on_select(self, interaction: discord.Interaction):
-        if interaction.user.id != self.discord_id:
-            await interaction.response.send_message("❌ Bu market yalnız sizin üçündür — `/market` ilə özününüzü açın.", ephemeral=True)
+        if not await self._guard(interaction):
             return
-        item_id = self.select_menu.values[0]
-        item = get_item_by_id(item_id)
+        self.selected_item_id = self.select_menu.values[0]
+        item = get_item_by_id(self.selected_item_id)
+        name = item["name"] if item else self.selected_item_id
+        await interaction.response.send_message(
+            f"✅ Seçildi: **{name}**. İndi \"Önizlə\" və ya \"Al\" düymələrini basa bilərsiniz.",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="Önizlə", style=discord.ButtonStyle.secondary, emoji="👁️", row=1)
+    async def preview_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        if not self.selected_item_id:
+            await interaction.response.send_message("❌ Əvvəlcə yuxarıdan bir əşya seçin.", ephemeral=True)
+            return
+        item = get_item_by_id(self.selected_item_id)
         if not item:
             await interaction.response.send_message("❌ Əşya tapılmadı.", ephemeral=True)
             return
-        if owns_item(self.discord_id, item_id):
+
+        await interaction.response.defer(ephemeral=True)
+
+        if item["type"] in ("banner", "avatar_frame"):
+            avatar_bytes = None
+            try:
+                avatar_url = interaction.user.display_avatar.replace(size=256).url
+                resp = await asyncio.to_thread(requests.get, avatar_url, timeout=10)
+                avatar_bytes = resp.content
+            except Exception:
+                avatar_bytes = None
+            preview_path = os.path.join(DATA_DIR or ".", f"preview_{self.discord_id}_{item['id']}.png")
+            await asyncio.to_thread(generate_item_preview_card, interaction.user.display_name, avatar_bytes, item, preview_path)
+            await interaction.followup.send(file=discord.File(preview_path, filename="preview.png"), ephemeral=True)
+        else:
+            accent = item.get("colors", {}).get("accent", (240, 180, 41))
+            embed = discord.Embed(
+                title=f"🌈 {item['name']} — Önizləmə",
+                description="Bu tema aktiv olanda profilinizin aksent rəngi bu olacaq.",
+                color=discord.Color.from_rgb(*accent)
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Al", style=discord.ButtonStyle.success, emoji="🛒", row=1)
+    async def buy_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        if not self.selected_item_id:
+            await interaction.response.send_message("❌ Əvvəlcə yuxarıdan bir əşya seçin.", ephemeral=True)
+            return
+        item = get_item_by_id(self.selected_item_id)
+        if not item:
+            await interaction.response.send_message("❌ Əşya tapılmadı.", ephemeral=True)
+            return
+        if owns_item(self.discord_id, item["id"]):
             await interaction.response.send_message(f"⚠️ **{item['name']}** əşyasına artıq sahibsiniz.", ephemeral=True)
             return
         balance = get_coins(self.discord_id)
@@ -1038,7 +1248,7 @@ class MarketView(discord.ui.View):
             )
             return
         spend_coins(self.discord_id, item["price"])
-        add_to_inventory(self.discord_id, item_id)
+        add_to_inventory(self.discord_id, item["id"])
         new_bal = get_coins(self.discord_id)
         add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_bal)
         await interaction.response.send_message(
@@ -1047,25 +1257,77 @@ class MarketView(discord.ui.View):
         )
 
 
+class MarketCategoryView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message(
+                "❌ Bu market yalnız sizin üçündür — `/market` ilə özününüzü açın.", ephemeral=True
+            )
+            return False
+        return True
+
+    async def _open_category(self, interaction: discord.Interaction, item_type: str, label: str):
+        if not await self._guard(interaction):
+            return
+        items = _market_items_by_type(item_type)
+        balance = get_coins(self.discord_id)
+        embed = discord.Embed(
+            title=f"🛒 {label}",
+            description=f"Balansınız: **{balance} coin**" + ("" if items else "\n\nBu kataqoriyada hələ əşya yoxdur."),
+            color=discord.Color.gold()
+        )
+        for item in items:
+            owned = owns_item(self.discord_id, item["id"])
+            value = "✅ Sahibsiniz" if owned else f"**{item['price']} coin**"
+            embed.add_field(name=item["name"], value=value, inline=True)
+        view = MarketItemView(self.discord_id, item_type)
+        await interaction.response.edit_message(embed=embed, view=view)
+
+    @discord.ui.button(label="Banner", style=discord.ButtonStyle.primary, emoji="🎨")
+    async def banner_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._open_category(interaction, "banner", "Bannerlər")
+
+    @discord.ui.button(label="Çərçivə", style=discord.ButtonStyle.primary, emoji="🖼️")
+    async def frame_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._open_category(interaction, "avatar_frame", "Çərçivələr")
+
+    @discord.ui.button(label="Tema", style=discord.ButtonStyle.primary, emoji="🌈")
+    async def theme_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._open_category(interaction, "profile_theme", "Temalar")
+
+
+async def _render_market(interaction: discord.Interaction, discord_id: int):
+    await interaction.response.defer(ephemeral=True)
+    balance = get_coins(discord_id)
+    embed = discord.Embed(
+        title="🛒 Zenith's Academy Market",
+        description=f"Balansınız: **{balance} coin**\n\nBir kataqoriya seçin:",
+        color=discord.Color.gold()
+    )
+    view = MarketCategoryView(discord_id)
+    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+async def _render_inventory(interaction: discord.Interaction, discord_id: int):
+    await interaction.response.defer(ephemeral=True)
+    owned = get_inventory(discord_id)
+    active_banner = get_active_banner(discord_id)
+    active_frame = get_active_frame(discord_id)
+    card_path = os.path.join(DATA_DIR or ".", f"inventory_{discord_id}.png")
+    await asyncio.to_thread(generate_inventory_card, owned, active_banner, active_frame, [], get_item_by_id, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="inventory.png"), ephemeral=True)
+
+
 @bot.tree.command(name="market", description="Market — banner, çərçivə və tema satın al")
 async def market_cmd(interaction: discord.Interaction):
     if not get_player(interaction.user.id):
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
         return
-    balance = get_coins(interaction.user.id)
-    embed = discord.Embed(
-        title="🛒 Zenith's Academy Market",
-        description=f"Balansınız: **{balance} coin**",
-        color=discord.Color.gold()
-    )
-    for item in MARKET_ITEMS:
-        if item.get("exclusive"):
-            continue
-        owned = owns_item(interaction.user.id, item["id"])
-        value = "✅ Sahibsiniz" if owned else f"**{item['price']} coin**"
-        embed.add_field(name=item["name"], value=value, inline=True)
-    view = MarketView(interaction.user.id)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    await _render_market(interaction, interaction.user.id)
 
 
 @bot.tree.command(name="inventory", description="Sahib olduğunuz əşyaları göstərir")
@@ -1073,13 +1335,7 @@ async def inventory_cmd(interaction: discord.Interaction):
     if not get_player(interaction.user.id):
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
         return
-    await interaction.response.defer(ephemeral=True)
-    owned = get_inventory(interaction.user.id)
-    active_banner = get_active_banner(interaction.user.id)
-    active_frame = get_active_frame(interaction.user.id)
-    card_path = os.path.join(DATA_DIR or ".", f"inventory_{interaction.user.id}.png")
-    await asyncio.to_thread(generate_inventory_card, owned, active_banner, active_frame, [], get_item_by_id, card_path)
-    await interaction.followup.send(file=discord.File(card_path, filename="inventory.png"), ephemeral=True)
+    await _render_inventory(interaction, interaction.user.id)
 
 
 @bot.tree.command(name="equip", description="Sahib olduğunuz banner/çərçivə/temanı aktiv edir")
@@ -1107,22 +1363,34 @@ async def equip_cmd(interaction: discord.Interaction, əşya: str):
     await interaction.response.send_message(f"✅ **{item['name']}** aktiv edildi!", ephemeral=True)
 
 
+async def _render_coins(interaction: discord.Interaction, discord_id: int):
+    await interaction.response.defer(ephemeral=True)
+    balance = get_coins(discord_id)
+    logs = get_coin_logs(discord_id, limit=15)
+    card_path = os.path.join(DATA_DIR or ".", f"coins_{discord_id}.png")
+    await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="coins.png"), ephemeral=True)
+
+
 @bot.tree.command(name="coins", description="Coin balansınızı və son əməliyyatları göstərir")
 async def coins_cmd(interaction: discord.Interaction):
     if not get_player(interaction.user.id):
         await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
         return
-    await interaction.response.defer(ephemeral=True)
-    balance = get_coins(interaction.user.id)
-    logs = get_coin_logs(interaction.user.id, limit=15)
-    card_path = os.path.join(DATA_DIR or ".", f"coins_{interaction.user.id}.png")
-    await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, card_path)
-    await interaction.followup.send(file=discord.File(card_path, filename="coins.png"), ephemeral=True)
+    await _render_coins(interaction, interaction.user.id)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # NAİLİYYƏTLƏR
 # ═══════════════════════════════════════════════════════════════════════════════
+
+async def _render_achievements(interaction: discord.Interaction, target_id: int, target_name: str):
+    await interaction.response.defer(ephemeral=True)
+    achievements = get_player_achievements(target_id)
+    card_path = os.path.join(DATA_DIR or ".", f"achievements_{target_id}.png")
+    await asyncio.to_thread(generate_achievements_card, target_name, achievements, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="achievements.png"), ephemeral=True)
+
 
 @bot.tree.command(name="achievements", description="Nailiyyətlərinizi göstərir")
 @app_commands.describe(oyunçu="Baxmaq istədiyiniz oyunçu (boş buraxsanız özünüz)")
@@ -1131,11 +1399,48 @@ async def achievements_cmd(interaction: discord.Interaction, oyunçu: discord.Me
     if not get_player(target.id):
         await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
         return
+    await _render_achievements(interaction, target.id, target.display_name)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STATİSTİKA (K/D) VƏ MATÇ TARİXÇƏSİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _render_stats(interaction: discord.Interaction, target_id: int):
     await interaction.response.defer(ephemeral=True)
-    achievements = get_player_achievements(target.id)
-    card_path = os.path.join(DATA_DIR or ".", f"achievements_{target.id}.png")
-    await asyncio.to_thread(generate_achievements_card, target.display_name, achievements, card_path)
-    await interaction.followup.send(file=discord.File(card_path, filename="achievements.png"), ephemeral=True)
+    player_data = get_player_stats_dict(target_id)
+    achievements = get_player_achievements(target_id)
+    card_path = os.path.join(DATA_DIR or ".", f"stats_{target_id}.png")
+    await asyncio.to_thread(generate_stats_card, player_data, achievements, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="stats.png"), ephemeral=True)
+
+
+@bot.tree.command(name="stats", description="Statistikanızı (ELO, K/D, seriya və s.) göstərir")
+@app_commands.describe(oyunçu="Baxmaq istədiyiniz oyunçu (boş buraxsanız özünüz)")
+async def stats_cmd(interaction: discord.Interaction, oyunçu: discord.Member = None):
+    target = oyunçu or interaction.user
+    if not get_player(target.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    await _render_stats(interaction, target.id)
+
+
+async def _render_history(interaction: discord.Interaction, target_id: int):
+    await interaction.response.defer(ephemeral=True)
+    history = get_player_match_history(target_id, limit=10)
+    card_path = os.path.join(DATA_DIR or ".", f"history_{target_id}.png")
+    await asyncio.to_thread(generate_match_history_card, history, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="history.png"), ephemeral=True)
+
+
+@bot.tree.command(name="tarixce", description="Matç tarixçənizi göstərir")
+@app_commands.describe(oyunçu="Baxmaq istədiyiniz oyunçu (boş buraxsanız özünüz)")
+async def tarixce_cmd(interaction: discord.Interaction, oyunçu: discord.Member = None):
+    target = oyunçu or interaction.user
+    if not get_player(target.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    await _render_history(interaction, target.id)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1175,14 +1480,10 @@ class TaskSelectView(discord.ui.View):
         )
 
 
-@bot.tree.command(name="gunluk", description="Günlük tapşırığınızı göstərir və ya seçir")
-async def gunluk_cmd(interaction: discord.Interaction):
-    if not get_player(interaction.user.id):
-        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
-        return
+async def _render_gunluk(interaction: discord.Interaction, discord_id: int):
     await interaction.response.defer(ephemeral=True)
-    active = get_player_active_task(interaction.user.id)
-    card_path = os.path.join(DATA_DIR or ".", f"tasks_{interaction.user.id}.png")
+    active = get_player_active_task(discord_id)
+    card_path = os.path.join(DATA_DIR or ".", f"tasks_{discord_id}.png")
     if active:
         await asyncio.to_thread(generate_tasks_card, active, [], card_path)
         await interaction.followup.send(file=discord.File(card_path, filename="tasks.png"), ephemeral=True)
@@ -1190,8 +1491,298 @@ async def gunluk_cmd(interaction: discord.Interaction):
 
     available = get_active_daily_tasks()
     await asyncio.to_thread(generate_tasks_card, None, available, card_path)
-    view = TaskSelectView(interaction.user.id, available) if available else None
+    view = TaskSelectView(discord_id, available) if available else None
     await interaction.followup.send(file=discord.File(card_path, filename="tasks.png"), view=view, ephemeral=True)
+
+
+@bot.tree.command(name="gunluk", description="Günlük tapşırığınızı göstərir və ya seçir")
+async def gunluk_cmd(interaction: discord.Interaction):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    await _render_gunluk(interaction, interaction.user.id)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ADMİN PANELİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@bot.tree.command(name="admin_oyuncu", description="[Admin] Oyunçunun bütün məlumatlarını göstərir")
+@app_commands.describe(oyunçu="Baxılacaq oyunçu")
+@staff_check()
+async def admin_oyuncu_cmd(interaction: discord.Interaction, oyunçu: discord.Member):
+    data = get_player_stats_dict(oyunçu.id)
+    if not data:
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    embed = discord.Embed(title=f"🔧 Admin — {oyunçu.display_name}", color=discord.Color.blurple())
+    embed.add_field(name="Nick / SO2 ID", value=f"{data['nick']} / {data['so2_id']}", inline=False)
+    embed.add_field(name="ELO", value=str(data["elo"]), inline=True)
+    embed.add_field(name="Qələbə/Məğlub", value=f"{data['wins']}/{data['losses']}", inline=True)
+    embed.add_field(name="K/A/D", value=f"{data['kills']}/{data['assists']}/{data['deaths']}", inline=True)
+    embed.add_field(name="Seriya", value=f"{data['win_streak']} (max {data['max_streak']})", inline=True)
+    embed.add_field(name="Coin", value=str(data["coins"]), inline=True)
+    embed.add_field(name="Ban", value="🔴 Bəli" if is_banned(oyunçu.id) else "🟢 Xeyr", inline=True)
+    embed.set_footer(text=f"Discord ID: {oyunçu.id}")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@admin_oyuncu_cmd.error
+async def admin_oyuncu_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+ADMIN_FIELD_CHOICES = [
+    app_commands.Choice(name="ELO", value="elo"),
+    app_commands.Choice(name="Coin", value="coins"),
+    app_commands.Choice(name="Qələbə (wins)", value="wins"),
+    app_commands.Choice(name="Məğlubiyyət (losses)", value="losses"),
+    app_commands.Choice(name="Kill", value="kills"),
+    app_commands.Choice(name="Assist", value="assists"),
+    app_commands.Choice(name="Ölüm (deaths)", value="deaths"),
+    app_commands.Choice(name="Nick (so2_nick)", value="so2_nick"),
+    app_commands.Choice(name="SO2 ID", value="so2_id"),
+]
+ADMIN_NUMERIC_FIELDS = {"elo", "coins", "wins", "losses", "kills", "assists", "deaths"}
+
+
+@bot.tree.command(name="admin_duzelt", description="[Admin] Oyunçunun bir sahəsini dəyişir")
+@app_commands.describe(oyunçu="Dəyişəcəyiniz oyunçu", sahə="Dəyişəcəyiniz sahə", dəyər="Yeni dəyər")
+@app_commands.choices(sahə=ADMIN_FIELD_CHOICES)
+@staff_check()
+async def admin_duzelt_cmd(interaction: discord.Interaction, oyunçu: discord.Member,
+                            sahə: app_commands.Choice[str], dəyər: str):
+    if not get_player(oyunçu.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+
+    field = sahə.value
+    if field in ADMIN_NUMERIC_FIELDS:
+        try:
+            value = int(dəyər)
+        except ValueError:
+            await interaction.response.send_message("❌ Bu sahə üçün rəqəm daxil edin.", ephemeral=True)
+            return
+    else:
+        value = dəyər
+
+    old_data = get_player_stats_dict(oyunçu.id)
+    old_val = old_data.get("nick" if field == "so2_nick" else field, "?")
+
+    if not admin_set_player_field(oyunçu.id, field, value):
+        await interaction.response.send_message("❌ Bu sahə dəyişdirilə bilməz.", ephemeral=True)
+        return
+
+    log_admin_action("admin_duzelt", oyunçu.id, field, str(old_val), str(value), "-", interaction.user.id)
+
+    embed = discord.Embed(title="✅ Dəyişdirildi", color=discord.Color.green())
+    embed.add_field(name=oyunçu.display_name, value=f"**{sahə.name}**: {old_val} → **{value}**")
+    embed.set_footer(text=f"Admin: {interaction.user.display_name}")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@admin_duzelt_cmd.error
+async def admin_duzelt_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="admin_matclar", description="[Admin] Son matçların siyahısını göstərir")
+@app_commands.describe(say="Neçə matç göstərilsin (default 15)")
+@staff_check()
+async def admin_matclar_cmd(interaction: discord.Interaction, say: int = 15):
+    matches = get_recent_matches(limit=say)
+    if not matches:
+        await interaction.response.send_message("Hələ heç bir matç qeyd olunmayıb.", ephemeral=True)
+        return
+    lines = []
+    for m in matches:
+        dt = datetime.datetime.utcfromtimestamp(m["played_at"]) + datetime.timedelta(hours=4)
+        lines.append(
+            f"**#{m['match_number']}** ({m['match_type']}, {dt.strftime('%d.%m %H:%M')}) — "
+            f"✅ {', '.join(m['winner_nicks'])} vs ❌ {', '.join(m['loser_nicks'])}"
+        )
+    embed = discord.Embed(title="📋 Son matçlar", description="\n".join(lines), color=discord.Color.blurple())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@admin_matclar_cmd.error
+async def admin_matclar_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+class ConfirmDeleteMatchView(discord.ui.View):
+    def __init__(self, match_number, admin_id):
+        super().__init__(timeout=60)
+        self.match_number = match_number
+        self.admin_id = admin_id
+
+    @discord.ui.button(label="Təsdiqlə və sil", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı işlədən admin üçündür.", ephemeral=True)
+            return
+        affected = delete_match_and_revert(self.match_number)
+        for child in self.children:
+            child.disabled = True
+        if affected is None:
+            await interaction.response.edit_message(content="❌ Matç artıq tapılmadı.", embed=None, view=self)
+            return
+        log_admin_action("admin_matc_sil", 0, "match_history", str(self.match_number), "silindi", "-", self.admin_id)
+        lines = [f"{p['nick']}: {p['old_elo']} → {p['new_elo']}" for p in affected]
+        embed = discord.Embed(
+            title=f"🗑️ Matç No{self.match_number} silindi",
+            description="\n".join(lines) + "\n\n⚠️ Coin/kill-assist-death/nailiyyət dəyişiklikləri geri alınmadı.",
+            color=discord.Color.red()
+        )
+        await interaction.response.edit_message(content=None, embed=embed, view=self)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="❌ Ləğv edildi.", embed=None, view=self)
+
+
+@bot.tree.command(name="admin_matc_sil", description="[Admin] Bir matçı bazadan silir və ELO-nu geri qaytarır")
+@app_commands.describe(matc_no="Silinəcək matçın nömrəsi")
+@staff_check()
+async def admin_matc_sil_cmd(interaction: discord.Interaction, matc_no: int):
+    match = get_match_by_number(matc_no)
+    if not match:
+        await interaction.response.send_message(f"❌ Matç No{matc_no} tapılmadı.", ephemeral=True)
+        return
+    embed = discord.Embed(
+        title=f"⚠️ Matç No{matc_no} silinsin?",
+        description=(
+            f"Tip: {match['match_type']}\n"
+            "Bu əməliyyat geri qaytarıla bilməz — ELO və qələbə/məğlubiyyət sayı "
+            "avtomatik geri alınacaq, coin/kill-assist-death/nailiyyət isə saxlanılacaq."
+        ),
+        color=discord.Color.orange()
+    )
+    view = ConfirmDeleteMatchView(matc_no, interaction.user.id)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@admin_matc_sil_cmd.error
+async def admin_matc_sil_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# KOMANDA PANELİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PANEL_CATEGORIES = {
+    "profil": {
+        "label": "Profil",
+        "title": "👤 Profil və Statistika",
+        "items": [
+            ("/profile", "Profil kartınızı və sürətli keçid düymələrini göstərir"),
+            ("/stats", "ELO, K/D, seriya və digər statistikanızı göstərir"),
+            ("/tarixce", "Son matçlarınızın tarixçəsini göstərir"),
+        ],
+    },
+    "market": {
+        "label": "Market",
+        "title": "🛒 Market və İqtisadiyyat",
+        "items": [
+            ("/market", "Banner/Çərçivə/Tema kataqoriyalarına baxıb önizləmə ilə satın alır"),
+            ("/inventory", "Sahib olduğunuz əşyaları göstərir"),
+            ("/equip", "Sahib olduğunuz bir əşyanı aktiv edir"),
+            ("/coins", "Coin balansınızı və son əməliyyatları göstərir"),
+        ],
+    },
+    "naliyyet": {
+        "label": "Nailiyyət",
+        "title": "🏆 Nailiyyət və Gündəlik Tapşırıq",
+        "items": [
+            ("/achievements", "Qazandığınız nailiyyətləri göstərir"),
+            ("/gunluk", "Gündəlik tapşırığınızı göstərir və ya seçir"),
+        ],
+    },
+    "diger": {
+        "label": "Digər",
+        "title": "🎉 Digər",
+        "items": [
+            ("Qeydiyyat düyməsi", "Qeydiyyat kanalındakı düymə ilə FACEIT sisteminə qeydiyyatdan keçirsiniz"),
+            ("2v2 düyməsi", "Matchmaking kanalındakı düymə ilə sıraya qoşulursunuz"),
+        ],
+    },
+    "admin": {
+        "label": "Admin",
+        "title": "🔧 Admin (Founder / Co-Founder / Head Admin / Admin)",
+        "items": [
+            ("/scan", "Skor ekranı şəklindən K/A/D oxuyur"),
+            ("/matchresult", "Manual 1v1 nəticə qeydi"),
+            ("/admin_oyuncu", "Oyunçunun tam profil məlumatını göstərir"),
+            ("/admin_duzelt", "Oyunçunun ELO/coin/stat və s. sahəsini dəyişir"),
+            ("/admin_matclar", "Son matçların siyahısı"),
+            ("/admin_matc_sil", "Bir matçı silib ELO-nu geri qaytarır"),
+            ("/full_setup", "Bütün FACEIT kanallarını avtomatik qurur"),
+            ("/setup", "Matchmaking mesajını yaradır"),
+            ("/setup_register", "Qeydiyyat mesajını yaradır"),
+            ("/setup_rules", "Qaydalar mesajını yaradır"),
+            ("/setup_leaderboard", "Leaderboard mesajını yaradıb avtomatik yeniləyir"),
+            ("/giveaway_create", "Gizli qalibli giveaway yaradır"),
+        ],
+    },
+}
+
+
+def _build_panel_embed(category_key: str) -> discord.Embed:
+    cat = PANEL_CATEGORIES[category_key]
+    embed = discord.Embed(title=cat["title"], color=discord.Color.gold())
+    for name, desc in cat["items"]:
+        embed.add_field(name=name, value=desc, inline=False)
+    embed.set_footer(text="Zenith's Academy")
+    return embed
+
+
+class HelpPanelView(discord.ui.View):
+    def __init__(self, is_staff_user: bool):
+        super().__init__(timeout=300)
+        self.is_staff_user = is_staff_user
+        if not is_staff_user:
+            for item in list(self.children):
+                if getattr(item, "custom_id", None) == "panel_admin":
+                    self.remove_item(item)
+
+    async def _switch(self, interaction: discord.Interaction, category_key: str):
+        await interaction.response.edit_message(embed=_build_panel_embed(category_key), view=self)
+
+    @discord.ui.button(label="Profil", style=discord.ButtonStyle.secondary, emoji="👤", custom_id="panel_profil")
+    async def profil_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "profil")
+
+    @discord.ui.button(label="Market", style=discord.ButtonStyle.secondary, emoji="🛒", custom_id="panel_market")
+    async def market_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "market")
+
+    @discord.ui.button(label="Nailiyyət", style=discord.ButtonStyle.secondary, emoji="🏆", custom_id="panel_naliyyet")
+    async def naliyyet_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "naliyyet")
+
+    @discord.ui.button(label="Digər", style=discord.ButtonStyle.secondary, emoji="🎉", custom_id="panel_diger")
+    async def diger_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._switch(interaction, "diger")
+
+    @discord.ui.button(label="Admin", style=discord.ButtonStyle.danger, emoji="🔧", custom_id="panel_admin")
+    async def admin_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu kataqoriya yalnız admin heyəti üçündür.", ephemeral=True)
+            return
+        await self._switch(interaction, "admin")
+
+
+@bot.tree.command(name="panel", description="Bütün bot komandalarını kataqoriyalı şəkildə göstərir")
+async def panel_cmd(interaction: discord.Interaction):
+    view = HelpPanelView(is_staff(interaction))
+    await interaction.response.send_message(embed=_build_panel_embed("profil"), view=view, ephemeral=True)
 
 
 web_thread = threading.Thread(target=run_web_server, daemon=True)

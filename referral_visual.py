@@ -250,9 +250,10 @@ def generate_item_preview_card(nick: str, avatar_bytes: bytes | None,
                           frame_path=os.path.join(BASE_DIR, "frames", item["file"]))
 
     # Aşağı məlumat
-    draw.text((W//2, 288), f"Bu {item['name']} profil arxa planı kimi görünəcək.",
-              font=_f(11), fill=GRAY, anchor="mm")
-    draw.text((W//2, 310), "Aktivləşdir düyməsinə bas.", font=_f(11, True), fill=GREEN, anchor="mm")
+    preview_desc = (f"Bu {item['name']} profilinizin arxa planı kimi görünəcək." if is_banner
+                    else f"Bu {item['name']} avatarınızın ətrafında görünəcək.")
+    draw.text((W//2, 288), preview_desc, font=_f(11), fill=GRAY, anchor="mm")
+    draw.text((W//2, 310), "Bəyəndinizsə \"Al\" düyməsinə basın.", font=_f(11, True), fill=GREEN, anchor="mm")
 
     draw.text((28, H-16), "Zenith's Academy", font=_f(10), fill=GRAY)
 

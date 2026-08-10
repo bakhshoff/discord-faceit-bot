@@ -817,6 +817,126 @@ def admin_set_player_field(discord_id, field, value):
     return True
 
 
+def get_player_stats_dict(discord_id):
+    """generate_stats_card-ın gözlədiyi player_data formatında tam statistika."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT so2_nick, so2_id, elo, wins, losses, kills, assists, deaths, "
+        "win_streak, max_streak, coins, zm_balance FROM players WHERE discord_id=?",
+        (discord_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "nick": row[0], "so2_id": row[1], "elo": row[2], "wins": row[3], "losses": row[4],
+        "kills": row[5], "assists": row[6], "deaths": row[7],
+        "win_streak": row[8], "max_streak": row[9], "coins": row[10], "zm_balance": row[11]
+    }
+
+
+def get_recent_matches(limit=15):
+    """Son matçları admin siyahısı üçün qaytarır (oyunçu nickləri ilə)."""
+    import json as _json
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT match_number, match_type, played_at, winner_ids, loser_ids "
+        "FROM match_history ORDER BY played_at DESC LIMIT ?", (limit,)
+    )
+    rows = cursor.fetchall()
+
+    results = []
+    for match_number, match_type, played_at, winner_ids_json, loser_ids_json in rows:
+        winner_ids = _json.loads(winner_ids_json)
+        loser_ids = _json.loads(loser_ids_json)
+
+        def _nicks(ids):
+            names = []
+            for did in ids:
+                cursor.execute("SELECT so2_nick FROM players WHERE discord_id=?", (did,))
+                r = cursor.fetchone()
+                names.append(r[0] if r else str(did))
+            return names
+
+        results.append({
+            "match_number": match_number, "match_type": match_type, "played_at": played_at,
+            "winner_nicks": _nicks(winner_ids), "loser_nicks": _nicks(loser_ids)
+        })
+
+    conn.close()
+    return results
+
+
+def get_match_by_number(match_number):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, match_type, played_at, match_number, winner_ids, loser_ids, "
+        "winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after "
+        "FROM match_history WHERE match_number=? ORDER BY id DESC LIMIT 1",
+        (match_number,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    import json as _json
+    return {
+        "id": row[0], "match_type": row[1], "played_at": row[2], "match_number": row[3],
+        "winner_ids": _json.loads(row[4]), "loser_ids": _json.loads(row[5]),
+        "winner_elo_before": _json.loads(row[6]), "winner_elo_after": _json.loads(row[7]),
+        "loser_elo_before": _json.loads(row[8]), "loser_elo_after": _json.loads(row[9])
+    }
+
+
+def delete_match_and_revert(match_number):
+    """
+    Matçı silir, hər oyunçunun ELO-sunu elo_before-a qaytarır, wins/losses-i 1
+    azaldır. Coin/kill-assist-death/nailiyyət dəyişiklikləri geri alınmır.
+    Təsirlənən oyunçuların siyahısını qaytarır, tapılmasa None.
+    """
+    match = get_match_by_number(match_number)
+    if not match:
+        return None
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    affected = []
+
+    for did, elo_before in zip(match["winner_ids"], match["winner_elo_before"]):
+        cursor.execute("SELECT so2_nick, elo FROM players WHERE discord_id=?", (did,))
+        row = cursor.fetchone()
+        if not row:
+            continue
+        nick, old_elo = row
+        cursor.execute(
+            "UPDATE players SET elo=?, wins=MAX(wins-1,0) WHERE discord_id=?",
+            (elo_before, did)
+        )
+        affected.append({"discord_id": did, "nick": nick, "old_elo": old_elo, "new_elo": elo_before})
+
+    for did, elo_before in zip(match["loser_ids"], match["loser_elo_before"]):
+        cursor.execute("SELECT so2_nick, elo FROM players WHERE discord_id=?", (did,))
+        row = cursor.fetchone()
+        if not row:
+            continue
+        nick, old_elo = row
+        cursor.execute(
+            "UPDATE players SET elo=?, losses=MAX(losses-1,0) WHERE discord_id=?",
+            (elo_before, did)
+        )
+        affected.append({"discord_id": did, "nick": nick, "old_elo": old_elo, "new_elo": elo_before})
+
+    cursor.execute("DELETE FROM match_history WHERE id=?", (match["id"],))
+    cursor.execute("DELETE FROM scan_results WHERE match_number=?", (match_number,))
+    conn.commit()
+    conn.close()
+    return affected
+
+
 # ==================== STANDOFF MARKET / SKIN SISTEMI ====================
 
 def add_skin(name, price, image_url=None):
