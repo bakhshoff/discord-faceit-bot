@@ -281,8 +281,10 @@ class TeamReadyView(discord.ui.View):
 
     async def _set_ready(self, interaction: discord.Interaction, is_team_a: bool, button: discord.ui.Button):
         expected_captain_id = self.captain_a_id if is_team_a else self.captain_b_id
-        if interaction.user.id != expected_captain_id:
-            await interaction.response.send_message("❌ Bu düyməni yalnız öz komandanızın kapitanı basa bilər.", ephemeral=True)
+        if interaction.user.id != expected_captain_id and not is_staff(interaction):
+            await interaction.response.send_message(
+                "❌ Bu düyməni yalnız öz komandanızın kapitanı və ya rəhbərlik basa bilər.", ephemeral=True
+            )
             return
 
         if is_team_a:
@@ -314,6 +316,103 @@ class TeamReadyView(discord.ui.View):
     @discord.ui.button(label="Komanda B Hazır", style=discord.ButtonStyle.danger, custom_id="ready_b")
     async def team_b_ready_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._set_ready(interaction, False, button)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary, emoji="🚫", custom_id="cancel_match")
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız rəhbərlik üçündür.", ephemeral=True)
+            return
+
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+
+        view = CancelMatchView(self.match_number, self.team_a, self.team_b)
+        embed = discord.Embed(
+            title=f"🚫 Matç No{self.match_number} ləğv edilir",
+            description=(
+                "Gəlməyən oyunçu varsa aşağıdan seçin (ELO cəzası alacaq), "
+                "yoxdursa \"Heç kimə cəza olmasın\"-ı seçin."
+            ),
+            color=discord.Color.orange()
+        )
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+MATCH_CANCEL_ELO_PENALTY = 15
+
+
+class CancelMatchView(discord.ui.View):
+    def __init__(self, match_number, team_a, team_b):
+        super().__init__(timeout=120)
+        self.match_number = match_number
+        self.team_a = team_a
+        self.team_b = team_b
+
+        options = [
+            discord.SelectOption(label=p["nick"][:100], value=str(p["discord_id"]))
+            for p in team_a + team_b
+        ]
+        options.append(discord.SelectOption(label="Heç kimə cəza olmasın", value="none"))
+        sel = discord.ui.Select(placeholder="Gəlməyən oyunçu (opsional)...", options=options[:25])
+        sel.callback = self._on_select
+        self.add_item(sel)
+        self.select_menu = sel
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu yalnız rəhbərlik üçündür.", ephemeral=True)
+            return
+
+        active = get_active_match()
+        if not active or active.get("match_number") != self.match_number:
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(
+                content="⚠️ Bu matç artıq aktiv deyil (başqa əməliyyatla bağlanıb).", embed=None, view=self
+            )
+            return
+
+        value = self.select_menu.values[0]
+        all_players = self.team_a + self.team_b
+        absent_id = int(value) if value != "none" else None
+        penalized_nick = None
+
+        if absent_id is not None:
+            row = get_player(absent_id)
+            if row:
+                old_elo = row[3]
+                new_elo = max(0, old_elo - MATCH_CANCEL_ELO_PENALTY)
+                admin_set_player_field(absent_id, "elo", new_elo)
+                log_admin_action(
+                    "match_cancel_penalty", absent_id, "elo", str(old_elo), str(new_elo),
+                    f"Matç No{self.match_number} ləğvi — gəlmədi", interaction.user.id
+                )
+                penalized_nick = next((p["nick"] for p in all_players if p["discord_id"] == absent_id), None)
+
+        returned = []
+        for p in all_players:
+            if absent_id is not None and p["discord_id"] == absent_id:
+                continue
+            row = get_player(p["discord_id"])
+            elo = row[3] if row else p.get("elo", 1000)
+            if add_to_queue(p["discord_id"], p["nick"], elo):
+                returned.append(p["nick"])
+
+        clear_active_match()
+
+        desc = f"Matç No{self.match_number} ləğv edildi."
+        if penalized_nick:
+            desc += f"\n🔴 ELO cəzası: **{penalized_nick}** (-{MATCH_CANCEL_ELO_PENALTY} ELO)"
+        if returned:
+            desc += f"\n🔁 Sıraya qaytarıldı: {', '.join(returned)}"
+
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content=desc, embed=None, view=self)
+
+        await update_queue_status_message()
+        await _start_match_if_ready(interaction.channel, interaction.guild)
 
 
 class MatchResultView(discord.ui.View):
@@ -807,6 +906,12 @@ class ProfileHubView(discord.ui.View):
         if not await self._guard(interaction):
             return
         await _render_market(interaction, self.discord_id)
+
+    @discord.ui.button(label="Coin", style=discord.ButtonStyle.secondary, emoji="💰")
+    async def coins_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_coins(interaction, self.discord_id)
 
     @discord.ui.button(label="Nailiyyətlər", style=discord.ButtonStyle.secondary, emoji="🏆")
     async def achievements_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
