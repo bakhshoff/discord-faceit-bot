@@ -36,7 +36,12 @@ from database import (
     update_streak, get_streak_bonus,
     get_player_stats_dict, get_player_match_history,
     get_recent_matches, get_match_by_number, delete_match_and_revert,
-    admin_set_player_field, log_admin_action, is_banned
+    admin_set_player_field, log_admin_action, is_banned,
+    get_map_stats, get_all_players,
+    get_squad, get_pending_squad_invite, create_squad_invite,
+    accept_squad_invite, reject_squad_invite, record_squad_win,
+    get_personal_record, update_personal_record,
+    get_activity_stats, get_hourly_activity
 )
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
@@ -49,7 +54,9 @@ from market_config import MARKET_ITEMS, get_item_by_id
 from visual_cards import (
     generate_inventory_card, generate_coin_logs_card,
     generate_tasks_card, generate_achievements_card,
-    generate_stats_card, generate_match_history_card
+    generate_stats_card, generate_match_history_card,
+    generate_map_stats_card, generate_personal_record_card, generate_squad_card,
+    generate_activity_card, RANKS, get_rank
 )
 from referral_visual import generate_item_preview_card
 import requests
@@ -110,6 +117,7 @@ if os.environ.get("DIAGNOSE_KD") == "1":
 TEAM_A_VOICE_ID = 1500827030890221678
 TEAM_B_VOICE_ID = 1500827032261496913
 LOG_CHANNEL_ID = 1500790545172267028
+LOBBY_VOICE_ID = 1529228399464288456
 
 FULL_SETUP_CATEGORY_NAME = "🏆 FACEIT 2v2"
 
@@ -149,6 +157,31 @@ def staff_check():
     async def predicate(interaction: discord.Interaction) -> bool:
         return is_staff(interaction)
     return app_commands.check(predicate)
+
+
+RANK_ROLE_NAMES = {r[2] for r in RANKS}
+
+
+async def _sync_rank_role(guild, discord_id, elo):
+    """Oyunçunun ELO-suna uyğun rütbə rolunu təyin edir, köhnə rütbə rolunu çıxarır."""
+    if not guild:
+        return
+    member = guild.get_member(discord_id)
+    if not member:
+        return
+    rank_name, _color, _emoji = get_rank(elo)
+    target_role = discord.utils.get(guild.roles, name=rank_name)
+    if not target_role:
+        return
+
+    to_remove = [r for r in member.roles if r.name in RANK_ROLE_NAMES and r.id != target_role.id]
+    try:
+        if to_remove:
+            await member.remove_roles(*to_remove, reason="Rütbə yeniləndi")
+        if target_role not in member.roles:
+            await member.add_roles(target_role, reason="Rütbə yeniləndi")
+    except discord.Forbidden:
+        pass
 
 
 def is_queue_open():
@@ -220,6 +253,42 @@ async def check_giveaways():
 @tasks.loop(seconds=3600)
 async def refresh_tasks_loop():
     refresh_daily_tasks()
+
+
+STUCK_MATCH_THRESHOLD_SECONDS = 600
+_last_warned_match_number = None
+
+
+@tasks.loop(seconds=120)
+async def check_stuck_matches():
+    global _last_warned_match_number
+    active = get_active_match()
+    if not active or not active.get("created_at"):
+        _last_warned_match_number = None
+        return
+
+    match_number = active["match_number"]
+    age = int(datetime.datetime.utcnow().timestamp()) - active["created_at"]
+    if age < STUCK_MATCH_THRESHOLD_SECONDS:
+        return
+    if _last_warned_match_number == match_number:
+        return
+
+    _last_warned_match_number = match_number
+    log_channel = bot.get_channel(LOG_CHANNEL_ID)
+    if not log_channel:
+        return
+    minutes = age // 60
+    embed = discord.Embed(
+        title=f"⚠️ Matç No{match_number} {minutes} dəqiqədir davam edir",
+        description=(
+            "Hazır olma/nəticə mərhələsində asılı qalıb ola bilər.\n"
+            "`/admin_matc_netice` ilə nəticə düymələrini yenidən göstərə, "
+            "ya da hazır olan komandanı `/admin_matc_elave_et` ilə əl ilə qeyd edə bilərsiniz."
+        ),
+        color=discord.Color.red()
+    )
+    await log_channel.send(embed=embed)
 
 
 class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
@@ -460,7 +529,10 @@ class MatchResultView(discord.ui.View):
                 add_combat_stats(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0))
                 stats_by_id[did] = s
 
-        # Coin mükafatı, seriya, günlük tapşırıq irəliləyişi, nailiyyətlər
+        active_before = get_active_match()
+        selected_map = active_before.get("selected_map") if active_before else None
+
+        # Coin mükafatı, seriya, günlük tapşırıq irəliləyişi, nailiyyətlər, rütbə, rekord
         new_achievements = []
         for p, r in zip(winner_team, results["winners"]):
             did = p["discord_id"]
@@ -472,8 +544,11 @@ class MatchResultView(discord.ui.View):
             add_coin_log(did, earned, reason, "earn", new_bal)
             s = stats_by_id.get(did, {})
             update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
+            if did in stats_by_id:
+                update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
+            await _sync_rank_role(interaction.guild, did, r["new_elo"])
 
         for p, r in zip(loser_team, results["losers"]):
             did = p["discord_id"]
@@ -483,8 +558,20 @@ class MatchResultView(discord.ui.View):
             add_coin_log(did, earned, f"Matç No{self.match_number} iştirak", "earn", new_bal)
             s = stats_by_id.get(did, {})
             update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
+            if did in stats_by_id:
+                update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
+            await _sync_rank_role(interaction.guild, did, r["new_elo"])
+
+        # Squad bonusu — qalib komandanın iki üzvü eyni aktiv squad-dırsa
+        if len(winner_team) == 2:
+            squad = get_squad(winner_team[0]["discord_id"])
+            if squad and squad["partner_id"] == winner_team[1]["discord_id"]:
+                for p in winner_team:
+                    bal = add_coins(p["discord_id"], 10)
+                    add_coin_log(p["discord_id"], 10, f"Squad bonusu — Matç No{self.match_number}", "earn", bal)
+                record_squad_win(winner_team[0]["discord_id"], winner_team[1]["discord_id"])
 
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
         embed = discord.Embed(
@@ -521,7 +608,7 @@ class MatchResultView(discord.ui.View):
             record_match_history, "2v2", winner_ids, loser_ids,
             [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
             [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
-            self.match_number
+            self.match_number, selected_map
         )
         active = get_active_match()
         if active and active.get("match_number") == self.match_number:
@@ -531,6 +618,20 @@ class MatchResultView(discord.ui.View):
         log_channel = bot.get_channel(LOG_CHANNEL_ID)
         if log_channel and log_channel.id != interaction.channel.id:
             await log_channel.send(embed=embed)
+
+        # Boş səs kanalı təmizliyi — oyunçuları lobby-yə köçür
+        if interaction.guild:
+            team_a_channel = bot.get_channel(TEAM_A_VOICE_ID)
+            team_b_channel = bot.get_channel(TEAM_B_VOICE_ID)
+            lobby_channel = bot.get_channel(LOBBY_VOICE_ID)
+            if lobby_channel:
+                for p in winner_team + loser_team:
+                    member = interaction.guild.get_member(p["discord_id"])
+                    if member and member.voice and member.voice.channel in (team_a_channel, team_b_channel):
+                        try:
+                            await member.move_to(lobby_channel)
+                        except discord.Forbidden:
+                            pass
 
         await _start_match_if_ready(log_channel or interaction.channel, interaction.guild)
 
@@ -862,6 +963,8 @@ async def on_ready():
     refresh_daily_tasks()
     if not refresh_tasks_loop.is_running():
         refresh_tasks_loop.start()
+    if not check_stuck_matches.is_running():
+        check_stuck_matches.start()
     for guild in bot.guilds:
         bot.tree.copy_global_to(guild=guild)
         await bot.tree.sync(guild=guild)
@@ -926,6 +1029,28 @@ class ProfileHubView(discord.ui.View):
         if not await self._guard(interaction):
             return
         await _render_gunluk(interaction, self.discord_id)
+
+    def _display_name(self, interaction: discord.Interaction) -> str:
+        member = interaction.guild.get_member(self.discord_id) if interaction.guild else None
+        return member.display_name if member else str(self.discord_id)
+
+    @discord.ui.button(label="Xəritələr", style=discord.ButtonStyle.secondary, emoji="🗺️")
+    async def maps_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_maps(interaction, self.discord_id, self._display_name(interaction))
+
+    @discord.ui.button(label="Rekord", style=discord.ButtonStyle.secondary, emoji="🥇")
+    async def record_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_record(interaction, self.discord_id, self._display_name(interaction))
+
+    @discord.ui.button(label="Squad", style=discord.ButtonStyle.secondary, emoji="🤝")
+    async def squad_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await _render_squad(interaction, self.discord_id, self._display_name(interaction))
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -1575,6 +1700,118 @@ async def tarixce_cmd(interaction: discord.Interaction, oyunçu: discord.Member 
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# XƏRİTƏ STATİSTİKASI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _render_maps(interaction: discord.Interaction, discord_id: int, nick: str):
+    await interaction.response.defer(ephemeral=True)
+    stats = get_map_stats(discord_id)
+    card_path = os.path.join(DATA_DIR or ".", f"maps_{discord_id}.png")
+    await asyncio.to_thread(generate_map_stats_card, nick, stats, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="maps.png"), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ŞƏXSİ REKORD
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _render_record(interaction: discord.Interaction, discord_id: int, nick: str):
+    await interaction.response.defer(ephemeral=True)
+    record = get_personal_record(discord_id)
+    card_path = os.path.join(DATA_DIR or ".", f"record_{discord_id}.png")
+    await asyncio.to_thread(generate_personal_record_card, nick, record, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="record.png"), ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SQUAD (SABİT DUO)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _render_squad(interaction: discord.Interaction, discord_id: int, nick: str):
+    await interaction.response.defer(ephemeral=True)
+    squad = get_squad(discord_id)
+    squad_info = None
+    if squad:
+        partner_row = get_player(squad["partner_id"])
+        squad_info = {
+            "partner_nick": partner_row[1] if partner_row else str(squad["partner_id"]),
+            "wins_together": squad["wins_together"]
+        }
+    card_path = os.path.join(DATA_DIR or ".", f"squad_{discord_id}.png")
+    await asyncio.to_thread(generate_squad_card, nick, squad_info, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="squad.png"), ephemeral=True)
+
+
+class SquadInviteView(discord.ui.View):
+    def __init__(self, squad_id, inviter_id, invitee_id):
+        super().__init__(timeout=300)
+        self.squad_id = squad_id
+        self.inviter_id = inviter_id
+        self.invitee_id = invitee_id
+
+    @discord.ui.button(label="Qəbul et", style=discord.ButtonStyle.success, emoji="✅")
+    async def accept_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.invitee_id:
+            await interaction.response.send_message("❌ Bu dəvət sizin üçün deyil.", ephemeral=True)
+            return
+        ok = accept_squad_invite(self.squad_id)
+        for child in self.children:
+            child.disabled = True
+        if ok:
+            await interaction.response.edit_message(
+                content="✅ Squad yaradıldı! `/profile`-dakı Squad düyməsindən baxa bilərsiniz.",
+                embed=None, view=self
+            )
+        else:
+            await interaction.response.edit_message(content="❌ Bu dəvət artıq etibarsızdır.", embed=None, view=self)
+
+    @discord.ui.button(label="Rədd et", style=discord.ButtonStyle.danger, emoji="❌")
+    async def reject_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.invitee_id:
+            await interaction.response.send_message("❌ Bu dəvət sizin üçün deyil.", ephemeral=True)
+            return
+        reject_squad_invite(self.squad_id)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="❌ Dəvət rədd edildi.", embed=None, view=self)
+
+
+@bot.tree.command(name="squad", description="Sabit duo tərəfdaşınıza squad dəvəti göndərir")
+@app_commands.describe(partnyor="Squad tərəfdaşı olmaq istədiyiniz oyunçu")
+async def squad_cmd(interaction: discord.Interaction, partnyor: discord.Member):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    if not get_player(partnyor.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    if partnyor.id == interaction.user.id:
+        await interaction.response.send_message("❌ Özünüzü squad-a dəvət edə bilməzsiniz.", ephemeral=True)
+        return
+    if get_squad(interaction.user.id):
+        await interaction.response.send_message("⚠️ Artıq aktiv bir squad-dasınız.", ephemeral=True)
+        return
+
+    squad_id = create_squad_invite(interaction.user.id, partnyor.id)
+    if squad_id is None:
+        await interaction.response.send_message(
+            "❌ Dəvət göndərilə bilmədi (siz və ya partnyor artıq squad-dadır).", ephemeral=True
+        )
+        return
+
+    view = SquadInviteView(squad_id, interaction.user.id, partnyor.id)
+    embed = discord.Embed(
+        title="🤝 Squad dəvəti",
+        description=(
+            f"{interaction.user.mention} sizi squad tərəfdaşı olmağa dəvət edir!\n"
+            "Birlikdə qazandığınız hər matçda hər ikiniz bonus coin alacaqsınız."
+        ),
+        color=discord.Color.blurple()
+    )
+    await interaction.response.send_message(content=partnyor.mention, embed=embed, view=view)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # GÜNDƏLİK TAPŞIRIQ
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1707,6 +1944,9 @@ async def admin_duzelt_cmd(interaction: discord.Interaction, oyunçu: discord.Me
 
     log_admin_action("admin_duzelt", oyunçu.id, field, str(old_val), str(value), "-", interaction.user.id)
 
+    if field == "elo":
+        await _sync_rank_role(interaction.guild, oyunçu.id, value)
+
     embed = discord.Embed(title="✅ Dəyişdirildi", color=discord.Color.green())
     embed.add_field(name=oyunçu.display_name, value=f"**{sahə.name}**: {old_val} → **{value}**")
     embed.set_footer(text=f"Admin: {interaction.user.display_name}")
@@ -1762,6 +2002,8 @@ class ConfirmDeleteMatchView(discord.ui.View):
             await interaction.response.edit_message(content="❌ Matç artıq tapılmadı.", embed=None, view=self)
             return
         log_admin_action("admin_matc_sil", 0, "match_history", str(self.match_number), "silindi", "-", self.admin_id)
+        for p in affected:
+            await _sync_rank_role(interaction.guild, p["discord_id"], p["new_elo"])
         lines = [f"{p['nick']}: {p['old_elo']} → {p['new_elo']}" for p in affected]
         embed = discord.Embed(
             title=f"🗑️ Matç No{self.match_number} silindi",
@@ -1860,7 +2102,8 @@ def _parse_kad(text):
     a2_kad="Komanda A 2-ci oyunçunun K/A/D — boş buraxıla bilər",
     b1_kad="Komanda B 1-ci oyunçunun K/A/D — boş buraxıla bilər",
     b2_kad="Komanda B 2-ci oyunçunun K/A/D — boş buraxıla bilər",
-    matc_no="Matç nömrəsi (boş buraxsanız avtomatik növbəti nömrə verilir)"
+    matc_no="Matç nömrəsi (boş buraxsanız avtomatik növbəti nömrə verilir)",
+    xerite="Xəritə adı (opsional, xəritə statistikası üçün)"
 )
 @app_commands.choices(qalib=[
     app_commands.Choice(name="Komanda A", value="A"),
@@ -1874,7 +2117,7 @@ async def admin_matc_elave_et_cmd(
     qalib: app_commands.Choice[str],
     a1_kad: str = None, a2_kad: str = None,
     b1_kad: str = None, b2_kad: str = None,
-    matc_no: int = None
+    matc_no: int = None, xerite: str = None
 ):
     members = [komanda_a_1, komanda_a_2, komanda_b_1, komanda_b_2]
     if len(set(m.id for m in members)) != 4:
@@ -1906,6 +2149,10 @@ async def admin_matc_elave_et_cmd(
         komanda_a_1.id: _parse_kad(a1_kad), komanda_a_2.id: _parse_kad(a2_kad),
         komanda_b_1.id: _parse_kad(b1_kad), komanda_b_2.id: _parse_kad(b2_kad),
     }
+    had_kad = {
+        komanda_a_1.id: bool(a1_kad), komanda_a_2.id: bool(a2_kad),
+        komanda_b_1.id: bool(b1_kad), komanda_b_2.id: bool(b2_kad),
+    }
     for discord_id, (k, a, d) in kad_by_id.items():
         add_combat_stats(discord_id, k, a, d)
 
@@ -1916,22 +2163,38 @@ async def admin_matc_elave_et_cmd(
         earned = random.randint(5, 10) + bonus_coins
         new_bal = add_coins(p["discord_id"], earned)
         add_coin_log(p["discord_id"], earned, f"Matç No{match_number} qələbə (əl ilə əlavə)", "earn", new_bal)
+        if had_kad[p["discord_id"]]:
+            k, a, d = kad_by_id[p["discord_id"]]
+            update_personal_record(p["discord_id"], k, a, d, match_number)
         for ach in check_and_grant_achievements(p["discord_id"]):
             new_achievements.append((p["nick"], ach))
+        await _sync_rank_role(interaction.guild, p["discord_id"], r["new_elo"])
 
     for p, r in zip(loser_team, results["losers"]):
         update_streak(p["discord_id"], False)
         earned = random.randint(0, 5)
         new_bal = add_coins(p["discord_id"], earned)
         add_coin_log(p["discord_id"], earned, f"Matç No{match_number} iştirak (əl ilə əlavə)", "earn", new_bal)
+        if had_kad[p["discord_id"]]:
+            k, a, d = kad_by_id[p["discord_id"]]
+            update_personal_record(p["discord_id"], k, a, d, match_number)
         for ach in check_and_grant_achievements(p["discord_id"]):
             new_achievements.append((p["nick"], ach))
+        await _sync_rank_role(interaction.guild, p["discord_id"], r["new_elo"])
+
+    if len(winner_team) == 2:
+        squad = get_squad(winner_team[0]["discord_id"])
+        if squad and squad["partner_id"] == winner_team[1]["discord_id"]:
+            for p in winner_team:
+                bal = add_coins(p["discord_id"], 10)
+                add_coin_log(p["discord_id"], 10, f"Squad bonusu — Matç No{match_number}", "earn", bal)
+            record_squad_win(winner_team[0]["discord_id"], winner_team[1]["discord_id"])
 
     await asyncio.to_thread(
         record_match_history, "2v2", winner_ids, loser_ids,
         [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
         [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
-        match_number
+        match_number, xerite
     )
     log_admin_action("admin_matc_elave_et", 0, "match_history", "-", f"matc_no={match_number}", "manual entry", interaction.user.id)
 
@@ -1964,6 +2227,41 @@ async def admin_matc_elave_et_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
+@bot.tree.command(name="rank_rollari_qur", description="[Admin] ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir")
+@staff_check()
+async def rank_rollari_qur_cmd(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+
+    created = []
+    for lo, hi, name, color, emoji in RANKS:
+        role = discord.utils.get(guild.roles, name=name)
+        if not role:
+            await guild.create_role(name=name, color=discord.Color.from_rgb(*color), reason="Rütbə rolu")
+            created.append(name)
+
+    players = get_all_players(limit=1000)
+    for p in players:
+        await _sync_rank_role(guild, p["discord_id"], p["elo"])
+
+    await interaction.followup.send(
+        f"✅ Rütbə rolları hazırdır.\n"
+        f"🆕 Yaradılan rollar: {', '.join(created) if created else 'yoxdur (artıq mövcud idi)'}\n"
+        f"🔄 {len(players)} oyunçunun rolu yeniləndi.",
+        ephemeral=True
+    )
+
+
+@rank_rollari_qur_cmd.error
+async def rank_rollari_qur_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # KOMANDA PANELİ
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1973,9 +2271,13 @@ PANEL_CATEGORIES = {
         "label": "Profil",
         "title": "👤 Profil və Statistika",
         "items": [
-            ("/profile", "Profil kartınızı və sürətli keçid düymələrini göstərir"),
+            ("/profile", "Profil kartınızı və bütün aşağıdakı bölmələrə keçid düymələrini göstərir"),
             ("/stats", "ELO, K/D, seriya və digər statistikanızı göstərir"),
             ("/tarixce", "Son matçlarınızın tarixçəsini göstərir"),
+            ("🗺️ Xəritələr (profil düyməsi)", "Hər xəritədə qələbə/məğlubiyyət faizinizi göstərir"),
+            ("🥇 Rekord (profil düyməsi)", "Ən yaxşı kill/asist/K-D göstəricilərinizi göstərir"),
+            ("🤝 Squad (profil düyməsi)", "Sabit duo tərəfdaşınızı və birlikdə qələbələrinizi göstərir"),
+            ("/squad", "Bir oyunçuya squad (sabit duo) dəvəti göndərir"),
         ],
     },
     "market": {
@@ -2002,6 +2304,7 @@ PANEL_CATEGORIES = {
         "items": [
             ("Qeydiyyat düyməsi", "Qeydiyyat kanalındakı düymə ilə FACEIT sisteminə qeydiyyatdan keçirsiniz"),
             ("2v2 düyməsi", "Matchmaking kanalındakı düymə ilə sıraya qoşulursunuz"),
+            ("Rütbə rolu", "ELO-nuz dəyişəndə Discord rolunuz avtomatik yenilənir"),
         ],
     },
     "admin": {
@@ -2014,6 +2317,11 @@ PANEL_CATEGORIES = {
             ("/admin_duzelt", "Oyunçunun ELO/coin/stat və s. sahəsini dəyişir"),
             ("/admin_matclar", "Son matçların siyahısı"),
             ("/admin_matc_sil", "Bir matçı silib ELO-nu geri qaytarır"),
+            ("/admin_matc_elave_et", "İtirilmiş/əl ilə matç nəticəsini ELO+statistika ilə əlavə edir"),
+            ("/admin_matc_netice", "Aktiv matç üçün nəticə düymələrini yenidən göstərir"),
+            ("/rank_rollari_qur", "ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir"),
+            ("📊 Aktivlik (aşağıdakı düymə)", "Son 7 günün aktivlik statistikasını göstərir"),
+            ("🚫 Ləğv et (matç mesajında)", "Asılı qalan matçı ləğv edir, gəlməyənə ELO cəzası verə bilər"),
             ("/full_setup", "Bütün FACEIT kanallarını avtomatik qurur"),
             ("/setup", "Matchmaking mesajını yaradır"),
             ("/setup_register", "Qeydiyyat mesajını yaradır"),
@@ -2040,7 +2348,7 @@ class HelpPanelView(discord.ui.View):
         self.is_staff_user = is_staff_user
         if not is_staff_user:
             for item in list(self.children):
-                if getattr(item, "custom_id", None) == "panel_admin":
+                if getattr(item, "custom_id", None) in ("panel_admin", "panel_activity"):
                     self.remove_item(item)
 
     async def _switch(self, interaction: discord.Interaction, category_key: str):
@@ -2068,6 +2376,18 @@ class HelpPanelView(discord.ui.View):
             await interaction.response.send_message("❌ Bu kataqoriya yalnız admin heyəti üçündür.", ephemeral=True)
             return
         await self._switch(interaction, "admin")
+
+    @discord.ui.button(label="Aktivlik", style=discord.ButtonStyle.danger, emoji="📊", custom_id="panel_activity")
+    async def activity_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız admin heyəti üçündür.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        stats = get_activity_stats(days=7)
+        hourly = get_hourly_activity(days=7)
+        card_path = os.path.join(DATA_DIR or ".", "activity.png")
+        await asyncio.to_thread(generate_activity_card, stats, card_path, hourly)
+        await interaction.followup.send(file=discord.File(card_path, filename="activity.png"), ephemeral=True)
 
 
 @bot.tree.command(name="panel", description="Bütün bot komandalarını kataqoriyalı şəkildə göstərir")

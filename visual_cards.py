@@ -667,13 +667,13 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
 
     days = stats["days"]
     draw.text((20, 12), "Zenith's Academy", font=fb, fill=GOLD)
-    draw.text((20, 28), f"FEALIYYET PANELİ — Son {days} Gun", font=ft, fill=WHITE)
+    draw.text((20, 28), f"FƏALİYYƏT PANELİ — Son {days} Gün", font=ft, fill=WHITE)
     draw.line([(0,70),(W,70)], fill=BORDER, width=1)
 
     # Böyük rəqəmlər
     boxes = [
-        (stats["match_count"], "Matc"),
-        (stats["player_count"], "Oyuncu"),
+        (stats["match_count"], "Matç"),
+        (stats["player_count"], "Oyunçu"),
         (stats["total_kills"], "Kill"),
     ]
     bw = (W - 40) // 3
@@ -688,12 +688,12 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
     medals = ["1.", "2.", "3.", "4.", "5."]
     for i, (nick, cnt) in enumerate(stats.get("top_active", [])[:5]):
         draw.text((20, 198 + i*22), f"{medals[i]} {nick[:20]}", font=fs, fill=WHITE)
-        draw.text((280, 198 + i*22), f"{cnt} matc", font=fs, fill=GRAY)
+        draw.text((280, 198 + i*22), f"{cnt} matç", font=fs, fill=GRAY)
 
     # Saatlıq aktivlik mini-qrafik
     if hourly and len(hourly) > 0:
         gy = 310
-        draw.text((20, gy), "Saatliq fealiyyet:", font=fs, fill=WHITE)
+        draw.text((20, gy), "Saatlıq fəaliyyət:", font=fs, fill=WHITE)
         gy += 22
         max_cnt = max(hourly.values()) if hourly else 1
         bar_w   = (W - 40) // 24
@@ -1106,3 +1106,104 @@ def generate_bet_card(match_number, balance, output_path,
     # CTA
     draw.text((W//2, 252), "Komandani secin:", font=_font(11,True), fill=GOLD, anchor="mm")
     img.save(output_path); return output_path
+
+
+# ── XƏRİTƏ STATİSTİKASI ───────────────────────────────────────────────────────
+
+def generate_map_stats_card(nick, map_stats, output_path):
+    """map_stats: {map_name: {"wins": int, "losses": int}}"""
+    ROW_H = 44
+    HEADER = 70
+    FOOTER = 20
+    maps = sorted(map_stats.items(), key=lambda kv: kv[1]["wins"] + kv[1]["losses"], reverse=True)
+    n = max(1, len(maps))
+    height = HEADER + n * ROW_H + FOOTER
+
+    img = _bg(height)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=10, outline=BORDER, width=2)
+
+    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 30), "XƏRİTƏ STATİSTİKASI", font=_font(22, True), fill=WHITE)
+    draw.line([(18, HEADER - 6), (WIDTH - 18, HEADER - 6)], fill=BORDER, width=1)
+
+    y = HEADER
+    if not maps:
+        draw.text((28, y + 14), "Hələ xəritə statistikası yoxdur.", font=_font(13), fill=GRAY)
+    else:
+        for i, (map_name, s) in enumerate(maps):
+            if i % 2 == 0:
+                draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=(21, 19, 25))
+            total = s["wins"] + s["losses"]
+            wr = round(s["wins"] / total * 100, 1) if total else 0.0
+            col = GREEN if wr >= 50 else RED
+            _bar(draw, 20, y, ROW_H, col)
+            draw.text((40, y + 8), map_name, font=_font(15, True), fill=WHITE)
+            draw.text((40, y + 26), f"{s['wins']}Q / {s['losses']}M", font=_font(12), fill=GRAY)
+            wr_txt = f"{wr}%"
+            draw.text((WIDTH - 28 - _tw(draw, wr_txt, _font(15, True)), y + 14), wr_txt, font=_font(15, True), fill=col)
+            y += ROW_H
+
+    draw.text((28, height - FOOTER + 2), "Zenith's Academy", font=_font(10), fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
+# ── ŞƏXSİ REKORD ──────────────────────────────────────────────────────────────
+
+def generate_personal_record_card(nick, record, output_path):
+    """record: get_personal_record() çıxışı."""
+    H = 220
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
+
+    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 30), f"{nick} — ŞƏXSİ REKORD", font=_font(20, True), fill=WHITE)
+    draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
+
+    stats = [
+        ("ƏN ÇOX KİLL", record.get("best_kills", 0), GREEN),
+        ("ƏN ÇOX ASİST", record.get("best_assists", 0), BLUE),
+        ("ƏN YAXŞI K/D", record.get("best_kd", 0.0), GOLD),
+    ]
+    bw = (WIDTH - 36) // 3
+    by = 78
+    for i, (lbl, val, col) in enumerate(stats):
+        x = 18 + i * bw
+        draw.rounded_rectangle([(x + 2, by), (x + bw - 2, by + 80)], radius=6, fill=PANEL, outline=BORDER, width=1)
+        draw.text((x + bw // 2, by + 32), str(val), font=_font(24, True), fill=col, anchor="mm")
+        draw.text((x + bw // 2, by + 62), lbl, font=_font(10, True), fill=GRAY, anchor="mm")
+
+    best_match = record.get("best_match")
+    match_txt = f"Ən yaxşı K/D matçı: No{best_match}" if best_match else "Hələ heç bir matç qeyd olunmayıb."
+    draw.text((28, 172), match_txt, font=_font(12), fill=GRAY)
+
+    draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+    img.save(output_path)
+    return output_path
+
+
+# ── SQUAD (DUO) ───────────────────────────────────────────────────────────────
+
+def generate_squad_card(nick, squad_info, output_path):
+    """squad_info: {"partner_nick": str, "wins_together": int} və ya None."""
+    H = 170
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=BORDER, width=2)
+
+    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 30), "SQUAD", font=_font(22, True), fill=WHITE)
+    draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
+
+    if not squad_info:
+        draw.text((28, 84), f"{nick} hələ heç bir squad-da deyil.", font=_font(14), fill=GRAY)
+        draw.text((28, 108), "/squad @partnyor ilə dəvət göndərə bilərsiniz.", font=_font(12), fill=GRAY)
+    else:
+        draw.text((28, 82), f"{nick}  &  {squad_info['partner_nick']}", font=_font(18, True), fill=GOLD)
+        draw.text((28, 116), f"Birlikdə qələbə: {squad_info['wins_together']}", font=_font(14), fill=GREEN)
+
+    draw.text((28, H - 20), "Zenith's Academy", font=_font(10), fill=GRAY)
+    img.save(output_path)
+    return output_path

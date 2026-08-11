@@ -296,6 +296,20 @@ def init_db():
             loser_elo_after TEXT
         )
     """)
+    cursor.execute("PRAGMA table_info(match_history)")
+    if "map" not in [r[1] for r in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE match_history ADD COLUMN map TEXT DEFAULT NULL")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS squads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            player1_id INTEGER NOT NULL,
+            player2_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL,
+            wins_together INTEGER DEFAULT 0
+        )
+    """)
 
     # ===== STANDOFF MARKET / SKIN cÉ™dvÉ™llÉ™ri =====
     cursor.execute("""
@@ -722,7 +736,7 @@ def get_active_theme(discord_id):
 
 
 def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, winner_elo_after,
-                          loser_elo_before, loser_elo_after, match_number=None):
+                          loser_elo_before, loser_elo_after, match_number=None, map_name=None):
     """
     match_type: "1v1" veya "5v5"
     winner_ids, loser_ids: discord_id siyahÄ±sÄ± (1v1 Ã¼Ã§Ã¼n tÉ™k elementli)
@@ -735,15 +749,130 @@ def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, w
     cursor.execute(
         """INSERT INTO match_history
            (match_type, played_at, match_number, winner_ids, loser_ids,
-            winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, map)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (match_type, int(_time.time()), match_number,
          _json.dumps(winner_ids), _json.dumps(loser_ids),
          _json.dumps(winner_elo_before), _json.dumps(winner_elo_after),
-         _json.dumps(loser_elo_before), _json.dumps(loser_elo_after))
+         _json.dumps(loser_elo_before), _json.dumps(loser_elo_after), map_name)
     )
     conn.commit()
     conn.close()
+
+
+def get_map_stats(discord_id):
+    """Oyunçunun hər xəritədə qələbə/məğlubiyyət sayını qaytarır: {map: {wins, losses}}."""
+    import json as _json
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT map, winner_ids, loser_ids FROM match_history WHERE map IS NOT NULL")
+    stats = {}
+    for map_name, winner_ids_json, loser_ids_json in cursor.fetchall():
+        winner_ids = _json.loads(winner_ids_json)
+        loser_ids = _json.loads(loser_ids_json)
+        if discord_id in winner_ids:
+            entry = stats.setdefault(map_name, {"wins": 0, "losses": 0})
+            entry["wins"] += 1
+        elif discord_id in loser_ids:
+            entry = stats.setdefault(map_name, {"wins": 0, "losses": 0})
+            entry["losses"] += 1
+    conn.close()
+    return stats
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SQUAD (SABİT DUO) SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_squad(discord_id):
+    """Aktiv squad-ı qaytarır: {id, partner_id, wins_together} və ya None."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, player1_id, player2_id, wins_together FROM squads "
+        "WHERE status='active' AND (player1_id=? OR player2_id=?) LIMIT 1",
+        (discord_id, discord_id)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    sid, p1, p2, wins = row
+    partner_id = p2 if p1 == discord_id else p1
+    return {"id": sid, "partner_id": partner_id, "wins_together": wins}
+
+
+def get_pending_squad_invite(invitee_id):
+    """İnvitee-yə göndərilmiş, hələ cavablanmamış dəvəti qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, player1_id FROM squads WHERE status='pending' AND player2_id=? "
+        "ORDER BY created_at DESC LIMIT 1",
+        (invitee_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {"id": row[0], "inviter_id": row[1]}
+
+
+def create_squad_invite(inviter_id, invitee_id):
+    """Hər iki tərəfin artıq aktiv/pending squad-ı yoxdursa dəvət yaradır. Uğursuzsa None."""
+    import time
+    if get_squad(inviter_id) or get_squad(invitee_id):
+        return None
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id FROM squads WHERE status='pending' AND player1_id=? AND player2_id=?",
+        (inviter_id, invitee_id)
+    )
+    if cursor.fetchone():
+        conn.close()
+        return None
+    cursor.execute(
+        "INSERT INTO squads (player1_id, player2_id, status, created_at) VALUES (?,?,'pending',?)",
+        (inviter_id, invitee_id, int(time.time()))
+    )
+    conn.commit()
+    sid = cursor.lastrowid
+    conn.close()
+    return sid
+
+
+def accept_squad_invite(squad_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE squads SET status='active' WHERE id=? AND status='pending'", (squad_id,))
+    conn.commit()
+    ok = cursor.rowcount > 0
+    conn.close()
+    return ok
+
+
+def reject_squad_invite(squad_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM squads WHERE id=? AND status='pending'", (squad_id,))
+    conn.commit()
+    conn.close()
+
+
+def record_squad_win(discord_id_a, discord_id_b):
+    """discord_id_a/b eyni aktiv squad-dadırsa wins_together-i artırır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE squads SET wins_together = wins_together + 1 WHERE status='active' AND "
+        "((player1_id=? AND player2_id=?) OR (player1_id=? AND player2_id=?))",
+        (discord_id_a, discord_id_b, discord_id_b, discord_id_a)
+    )
+    conn.commit()
+    ok = cursor.rowcount > 0
+    conn.close()
+    return ok
 
 
 def get_player_match_history(discord_id, limit=10):
@@ -843,13 +972,13 @@ def get_recent_matches(limit=15):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT match_number, match_type, played_at, winner_ids, loser_ids "
+        "SELECT match_number, match_type, played_at, winner_ids, loser_ids, map "
         "FROM match_history ORDER BY played_at DESC LIMIT ?", (limit,)
     )
     rows = cursor.fetchall()
 
     results = []
-    for match_number, match_type, played_at, winner_ids_json, loser_ids_json in rows:
+    for match_number, match_type, played_at, winner_ids_json, loser_ids_json, map_name in rows:
         winner_ids = _json.loads(winner_ids_json)
         loser_ids = _json.loads(loser_ids_json)
 
@@ -863,7 +992,7 @@ def get_recent_matches(limit=15):
 
         results.append({
             "match_number": match_number, "match_type": match_type, "played_at": played_at,
-            "winner_nicks": _nicks(winner_ids), "loser_nicks": _nicks(loser_ids)
+            "winner_nicks": _nicks(winner_ids), "loser_nicks": _nicks(loser_ids), "map": map_name
         })
 
     conn.close()
@@ -1329,22 +1458,25 @@ def close_season(season_id):
 
 def set_active_match(match_number, team_a_json=None, team_b_json=None,
                      log_message_id=None, log_channel_id=None, selected_map=None):
+    import time
     conn   = _get_conn()
     cursor = conn.cursor()
     cursor.execute("PRAGMA table_info(active_match)")
     cols = [r[1] for r in cursor.fetchall()]
-    for col, default in [("team_a","NULL"),("team_b","NULL"),
-                         ("log_message_id","NULL"),("log_channel_id","NULL"),
-                         ("selected_map","NULL")]:
+    for col, coltype, default in [
+        ("team_a", "TEXT", "NULL"), ("team_b", "TEXT", "NULL"),
+        ("log_message_id", "TEXT", "NULL"), ("log_channel_id", "TEXT", "NULL"),
+        ("selected_map", "TEXT", "NULL"), ("created_at", "INTEGER", "NULL"),
+    ]:
         if col not in cols:
-            cursor.execute(f"ALTER TABLE active_match ADD COLUMN {col} TEXT DEFAULT {default}")
+            cursor.execute(f"ALTER TABLE active_match ADD COLUMN {col} {coltype} DEFAULT {default}")
     cursor.execute(
         "UPDATE active_match SET match_number=?, status='active', "
-        "team_a=?, team_b=?, log_message_id=?, log_channel_id=?, selected_map=? WHERE id=1",
+        "team_a=?, team_b=?, log_message_id=?, log_channel_id=?, selected_map=?, created_at=? WHERE id=1",
         (match_number, team_a_json, team_b_json,
          str(log_message_id) if log_message_id else None,
          str(log_channel_id) if log_channel_id else None,
-         selected_map)
+         selected_map, int(time.time()))
     )
     conn.commit()
     conn.close()
@@ -1355,7 +1487,8 @@ def clear_active_match():
     cursor = conn.cursor()
     cursor.execute(
         "UPDATE active_match SET match_number=NULL, status=NULL, "
-        "team_a=NULL, team_b=NULL, log_message_id=NULL, log_channel_id=NULL, selected_map=NULL WHERE id=1"
+        "team_a=NULL, team_b=NULL, log_message_id=NULL, log_channel_id=NULL, "
+        "selected_map=NULL, created_at=NULL WHERE id=1"
     )
     conn.commit()
     conn.close()
@@ -1368,8 +1501,12 @@ def get_active_match():
     cursor.execute("PRAGMA table_info(active_match)")
     cols = [r[1] for r in cursor.fetchall()]
     extra = "team_a" in cols
+    has_created_at = "created_at" in cols
     if extra:
-        cursor.execute("SELECT match_number, status, team_a, team_b, log_message_id, log_channel_id, selected_map FROM active_match WHERE id=1")
+        sel = "match_number, status, team_a, team_b, log_message_id, log_channel_id, selected_map"
+        if has_created_at:
+            sel += ", created_at"
+        cursor.execute(f"SELECT {sel} FROM active_match WHERE id=1")
     else:
         cursor.execute("SELECT match_number, status FROM active_match WHERE id=1")
     row = cursor.fetchone()
@@ -1378,13 +1515,16 @@ def get_active_match():
         return None
     result = {"match_number": row[0], "status": row[1],
               "team_a": [], "team_b": [],
-              "log_message_id": None, "log_channel_id": None, "selected_map": None}
+              "log_message_id": None, "log_channel_id": None, "selected_map": None,
+              "created_at": None}
     if extra and len(row) >= 7:
         result["team_a"]         = _json.loads(row[2]) if row[2] else []
         result["team_b"]         = _json.loads(row[3]) if row[3] else []
         result["log_message_id"] = int(row[4]) if row[4] else None
         result["log_channel_id"] = int(row[5]) if row[5] else None
         result["selected_map"]   = row[6]
+        if has_created_at and len(row) >= 8:
+            result["created_at"] = row[7]
     return result
 
 

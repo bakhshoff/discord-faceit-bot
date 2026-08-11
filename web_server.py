@@ -1,10 +1,12 @@
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request, abort
 import sqlite3
 import os
+import database
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(os.environ.get("DATA_DIR", BASE_DIR), "bot_database.db")
 TEMPLATE_DIR = os.path.join(BASE_DIR, "web_leaderboard", "templates")
+ADMIN_DASHBOARD_TOKEN = os.environ.get("ADMIN_DASHBOARD_TOKEN", "")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR)
 
@@ -58,6 +60,23 @@ def api_leaderboard():
         "players": get_players(),
         "total_matches": get_total_matches()
     })
+
+
+@app.route("/admin")
+def admin_dashboard():
+    if not ADMIN_DASHBOARD_TOKEN or request.args.get("key") != ADMIN_DASHBOARD_TOKEN:
+        abort(403)
+
+    stats = database.get_activity_stats(days=7)
+    hourly = database.get_hourly_activity(days=7)
+    matches = database.get_recent_matches(limit=20)
+    players = get_players()
+
+    return render_template(
+        "admin.html",
+        stats=stats, hourly=hourly, matches=matches,
+        players=players, total_matches=get_total_matches()
+    )
 
 
 def run_web_server():
