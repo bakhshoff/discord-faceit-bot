@@ -38,7 +38,7 @@ from database import (
     check_and_grant_achievements, get_player_achievements,
     update_streak, get_streak_bonus,
     get_player_stats_dict, get_player_match_history,
-    get_recent_matches, get_match_by_number, delete_match_and_revert,
+    get_recent_matches, get_match_by_number, delete_match_and_revert, get_match_coin_total,
     admin_set_player_field, log_admin_action, is_banned,
     get_map_stats, get_all_players,
     get_squad, get_pending_squad_invite, create_squad_invite,
@@ -3469,6 +3469,147 @@ async def admin_matc_sil_cmd(interaction: discord.Interaction, matc_no: int):
 
 @admin_matc_sil_cmd.error
 async def admin_matc_sil_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+class ConfirmSwapMatchView(discord.ui.View):
+    def __init__(self, match_number, admin_id):
+        super().__init__(timeout=60)
+        self.match_number = match_number
+        self.admin_id = admin_id
+
+    @discord.ui.button(label="Təsdiqlə və dəyiş", style=discord.ButtonStyle.danger, emoji="🔄")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı işlədən admin üçündür.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        for child in self.children:
+            child.disabled = True
+
+        match = get_match_by_number(self.match_number)
+        if not match:
+            await interaction.edit_original_response(content="❌ Matç artıq tapılmadı.", embed=None, view=self)
+            return
+
+        old_winner_ids = match["winner_ids"]
+        old_loser_ids = match["loser_ids"]
+
+        # Köhnə mükafatları (bu matça aid coin log-ları) geri al
+        for did in old_winner_ids + old_loser_ids:
+            amt = get_match_coin_total(did, self.match_number)
+            if amt:
+                new_bal = add_coins(did, -amt)
+                add_coin_log(
+                    did, -amt,
+                    f"Matç No{self.match_number} nəticə düzəlişi — köhnə mükafat geri alındı",
+                    "spend", new_bal
+                )
+
+        # ELO/qələbə-məğlubiyyəti köhnə (matçdan əvvəlki) vəziyyətə qaytar
+        affected = delete_match_and_revert(self.match_number)
+        if affected is None:
+            await interaction.edit_original_response(content="❌ Matç geri qaytarılarkən xəta baş verdi.", embed=None, view=self)
+            return
+
+        # Yeni (dəyişdirilmiş) nəticəni tətbiq et — köhnə uduzanlar indi qalib
+        results = update_team_elo(old_loser_ids, old_winner_ids)
+        if not results:
+            await interaction.edit_original_response(
+                content="❌ Yeni nəticə tətbiq edilə bilmədi (oyunçu(lar) tapılmadı).", embed=None, view=self
+            )
+            return
+
+        record_match_history(
+            match["match_type"], old_loser_ids, old_winner_ids,
+            [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
+            [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
+            match_number=self.match_number
+        )
+
+        # Yeni rola uyğun təzə coin mükafatı — köhnə ədəd köçürülmür, standart düsturla yenidən verilir
+        coin_lines = []
+        for r in results["winners"]:
+            earned = random.randint(5, 10)
+            new_bal = add_coins(r["discord_id"], earned)
+            add_coin_log(r["discord_id"], earned, f"Matç No{self.match_number} nəticə düzəlişi — yeni qələbə", "earn", new_bal)
+            coin_lines.append(f"**{r['nick']}**: +{earned} coin (yeni qalib)")
+        for r in results["losers"]:
+            earned = random.randint(0, 5)
+            new_bal = add_coins(r["discord_id"], earned)
+            add_coin_log(r["discord_id"], earned, f"Matç No{self.match_number} nəticə düzəlişi — yeni məğlubiyyət", "earn", new_bal)
+            coin_lines.append(f"**{r['nick']}**: +{earned} coin (yeni məğlub)")
+
+        for p in results["winners"] + results["losers"]:
+            await _sync_rank_role(interaction.guild, p["discord_id"], p["new_elo"])
+
+        log_admin_action(
+            "admin_matc_qalib_deyis", 0, "match_history",
+            f"qalib={old_winner_ids}", f"qalib={old_loser_ids}",
+            f"matc_no={self.match_number}", self.admin_id
+        )
+
+        elo_lines = [f"{r['nick']}: {r['old_elo']} → {r['new_elo']} (✅ Qalib)" for r in results["winners"]]
+        elo_lines += [f"{r['nick']}: {r['old_elo']} → {r['new_elo']} (❌ Məğlub)" for r in results["losers"]]
+        embed = discord.Embed(
+            title=f"🔄 Matç No{self.match_number} nəticəsi dəyişdirildi",
+            description=(
+                "**Yeni ELO:**\n" + "\n".join(elo_lines) +
+                "\n\n**Yeni coin mükafatı:**\n" + "\n".join(coin_lines) +
+                "\n\n⚠️ Kill/asist/ölüm, nailiyyət, missiya/Battle Pass XP və artıq istifadə olunmuş "
+                "ELO kartları köhnə (səhv) nəticəyə görə hesablanmış olaraq qalır — düzəlmir."
+            ),
+            color=discord.Color.blurple()
+        )
+        await interaction.edit_original_response(content=None, embed=embed, view=self)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı işlədən admin üçündür.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="❌ Ləğv edildi.", embed=None, view=self)
+
+
+@bot.tree.command(name="admin_matc_qalib_deyis", description="[Admin] Bitmiş matçın qalib komandasını dəyişir, ELO və coin mükafatını buna uyğun düzəldir")
+@app_commands.describe(matc_no="Nəticəsi dəyişəcək matçın nömrəsi")
+@staff_check()
+async def admin_matc_qalib_deyis_cmd(interaction: discord.Interaction, matc_no: int):
+    match = get_match_by_number(matc_no)
+    if not match:
+        await interaction.response.send_message(f"❌ Matç No{matc_no} tapılmadı.", ephemeral=True)
+        return
+
+    def _nick(did):
+        row = get_player(did)
+        return row[1] if row else f"`{did}`"
+
+    winner_nicks = [_nick(did) for did in match["winner_ids"]]
+    loser_nicks = [_nick(did) for did in match["loser_ids"]]
+
+    embed = discord.Embed(
+        title=f"🔄 Matç No{matc_no} qalibi dəyişilsin?",
+        description=(
+            f"Hazırkı qalib: **{', '.join(winner_nicks)}**\n"
+            f"Hazırkı məğlub: **{', '.join(loser_nicks)}**\n\n"
+            f"Təsdiqlədikdə: **{', '.join(loser_nicks)}** yeni qalib olacaq.\n\n"
+            "ELO və qələbə/məğlubiyyət sayı köhnə vəziyyətə qaytarılıb yeni nəticəyə görə YENİDƏN "
+            "hesablanacaq (əvvəlki kimi eyni formula ilə). Coin mükafatı da yeni rola uyğun təzədən "
+            "verilir (köhnə ədəd köçürülmür, standart düsturla yenidən hesablanır).\n\n"
+            "⚠️ Kill/asist/ölüm, nailiyyət, missiya/Battle Pass XP və artıq istifadə olunmuş ELO "
+            "kartları köhnə nəticəyə görə qalır — bunlar düzəlmir."
+        ),
+        color=discord.Color.orange()
+    )
+    view = ConfirmSwapMatchView(matc_no, interaction.user.id)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@admin_matc_qalib_deyis_cmd.error
+async def admin_matc_qalib_deyis_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 

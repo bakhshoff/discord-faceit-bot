@@ -1525,6 +1525,21 @@ def add_coin_log(discord_id, change, reason, log_type, balance_after=None):
     conn.close()
 
 
+def get_match_coin_total(discord_id, match_number):
+    """Bu oyunçuya həmin matçla bağlı (reason='Matç No{X} ...') yazılmış bütün coin
+    log-larının cəmini qaytarır — nəticə düzəlişində köhnə mükafatı geri almaq üçün."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    pattern = f"Matç No{match_number} %"
+    cursor.execute(
+        "SELECT COALESCE(SUM(change),0) FROM coin_logs WHERE discord_id=? AND reason LIKE ?",
+        (discord_id, pattern)
+    )
+    total = cursor.fetchone()[0]
+    conn.close()
+    return total
+
+
 def get_coin_logs(discord_id, log_type=None, limit=15):
     """
     OyunÃ§unun coin loglarÄ±nÄ± qaytarÄ±r (É™n yenidÉ™n kÃ¶hnÉ™yÉ™).
