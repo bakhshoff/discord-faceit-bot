@@ -367,6 +367,7 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
     level      = pass_data.get("level", 0)
     xp         = pass_data.get("xp", 0)
     is_premium = pass_data.get("is_premium", False)
+    claimed    = set(pass_data.get("claimed", []))
     MAX_LVL    = BP_MAX_LEVEL
     XP_NEED    = 500
 
@@ -406,25 +407,44 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
     for ci, lv in enumerate(PASS_MILESTONES):
         cx   = LEFT_W + ci * CELL_W
         done = lv <= level
+        is_claimed = lv in claimed
+        pending_claim = done and not is_claimed
         is_cur = (lv == level + 1 and lv > 0) or (level == 0 and lv == 5)
 
         # Free cell
-        fc = (30, 42, 30) if done else PASS_FREE_BG
+        if pending_claim:
+            fc = (55, 42, 8)
+        elif done:
+            fc = (30, 42, 30)
+        else:
+            fc = PASS_FREE_BG
         draw.rectangle([(cx, y0), (cx + CELL_W - 2, y0 + FREE_H)], fill=fc)
         fi = _reward_img(lv, False, (CELL_W - 16, FREE_H - 22))
         img.paste(fi, (cx + 8, y0 + 6), fi)
-        if done:
+        if pending_claim:
+            draw.text((cx + CELL_W // 2, y0 + FREE_H - 10), "TƏLƏB ET",
+                      font=_f(9, True), fill=(255, 200, 50), anchor="mm")
+        elif done:
             draw.text((cx + CELL_W // 2, y0 + FREE_H - 10), "ALINDI",
                       font=_f(9, True), fill=(60, 200, 60), anchor="mm")
         draw.line([(cx, y0), (cx, y0 + FREE_H)], fill=PASS_BORDER, width=1)
 
         # Premium cell
-        pc = (42, 28, 65) if (done and is_premium) else PASS_PREM_BG
+        prem_pending = pending_claim and is_premium
+        if prem_pending:
+            pc = (55, 42, 8)
+        elif done and is_premium:
+            pc = (42, 28, 65)
+        else:
+            pc = PASS_PREM_BG
         draw.rectangle([(cx, y0+FREE_H+BAR_H), (cx+CELL_W-2, y0+FREE_H+BAR_H+PREM_H)], fill=pc)
         pi_h = PREM_H - 28
         pi = _reward_img(lv, True, (CELL_W - 12, pi_h))
         img.paste(pi, (cx + 6, y0 + FREE_H + BAR_H + 6), pi)
-        if done and is_premium:
+        if prem_pending:
+            draw.text((cx + CELL_W // 2, y0+FREE_H+BAR_H+8), "TƏLƏB ET",
+                      font=_f(9, True), fill=(255, 200, 50), anchor="mm")
+        elif done and is_premium:
             draw.text((cx + CELL_W // 2, y0+FREE_H+BAR_H+8), "ALINDI",
                       font=_f(9, True), fill=PASS_GOLD, anchor="mm")
         draw.line([(cx, y0+FREE_H+BAR_H), (cx, y0+FREE_H+BAR_H+PREM_H)], fill=PASS_BORDER, width=1)
@@ -523,6 +543,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
 
     level      = pass_data.get("level", 0)
     is_premium = pass_data.get("is_premium", False)
+    claimed    = set(pass_data.get("claimed", []))
 
     img  = Image.new("RGB", (W, H), PASS_BG2)
     draw = ImageDraw.Draw(img)
@@ -545,6 +566,8 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
             cx = PAD + col * CW
             cy = HEAD + row * (BLOCK_H + 10)
             done = lv <= level
+            is_claimed = lv in claimed
+            pending_claim = done and not is_claimed
             is_milestone = lv in PASS_MILESTONES
 
             # Level number strip
@@ -554,11 +577,19 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
                       fill=(20, 15, 30) if done else GRAY2, anchor="mm")
 
             # VIP cell (TOP)
-            vc = (42, 28, 65) if (done and is_premium) else (26, 20, 40)
+            if pending_claim and is_premium:
+                vc = (55, 42, 8)
+            elif done and is_premium:
+                vc = (42, 28, 65)
+            else:
+                vc = (26, 20, 40)
             draw.rectangle([(cx, cy + 22), (cx + CW - 2, cy + 22 + VIP_H)], fill=vc)
             vi = _reward_img(lv, True, (CW - 12, VIP_H - 22))
             img.paste(vi, (cx + 6, cy + 24), vi)
-            if done and is_premium:
+            if pending_claim and is_premium:
+                draw.text((cx + CW - 12, cy + 22 + 10), "!", font=_f(12, True),
+                          fill=(255, 200, 50), anchor="mm")
+            elif done and is_premium:
                 draw.text((cx + CW - 12, cy + 22 + 10), "✓", font=_f(11, True),
                           fill=PASS_PURPLE, anchor="mm")
             draw.line([(cx, cy + 22), (cx + CW - 2, cy + 22)], fill=PASS_BORDER, width=1)
@@ -568,11 +599,19 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
             draw.line([(cx, div_y), (cx + CW - 2, div_y)], fill=PASS_BORDER, width=2)
 
             # FREE cell (BOTTOM)
-            fc = (26, 34, 26) if done else (20, 24, 20)
+            if pending_claim:
+                fc = (55, 42, 8)
+            elif done:
+                fc = (26, 34, 26)
+            else:
+                fc = (20, 24, 20)
             draw.rectangle([(cx, div_y + GAP), (cx + CW - 2, div_y + GAP + FREE_H)], fill=fc)
             fi = _reward_img(lv, False, (CW - 14, FREE_H - 20))
             img.paste(fi, (cx + 7, div_y + GAP + 2), fi)
-            if done:
+            if pending_claim:
+                draw.text((cx + CW - 12, div_y + GAP + 10), "!", font=_f(11, True),
+                          fill=(255, 200, 50), anchor="mm")
+            elif done:
                 draw.text((cx + CW - 12, div_y + GAP + 10), "✓", font=_f(10, True),
                           fill=(90, 210, 110), anchor="mm")
 
@@ -583,7 +622,9 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
                                 outline=PASS_PURPLE, width=2)
 
     draw.rectangle([(0, H - FOOT), (W, H)], fill=PASS_HEADER)
-    draw.text((PAD, H - FOOT + 6), f"Zenith's Academy {BP_SEASON_NAME} Pass  •  \"VIP Pass Al\" — {BP_PRICE_AZN} AZN",
+    draw.text((PAD, H - FOOT + 6),
+              f"Zenith's Academy {BP_SEASON_NAME} Pass  •  \"VIP Pass Al\" — {BP_PRICE_AZN} AZN  •  "
+              "! = tələb edilməli, ✓ = artıq tələb edilib",
               font=_f(9), fill=GRAY2)
     draw.text((W - PAD, H - FOOT + 6), "ÜSTDƏ VIP  •  ALTDA FREE",
               font=_f(9, True), fill=PASS_PURPLE, anchor="ra")

@@ -63,7 +63,7 @@ from database import (
     add_boost_cards, get_boost_card_counts,
     reset_all_player_data,
     update_bp_mission, add_bp_xp, get_pass_data, has_battle_pass, is_premium_pass,
-    buy_battle_pass, get_active_bp_missions,
+    buy_battle_pass, get_active_bp_missions, claim_bp_rewards, get_pending_bp_reward_count,
     BP_XP_PER_LEVEL, BP_MAX_LEVEL, BP_PRICE_AZN, BP_LEVEL_REWARDS, BP_PREMIUM_REWARDS,
     BP_SEASON_NAME, BP_SEASON_NAME_AZ
 )
@@ -1232,7 +1232,7 @@ class MatchResultView(discord.ui.View):
                 if did == mvp_id:
                     xp += update_bp_mission(did, "mvp", 1)
             bp_result = add_bp_xp(did, xp)
-            if bp_result.get("rewards"):
+            if bp_result.get("leveled_up"):
                 new_bp_levels.append((nick, bp_result))
 
         for p, r in zip(winner_team, results["winners"]):
@@ -1376,7 +1376,8 @@ class MatchResultView(discord.ui.View):
         if new_bp_levels:
             embed.add_field(
                 name="🎫 Pass Level artdı!",
-                value="\n".join(f"**{nick}** → Level {bp['new_level']}" for nick, bp in new_bp_levels),
+                value="\n".join(f"**{nick}** → Level {bp['new_level']}" for nick, bp in new_bp_levels)
+                      + "\n`/pass` → \"Mükafatları tələb et\" ilə yığılmış mükafatları alın",
                 inline=False
             )
         if challenge_claimers:
@@ -2788,6 +2789,12 @@ class PassView(discord.ui.View):
         super().__init__(timeout=180)
         self.discord_id = discord_id
         self.is_premium = is_premium
+        pending = get_pending_bp_reward_count(discord_id)
+        if pending > 0:
+            self.claim_btn.label = f"Mükafatları tələb et ({pending})"
+        else:
+            self.claim_btn.disabled = True
+            self.claim_btn.label = "Tələb ediləcək mükafat yoxdur"
         if is_premium:
             self.buy_btn.disabled = True
             self.buy_btn.label = "VIP Pass sahibisiniz"
@@ -2799,6 +2806,39 @@ class PassView(discord.ui.View):
             )
             return False
         return True
+
+    @discord.ui.button(label="Mükafatları tələb et", style=discord.ButtonStyle.success, emoji="🎁")
+    async def claim_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer()
+        granted = claim_bp_rewards(self.discord_id)
+        if not granted:
+            await interaction.followup.send("✅ Tələb ediləcək yeni mükafat yoxdur.", ephemeral=True)
+            return
+
+        pass_data = get_pass_data(self.discord_id)
+        missions = get_active_bp_missions(self.discord_id)
+        card_path = os.path.join(DATA_DIR or ".", f"pass_{self.discord_id}.png")
+        await asyncio.to_thread(generate_pass_card, pass_data, missions, card_path)
+
+        pending = get_pending_bp_reward_count(self.discord_id)
+        if pending > 0:
+            button.label = f"Mükafatları tələb et ({pending})"
+        else:
+            button.disabled = True
+            button.label = "Tələb ediləcək mükafat yoxdur"
+        await interaction.edit_original_response(
+            attachments=[discord.File(card_path, filename="pass.png")], view=self
+        )
+
+        lines = [f"Lv.{r['level']} ({'VIP' if r['track'] == 'premium' else 'FREE'}) — {r['label']}" for r in granted]
+        embed = discord.Embed(
+            title=f"🎁 {len(granted)} mükafat tələb edildi!",
+            description="\n".join(lines),
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="Bütün Levellər", style=discord.ButtonStyle.secondary, emoji="📋")
     async def levels_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
