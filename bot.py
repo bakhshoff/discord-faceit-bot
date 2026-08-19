@@ -87,7 +87,7 @@ from visual_cards import (
     RANKS, get_rank
 )
 from referral_visual import generate_item_preview_card
-from pass_visual import generate_pass_card, generate_pass_levels_card, generate_pass_announcement
+from pass_visual import generate_pass_card, generate_pass_levels_card, generate_pass_announcement, generate_pass_missions_card
 import requests
 
 load_dotenv()
@@ -2148,13 +2148,15 @@ async def profile(interaction: discord.Interaction):
             theme_colors = theme_item.get("colors")
 
     player_lang = get_lang(discord_id)
+    pass_data = get_pass_data(discord_id)
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
         banner_path=banner_path, coins=stats.get("coins", 0), frame_path=frame_path,
         zm_balance=stats.get("zm_balance", 0),
         kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
-        theme_colors=theme_colors, title=get_active_title_name(discord_id), lang=player_lang
+        theme_colors=theme_colors, title=get_active_title_name(discord_id), lang=player_lang,
+        pass_status="premium" if pass_data["is_premium"] else "free", pass_level=pass_data["level"]
     )
 
     await interaction.followup.send(
@@ -2796,6 +2798,16 @@ class PassView(discord.ui.View):
         await asyncio.to_thread(generate_pass_levels_card, pass_data, card_path)
         await interaction.followup.send(file=discord.File(card_path, filename="pass_levels.png"), ephemeral=True)
 
+    @discord.ui.button(label="Missiyalar", style=discord.ButtonStyle.secondary, emoji="🎯")
+    async def missions_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        missions = get_active_bp_missions(self.discord_id)
+        card_path = os.path.join(DATA_DIR or ".", f"pass_missions_{self.discord_id}.png")
+        await asyncio.to_thread(generate_pass_missions_card, missions, card_path)
+        await interaction.followup.send(file=discord.File(card_path, filename="pass_missions.png"), ephemeral=True)
+
     @discord.ui.button(label="Çərçivə/Banner Önizlə", style=discord.ButtonStyle.secondary, emoji="👁️")
     async def preview_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._guard(interaction):
@@ -2810,7 +2822,7 @@ class PassView(discord.ui.View):
             avatar_bytes = None
 
         files = []
-        for item_id in ("frame_purple", "banner_purple"):
+        for item_id in ("frame_genesis", "banner_genesis"):
             item = get_item_by_id(item_id)
             if not item:
                 continue

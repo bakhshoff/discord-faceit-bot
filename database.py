@@ -3432,12 +3432,12 @@ BP_PREMIUM_REWARDS = {
     12: {"type": "elo_card", "value": {"card_type": "protect", "qty": 2}, "label": "2x ELO Qoruma Kartı"},
     13: {"type": "azn",   "value": 0.2,  "label": "0.2 AZN"},
     14: {"type": "coins", "value": 100,  "label": "100 coin"},
-    15: {"type": "avatar_frame", "value": "frame_purple", "label": "Genesis Çərçivəsi"},
+    15: {"type": "avatar_frame", "value": "frame_genesis", "label": "Genesis Çərçivəsi"},
     16: {"type": "azn",   "value": 0.2,  "label": "0.2 AZN"},
     17: {"type": "coins", "value": 125,  "label": "125 coin"},
     18: {"type": "elo_card", "value": {"card_type": "boost100", "qty": 2}, "label": "2x 100% Boost Kartı"},
     19: {"type": "azn",   "value": 0.2,  "label": "0.2 AZN"},
-    20: {"type": "banner", "value": "banner_purple", "label": "Genesis Banneri"},
+    20: {"type": "banner", "value": "banner_genesis", "label": "Genesis Banneri"},
     21: {"type": "coins", "value": 150,  "label": "150 coin"},
     22: {"type": "elo_card", "value": {"card_type": "protect", "qty": 3}, "label": "3x ELO Qoruma Kartı"},
     23: {"type": "azn",   "value": 0.2,  "label": "0.2 AZN"},
@@ -3673,31 +3673,44 @@ def add_bp_xp(discord_id: int, xp: int) -> dict:
 
 
 def get_active_bp_missions(discord_id: int) -> list:
+    """Günlük/həftəlik/sezonluq missiyaları təyin edib aktiv siyahını qaytarır.
+    Günlük/həftəlik rotasiyalar dövr bitəndə YENİDƏN QURULUR (progress/completed sıfırlanır) —
+    əvvəllər INSERT OR IGNORE istifadə olunurdu ki, UNIQUE(discord_id,mission_id,season_id)
+    məhdudiyyəti üzündən eyni missiya id-si təkrar seçiləndə (hovuz ölçüsü==LIMIT olduğu üçün
+    həmişə baş verirdi) sətir səssizcə YENİLƏNMİRDİ və missiya növbəti dövrdə əbədi 'tamamlanmış'
+    vəziyyətdə donub qalırdı. İndi ON CONFLICT ... DO UPDATE ilə faktiki sıfırlanır."""
     import time, json
     conn   = _get_conn()
     cursor = conn.cursor()
     now    = int(time.time())
     today  = now - (now % 86400)
+    week   = now - (now % (7 * 86400))
 
-    # Günlük missiyaları assign et
-    cursor.execute(
-        "SELECT COUNT(*) FROM player_bp_missions WHERE discord_id=? AND season_id=? AND completed=0 "
-        "AND assigned_at >= ? AND mission_id IN (SELECT id FROM bp_missions WHERE mission_type='daily')",
-        (discord_id, BP_SEASON_ID, today)
-    )
-    if cursor.fetchone()[0] == 0:
+    def _refresh_rotation(mission_type, period_start, count):
         cursor.execute(
-            "SELECT id FROM bp_missions WHERE season_id=? AND mission_type='daily' ORDER BY RANDOM() LIMIT 3",
-            (BP_SEASON_ID,)
+            "SELECT COUNT(*) FROM player_bp_missions WHERE discord_id=? AND season_id=? "
+            "AND assigned_at >= ? AND mission_id IN (SELECT id FROM bp_missions WHERE mission_type=?)",
+            (discord_id, BP_SEASON_ID, period_start, mission_type)
+        )
+        if cursor.fetchone()[0] > 0:
+            return  # bu dövr üçün artıq təyin olunub
+        cursor.execute(
+            "SELECT id FROM bp_missions WHERE season_id=? AND mission_type=? ORDER BY RANDOM() LIMIT ?",
+            (BP_SEASON_ID, mission_type, count)
         )
         for (mid,) in cursor.fetchall():
-            cursor.execute(
-                "INSERT OR IGNORE INTO player_bp_missions (discord_id,mission_id,season_id,assigned_at) VALUES (?,?,?,?)",
-                (discord_id, mid, BP_SEASON_ID, now)
-            )
+            cursor.execute("""
+                INSERT INTO player_bp_missions (discord_id,mission_id,season_id,progress,completed,assigned_at)
+                VALUES (?,?,?,0,0,?)
+                ON CONFLICT(discord_id,mission_id,season_id)
+                DO UPDATE SET progress=0, completed=0, assigned_at=excluded.assigned_at
+            """, (discord_id, mid, BP_SEASON_ID, now))
         conn.commit()
 
-    # Sezonluq missiyaları da assign et
+    _refresh_rotation("daily", today, 3)
+    _refresh_rotation("weekly", week, 3)
+
+    # Sezonluq missiyalar bir dəfə təyin olunur, rotasiya/sıfırlama yoxdur
     cursor.execute(
         "SELECT id FROM bp_missions WHERE season_id=? AND mission_type='seasonal'",
         (BP_SEASON_ID,)
@@ -3709,15 +3722,16 @@ def get_active_bp_missions(discord_id: int) -> list:
         )
     conn.commit()
 
-    # Aktiv missiyaları qaytar
+    # Aktiv missiyaları qaytar (günlük → həftəlik → sezonluq, hər qrupda bitməmiş əvvəl)
     cursor.execute("""
         SELECT pm.id, bm.description, bm.type, bm.target, bm.xp_reward, bm.mission_type,
                pm.progress, pm.completed
         FROM player_bp_missions pm
         JOIN bp_missions bm ON bm.id=pm.mission_id
         WHERE pm.discord_id=? AND pm.season_id=?
-        ORDER BY pm.completed ASC, bm.mission_type DESC
-        LIMIT 8
+        ORDER BY CASE bm.mission_type WHEN 'daily' THEN 0 WHEN 'weekly' THEN 1 ELSE 2 END,
+                 pm.completed ASC
+        LIMIT 12
     """, (discord_id, BP_SEASON_ID))
     rows = cursor.fetchall()
     conn.close()

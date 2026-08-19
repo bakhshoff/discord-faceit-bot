@@ -564,6 +564,78 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
     return output_path
 
 
+_MISSION_CAT_LABELS = {"daily": "GÜNLÜK", "weekly": "HƏFTƏLİK", "seasonal": "SEZONLUQ"}
+_MISSION_CAT_COLORS = {"daily": GRAY2, "weekly": PASS_TEAL, "seasonal": PASS_GOLD}
+
+
+def generate_pass_missions_card(missions: list, output_path: str):
+    """Bütün aktiv missiyaları (günlük/həftəlik/sezonluq) qruplaşdırılmış şəkildə göstərir —
+    /pass panelindəki 3-slotlu qısa önizləmədən fərqli olaraq HAMISINI göstərir."""
+    PAD  = 16
+    HEAD = 58
+    FOOT = 26
+    ROW_H = 46
+    SEC_GAP = 30
+
+    groups = {"daily": [], "weekly": [], "seasonal": []}
+    for m in missions:
+        groups.setdefault(m["cat"], []).append(m)
+
+    W = 620
+    H = HEAD + FOOT
+    for cat in ("daily", "weekly", "seasonal"):
+        if groups[cat]:
+            H += SEC_GAP + len(groups[cat]) * ROW_H
+
+    img  = Image.new("RGB", (W, H), PASS_BG2)
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle([(0, 0), (W, HEAD)], fill=PASS_HEADER)
+    draw.line([(0, HEAD - 2), (W, HEAD - 2)], fill=PASS_PURPLE, width=2)
+    draw.text((PAD, 12), "Zenith's Academy", font=_f(12, True), fill=PASS_PURPLE)
+    draw.text((PAD, 30), f"{SEASON_LABEL} — MİSSİYALAR", font=_f(14, True), fill=WHITE2)
+
+    y = HEAD + 12
+    for cat in ("daily", "weekly", "seasonal"):
+        rows = groups[cat]
+        if not rows:
+            continue
+        cat_col = _MISSION_CAT_COLORS[cat]
+        draw.text((PAD, y), _MISSION_CAT_LABELS[cat], font=_f(11, True), fill=cat_col)
+        draw.line([(PAD + 90, y + 7), (W - PAD, y + 7)], fill=PASS_BORDER, width=1)
+        y += 22
+        for m in rows:
+            done = m["completed"]
+            row_bg = (22, 32, 24) if done else (22, 19, 32)
+            draw.rounded_rectangle([(PAD, y), (W - PAD, y + ROW_H - 8)], radius=6,
+                                   fill=row_bg, outline=(cat_col if not done else (70, 200, 100)), width=1)
+            draw.text((PAD + 12, y + 9), m["desc"], font=_f(11, True), fill=WHITE2)
+
+            pct = min(m["progress"] / m["target"], 1.0) if m["target"] else 1.0
+            bar_x, bar_y, bar_w, bar_h = PAD + 12, y + 26, 220, 6
+            draw.rounded_rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], radius=3, fill=(40, 36, 55))
+            if pct > 0:
+                draw.rounded_rectangle([(bar_x, bar_y), (bar_x + int(bar_w * pct), bar_y + bar_h)],
+                                       radius=3, fill=(90, 210, 110) if done else cat_col)
+            draw.text((bar_x + bar_w + 10, bar_y + bar_h // 2), f"{m['progress']}/{m['target']}",
+                      font=_f(9), fill=GRAY2, anchor="lm")
+
+            xp_txt = "TAMAMLANDI" if done else f"+{m['xp']} XP"
+            xp_col = (90, 210, 110) if done else PASS_GOLD
+            draw.text((W - PAD - 12, y + (ROW_H - 8) // 2), xp_txt, font=_f(10, True), fill=xp_col, anchor="rm")
+            y += ROW_H
+        y += SEC_GAP - 22
+
+    draw.rectangle([(0, H - FOOT), (W, H)], fill=PASS_HEADER)
+    draw.text((PAD, H - FOOT + 6), f"Zenith's Academy {BP_SEASON_NAME} Pass",
+              font=_f(9), fill=GRAY2)
+    draw.text((W - PAD, H - FOOT + 6), "Günlük 00:00 UTC-də, həftəlik həftə başında yenilənir",
+              font=_f(9), fill=GRAY2, anchor="ra")
+
+    _finalize(img).save(output_path)
+    return output_path
+
+
 def generate_pass_announcement(output_path: str):
     """Genesis (Yaranış) Battle Pass tanıtım elan kartı — kanal elanı üçün."""
     W, H = 900, 580

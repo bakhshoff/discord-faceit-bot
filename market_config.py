@@ -11,6 +11,11 @@ MARKET_ITEMS = [
     # Xüsusi — yalnız referral sistemi ilə əldə edilə bilər, marketdə satılmır
     {"id": "banner_ambassador", "name": "Zenith's Academy Ambassador",
      "type": "banner", "price": 0, "file": "banner_ambassador.png", "exclusive": True},
+    # Xüsusi — yalnız Genesis Battle Pass (VIP) ilə əldə edilə bilər, marketdə satılmır
+    {"id": "banner_genesis", "name": "Genesis Banneri",
+     "type": "banner", "price": 0, "file": "banner_genesis.png", "exclusive": True},
+    {"id": "frame_genesis", "name": "Genesis Çərçivəsi",
+     "type": "avatar_frame", "price": 0, "file": "frame_genesis.png", "exclusive": True},
 
 {"id": "banner_gold", "name": "Qızılı Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
     {"id": "banner_red", "name": "Qırmızı Alov Banner", "type": "banner", "price": 200, "file": "banner_red.png"},
