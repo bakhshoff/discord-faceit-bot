@@ -284,7 +284,26 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
                                fill=(10,30,20) if is_protect else (20,10,40), outline=panel_col, width=2)
         icon_cx, icon_cy = w//2, body_h//2 - 6
-        if is_protect:
+
+        # Real asset varsa göstər (boost50/boost100/protect üçün ayrı fayllar),
+        # yoxdursa çəkilmiş fallback ikon.
+        asset_name = {
+            "boost50": "elo_boost_card.png",
+            "boost100": "elo_boost100_card.png",
+            "protect": "elo_protect_card.png",
+        }.get(card_type, "elo_boost_card.png")
+        real_loaded = False
+        try:
+            ei = Image.open(os.path.join(BASE_DIR2, "assets", asset_name)).convert("RGBA")
+            R = min(w, body_h) // 4
+            ei_size = int(R * 2.2)
+            ei.thumbnail((ei_size, ei_size), Image.LANCZOS)
+            img.paste(ei, (icon_cx - ei.width//2, icon_cy - ei.height//2), ei)
+            real_loaded = True
+        except Exception:
+            real_loaded = False
+
+        if not real_loaded and is_protect:
             # Qalxan (shield) formalı ikon — real asset yoxdur, primitiv çəkilir
             R = min(w, body_h) // 4
             shield = [
@@ -294,9 +313,7 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
             ]
             draw.polygon(shield, fill=panel_col, outline=(230, 255, 240), width=2)
             draw.text((icon_cx, icon_cy + 2), "✓", font=_f(int(R*0.7), True), fill=(10,30,20), anchor="mm")
-        else:
-            # Qeyd: assets/elo_boost.png yanlış marka loqosudur (ödəniş kartı "Elo" loqosu,
-            # boost-la əlaqəsi yoxdur) — istifadə olunmur, əvəzinə çəkilmiş ildırım ikonu.
+        elif not real_loaded:
             R = min(w, body_h) // 4
             bolt = [(icon_cx-R*0.4,icon_cy-R),(icon_cx+R*0.3,icon_cy-R),(icon_cx-R*0.2,icon_cy),
                     (icon_cx+R*0.5,icon_cy),(icon_cx-R*0.5,icon_cy+R),(icon_cx+R*0.1,icon_cy+R*0.15),
