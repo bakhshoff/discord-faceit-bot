@@ -1,15 +1,25 @@
-﻿from PIL import Image, ImageDraw, ImageFont
+﻿from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import os
+
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
 
 WIDTH = 900
 
-BG_TOP = (18, 16, 22)
-BG_BOTTOM = (10, 9, 12)
-PANEL_ALT = (22, 20, 26)
-BORDER = (45, 42, 50)
-GOLD = (240, 180, 41)
+BG_TOP = (16, 13, 24)
+BG_BOTTOM = (8, 7, 12)
+PANEL_ALT = (20, 17, 28)
+BORDER = (52, 44, 70)
+GOLD = (138, 92, 230)
+SILVER = (186, 178, 202)
 WHITE = (244, 241, 234)
-GRAY = (141, 135, 148)
+GRAY = (150, 142, 168)
 GREEN = (95, 208, 122)
 RED = (214, 69, 61)
 
@@ -79,17 +89,18 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
     draw.ellipse([(36, info_y + 64), (46, info_y + 74)], fill=GOLD)
     draw.text((58, info_y + 60), "ELO-ya görə avtomatik balanslaşdırma və xəritə seçimi", font=value_font, fill=WHITE)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
 def generate_queue_status_card(players, output_path="queue_status.png", avg_wait_min=None):
+    """Sıradakı oyunçu sayını/proqres barını göstərir, amma kimlərin sırada olduğunu QƏSDƏN
+    açmır (oyunçular güclü/zəif rəqibə görə sıraya girib-girməmək kimi davranışlar sərgiləməsin)."""
     size = len(players)
-    row_height = 38
     header_height = 90
+    body_height = 54
     footer_height = 40
-    rows_to_show = max(size, 1)
-    height = header_height + rows_to_show * row_height + footer_height
+    height = header_height + body_height + footer_height
 
     img = _vertical_gradient(WIDTH, height, BG_TOP, BG_BOTTOM)
     draw = ImageDraw.Draw(img)
@@ -98,8 +109,7 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
     title_font = _load_font(24, bold=True)
     count_font = _load_font(24, bold=True)
     sub_font = _load_font(13)
-    row_font = _load_font(16)
-    elo_font = _load_font(15, bold=True)
+    body_font = _load_font(15)
 
     draw.text((30, 22), "SIRA STATUSU", font=title_font, fill=WHITE)
     wait_txt = f"Real vaxtda yenilenir  |  Orta gozleme: ~{avg_wait_min} deq" if avg_wait_min else "Real vaxtda yenilenir"
@@ -120,24 +130,14 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
 
     draw.line([(0, header_height), (WIDTH, header_height)], fill=BORDER, width=1)
 
-    y = header_height + 10
-    if size == 0:
-        draw.text((30, y + 5), "Hələ heç kim sırada deyil.", font=row_font, fill=GRAY)
-    else:
-        for idx, p in enumerate(players):
-            if idx % 2 == 0:
-                draw.rectangle([(0, y - 4), (WIDTH, y + row_height - 4)], fill=PANEL_ALT)
-            draw.text((30, y), f"{idx + 1}.", font=row_font, fill=GRAY)
-            draw.text((70, y), p["nick"][:34], font=row_font, fill=WHITE)
-            elo_text = str(p["elo"])
-            bbox = draw.textbbox((0, 0), elo_text, font=elo_font)
-            tw = bbox[2] - bbox[0]
-            draw.text((WIDTH - 30 - tw, y + 1), elo_text, font=elo_font, fill=GREEN)
-            y += row_height
+    body_text = ("Hələ heç kim sırada deyil." if size == 0
+                 else f"{size} nəfər sıradadır — kimliklər məxfi saxlanılır.")
+    draw.text((WIDTH // 2, header_height + body_height // 2), body_text,
+              font=body_font, fill=GRAY, anchor="mm")
 
     footer_y = height - footer_height
     draw.line([(0, footer_y), (WIDTH, footer_y)], fill=BORDER, width=1)
     draw.text((30, footer_y + 12), "Zenith's Academy", font=sub_font, fill=GRAY)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path

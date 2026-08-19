@@ -2,6 +2,7 @@ from flask import Flask, jsonify, render_template, request, abort
 import sqlite3
 import os
 import database
+from visual_cards import get_rank
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(os.environ.get("DATA_DIR", BASE_DIR), "bot_database.db")
@@ -60,6 +61,27 @@ def api_leaderboard():
         "players": get_players(),
         "total_matches": get_total_matches()
     })
+
+
+@app.route("/u/<int:discord_id>")
+def public_profile(discord_id):
+    player = database.get_player(discord_id)
+    if not player:
+        abort(404)
+
+    _, nick, so2_id, elo, wins, losses = player[:6]
+    stats = database.get_player_stats_dict(discord_id) or {}
+    matches = wins + losses
+    win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
+    rank_name, rank_color, rank_emoji = get_rank(elo)
+
+    return render_template(
+        "profile_public.html",
+        nick=nick, so2_id=so2_id, elo=elo, wins=wins, losses=losses,
+        matches=matches, win_rate=win_rate,
+        kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
+        rank_name=rank_name, rank_color=rank_color, rank_emoji=rank_emoji
+    )
 
 
 @app.route("/admin")

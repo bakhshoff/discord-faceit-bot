@@ -1,16 +1,25 @@
 ﻿"""Referral (Dəvət) sistemi vizual kartı — PIL. Tam yenilənmiş dizayn."""
 import os
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter, ImageEnhance
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
 
 BG      = (10, 8, 18)
 PANEL   = (20, 18, 30)
 PANEL2  = (28, 24, 42)
 BORDER  = (52, 46, 72)
-GOLD    = (240, 185, 40)
+GOLD    = (138, 92, 230)
+SILVER  = (186, 178, 202)
 WHITE   = (244, 241, 234)
-GRAY    = (120, 115, 138)
+GRAY    = (150, 142, 168)
 GREEN   = (72, 200, 100)
 PURPLE  = (155, 85, 255)
 TEAL    = (35, 195, 175)
@@ -88,7 +97,7 @@ def generate_referral_card(nick: str, stats: dict, referrals: list,
     draw.text((28, 18), "Zenith's Academy  ·  DAVET SİSTEMİ", font=_f(11, True), fill=GOLD)
     draw.text((28, 40), nick[:24], font=_f(28, True), fill=WHITE)
     coins_earned = stats["registered"] * 200 + stats["milestone_3"] * 500
-    draw.text((W-28, 50), f"💰 {coins_earned} coin qazanıldı", font=_f(12, True), fill=GOLD, anchor="rm")
+    draw.text((W-28, 50), f"{coins_earned} coin qazanıldı", font=_f(12, True), fill=GOLD, anchor="rm")
     y = HEAD_H
 
     # ── DAVET LİNKİ ───────────────────────────────────────────────────────────
@@ -98,9 +107,8 @@ def generate_referral_card(nick: str, stats: dict, referrals: list,
     lx1, lx2 = 28, W-28
     draw.rounded_rectangle([(lx1, y+10), (lx2, y+LINK_H-10)],
                            radius=6, fill=(26, 20, 44), outline=TEAL, width=2)
-    draw.text((lx1+14, y+LINK_H//2), "🔗", font=_f(16), fill=TEAL, anchor="lm")
-    draw.text((lx1+40, y+LINK_H//2), invite_url[:70], font=_f(13, True), fill=TEAL, anchor="lm")
-    draw.text((lx2-14, y+LINK_H//2), "⬆ Kopyala", font=_f(10), fill=GRAY, anchor="rm")
+    draw.text((lx1+14, y+LINK_H//2), invite_url[:70], font=_f(13, True), fill=TEAL, anchor="lm")
+    draw.text((lx2-14, y+LINK_H//2), "Kopyala", font=_f(10), fill=GRAY, anchor="rm")
     y += LINK_H
 
     # ── 4 STATİSTİKA QUTU ─────────────────────────────────────────────────────
@@ -152,7 +160,7 @@ def generate_referral_card(nick: str, stats: dict, referrals: list,
             draw.text((tx+TILE_W//2, ry+TILE_H//2-10), reward,
                       font=_f(20, True), fill=col, anchor="mm")
 
-        draw.text((tx+TILE_W//2, ry+TILE_H-20), f"{'✅ ' if earned else ''}{title}",
+        draw.text((tx+TILE_W//2, ry+TILE_H-20), f"{'✓ ' if earned else ''}{title}",
                   font=_f(11, True), fill=col if earned else GRAY, anchor="mm")
 
         # Milestone badge
@@ -204,7 +212,7 @@ def generate_referral_card(nick: str, stats: dict, referrals: list,
               "200 coin (qeydiyyat)  ·  500 coin (3 matç)  ·  Ambassador banner (10 matç)",
               font=_f(10), fill=GRAY, anchor="mm")
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -257,7 +265,7 @@ def generate_item_preview_card(nick: str, avatar_bytes: bytes | None,
 
     draw.text((28, H-16), "Zenith's Academy", font=_f(10), fill=GRAY)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 

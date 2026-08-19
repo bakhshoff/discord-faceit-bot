@@ -1,20 +1,30 @@
-﻿from PIL import Image, ImageDraw, ImageFont
+﻿from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import os
+
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
 
 WIDTH         = 900
 ROW_HEIGHT    = 42
 HEADER_HEIGHT = 90
 FOOTER_HEIGHT = 50
 
-BG_COLOR     = (15, 15, 20)
-ROW_ALT      = (22, 22, 28)
-GOLD         = (255, 200, 50)
+BG_COLOR     = (13, 11, 20)
+ROW_ALT      = (20, 18, 28)
+GOLD         = (138, 92, 230)
+MEDAL_GOLD   = (255, 200, 50)
 WHITE        = (255, 255, 255)
 GREEN        = (120, 230, 120)
-GRAY         = (150, 150, 160)
+GRAY         = (150, 145, 165)
 LIGHT_GRAY   = (220, 220, 220)
-FOOTER_GRAY  = (110, 110, 120)
-LINE_COLOR   = (60, 60, 70)
+FOOTER_GRAY  = (120, 114, 135)
+LINE_COLOR   = (58, 50, 78)
 
 FONT_CANDIDATES_REGULAR = [
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans.ttf"),
@@ -143,7 +153,7 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
             y += ROW_HEIGHT
 
     draw.text((30, y + 10), "Auto-updated by Zenith's Academy Bot", font=sub_font, fill=FOOTER_GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -191,7 +201,7 @@ def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
 
         kd = round(kills/deaths, 2) if deaths > 0 else float(kills)
 
-        rank_color = GOLD if idx == 0 else ((200,200,200) if idx == 1 else ((180,120,60) if idx == 2 else WHITE))
+        rank_color = MEDAL_GOLD if idx == 0 else ((200,200,200) if idx == 1 else ((180,120,60) if idx == 2 else WHITE))
         medals     = ["🥇", "🥈", "🥉"]
         medal      = medals[idx] if idx < 3 else f"#{idx+1}"
         draw.text((col_x[0], y+2),  medal,               font=row_font, fill=rank_color)
@@ -211,5 +221,5 @@ def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
         y += S_ROW_H
 
     draw.text((30, y + 8), f"Sezon {season_number}  ·  Zenith's Academy Bot", font=sub_font, fill=FOOTER_GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path

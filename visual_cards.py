@@ -1,15 +1,16 @@
-﻿from PIL import Image, ImageDraw, ImageFont
+﻿from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import os
 import datetime
 
 WIDTH = 800
-BG_TOP    = (18, 16, 22)
-BG_BOTTOM = (10, 9, 12)
-PANEL     = (24, 22, 28)
-BORDER    = (45, 42, 50)
-GOLD      = (240, 180, 41)
+BG_TOP    = (16, 13, 24)
+BG_BOTTOM = (8, 7, 12)
+PANEL     = (22, 18, 30)
+BORDER    = (52, 44, 70)
+GOLD      = (138, 92, 230)
+SILVER    = (186, 178, 202)
 WHITE     = (244, 241, 234)
-GRAY      = (141, 135, 148)
+GRAY      = (150, 142, 168)
 GREEN     = (95, 208, 122)
 RED       = (214, 69, 61)
 BLUE      = (80, 160, 220)
@@ -22,6 +23,14 @@ FONT_B = [
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans-Bold.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges (PIL doesn't
+    anti-alias rectangles/lines/ellipses natively), then a mild sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
 
 def _font(size, bold=False):
     for p in (FONT_B if bold else FONT_R):
@@ -108,13 +117,13 @@ def generate_match_history_card(history, output_path):
                 draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
 
     draw.text((28, height - FOOTER_H + 4), "Zenith's Academy", font=_font(11), fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
 # ── COiN LOGLARI ────────────────────────────────────────────────────────────
 
-def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path):
+def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path, azn_balance=None):
     ROW_H    = 46
     HEADER_H = 88
     FOOTER_H = 18
@@ -147,7 +156,12 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
     draw.text((204, 32), flbl, font=f_sub, fill=(18, 16, 22))
 
     bal_txt = f"Balans: {current_balance} coin"
-    draw.text((WIDTH-28-_tw(draw, bal_txt, f_bal), 28), bal_txt, font=f_bal, fill=GOLD)
+    draw.text((WIDTH-28-_tw(draw, bal_txt, f_bal), 24), bal_txt, font=f_bal, fill=GOLD)
+
+    if azn_balance is not None:
+        f_azn = _font(13, True)
+        azn_txt = f"{azn_balance:.2f} AZN"
+        draw.text((WIDTH-28-_tw(draw, azn_txt, f_azn), 48), azn_txt, font=f_azn, fill=SILVER)
 
     draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
 
@@ -184,7 +198,7 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path)
                 draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
 
     draw.text((28, height-FOOTER_H+4), "Zenith's Academy", font=_font(11), fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -304,8 +318,8 @@ def generate_tasks_card(active_task, available_tasks, output_path):
     else:
         draw.text((PAD, y+16), "Bu gün üçün aktiv tapşırıq yoxdur.", font=fm, fill=GRAY)
 
-    draw.text((PAD, height-FOOTER+6), "Zenith's Academy  ·  /gunluk", font=fx, fill=GRAY)
-    img.save(output_path)
+    draw.text((PAD, height-FOOTER+6), "Zenith's Academy  ·  Profil → Gündəlik", font=fx, fill=GRAY)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -420,7 +434,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
         draw.text((PAD+120, ay+22), "Hələ yoxdur", font=fxi, fill=GRAY)
 
     draw.text((PAD, H-24), "Zenith's Academy", font=fxi, fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -463,12 +477,12 @@ def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_pa
             y += ROW_H
 
     draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
 # ── NAİLİYYƏTLƏR KARTI ───────────────────────────────────────────────────────
-def generate_achievements_card(nick: str, achievements: list, output_path: str):
+def generate_achievements_card(nick: str, achievements: list, output_path: str, rarity: dict = None):
     COLS   = 3
     CELL_H = 70
     HEADER = 72
@@ -505,12 +519,14 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str):
         draw.text((cx+10, cy+30), ach.get("description","")[:35], font=fx, fill=GRAY)
         dt = datetime.datetime.utcfromtimestamp(ach["earned_at"]) + datetime.timedelta(hours=4)
         draw.text((cx+10, cy+48), dt.strftime("%d.%m.%Y"), font=fx, fill=(80,80,100))
+        if rarity and ach["id"] in rarity:
+            draw.text((cx+CW-45, cy+8), f"{rarity[ach['id']]}%", font=fx, fill=(150,150,170))
 
     if not achievements:
         draw.text((20, HEADER+10), "Hələ heç bir nailiyyət yoxdur.", font=fs, fill=GRAY)
 
     draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -582,7 +598,7 @@ def generate_compare_card(p1: dict, p2: dict, output_path: str):
         y += 28
 
     draw.text((PAD, H-24), "Zenith's Academy", font=fx, fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -611,7 +627,7 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
 
     if len(history) < 2:
         draw.text((W//2, H//2), "Kifayet data yoxdur", font=fb, fill=GRAY, anchor="mm")
-        img.save(output_path)
+        _finalize(img).save(output_path)
         return output_path
 
     elos = [h[0] for h in history]
@@ -648,7 +664,7 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
     draw.text((pts[-1][0]+8, pts[-1][1]), str(elos[-1]), font=fx, fill=GOLD)
 
     draw.text((PAD, H-24), "Zenith's Academy", font=fx, fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -707,7 +723,7 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
                 draw.text((bx, gy+54), str(hour), font=_font(9), fill=GRAY)
 
     draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -896,13 +912,19 @@ def generate_pass_gif(pass_data: dict, missions: list, output_path: str):
 def generate_pass_card(pass_data: dict, missions: list, output_path: str):
     """Statik pass kartı (PNG) — GIF alternativ."""
     img = _draw_pass_frame(pass_data, missions, 0.8)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
 # ── iNVENTAR ────────────────────────────────────────────────────────────────
 
-def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, get_item_by_id_fn, output_path):
+def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, get_item_by_id_fn, output_path,
+                            elo_cards=None):
+    """
+    elo_cards: {"boost50": int, "boost100": int, "protect": int} — Market → ELO Kartları-dan
+    alınan, hələ istifadə edilməmiş kartların ANLIQ sayı (hər açılışda bazadan təzə oxunur,
+    ona görə istifadə edildikcə say özü avtomatik azalmış görünür).
+    """
     ROW_H    = 46
     SEC_H    = 34
     HEADER_H = 78
@@ -910,8 +932,17 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
 
     faceit = [(iid, get_item_by_id_fn(iid)) for iid in owned_ids if get_item_by_id_fn(iid)]
     skins  = list(skin_inv[:20])
-    total  = max(1, len(faceit) + len(skins))
-    secs   = (1 if faceit else 0) + (1 if skins else 0)
+    elo_rows = []
+    if elo_cards:
+        if elo_cards.get("boost50", 0) > 0:
+            elo_rows.append(("50% ELO Boost", elo_cards["boost50"], GREEN))
+        if elo_cards.get("boost100", 0) > 0:
+            elo_rows.append(("100% ELO Boost", elo_cards["boost100"], GOLD))
+        if elo_cards.get("protect", 0) > 0:
+            elo_rows.append(("ELO Qoruma", elo_cards["protect"], BLUE))
+
+    total  = max(1, len(faceit) + len(skins) + len(elo_rows))
+    secs   = (1 if faceit else 0) + (1 if skins else 0) + (1 if elo_rows else 0)
     height = HEADER_H + secs * SEC_H + total * ROW_H + FOOTER_H
 
     img  = _bg(height)
@@ -926,15 +957,30 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
 
     draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
     draw.text((28, 30), "İNVENTAR",  font=f_title, fill=WHITE)
-    tot_t = f"{len(faceit)+len(skins)} əşya"
+    tot_t = f"{len(faceit)+len(skins)+len(elo_rows)} əşya"
     draw.text((WIDTH-28-_tw(draw, tot_t, f_sm), 40), tot_t, font=f_sm, fill=GRAY)
     draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
 
     y = HEADER_H
 
-    if not faceit and not skins:
+    if not faceit and not skins and not elo_rows:
         draw.text((28, y+14), "İnventarınız boşdur.", font=f_sm, fill=GRAY)
     else:
+        if elo_rows:
+            draw.rectangle([(0, y), (WIDTH, y+SEC_H)], fill=(28, 26, 34))
+            draw.text((28, y+8), "ELO KARTLARI", font=f_sec, fill=SILVER)
+            y += SEC_H
+            for i, (label, qty, col) in enumerate(elo_rows):
+                if i % 2 == 0:
+                    draw.rectangle([(2, y), (WIDTH-2, y+ROW_H-1)], fill=(21, 19, 25))
+                _bar(draw, 20, y, ROW_H, col)
+                draw.text((40, y+8),  label, font=f_row, fill=WHITE)
+                draw.text((40, y+28), "Növbəti uyğun matçda avtomatik istifadə olunur", font=f_sm, fill=GRAY)
+                qt = f"×{qty}"
+                draw.text((WIDTH-28-_tw(draw, qt, f_row), y+13), qt, font=f_row, fill=col)
+                draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
+                y += ROW_H
+
         if faceit:
             draw.rectangle([(0, y), (WIDTH, y+SEC_H)], fill=(28, 26, 34))
             draw.text((28, y+8), "FACEIT MARKET ƏŞYALARI", font=f_sec, fill=GOLD)
@@ -974,7 +1020,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
                 y += ROW_H
 
     draw.text((28, height-FOOTER_H+4), "Zenith's Academy", font=_font(11), fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -1007,7 +1053,7 @@ def generate_transfer_card(from_nick, to_nick, amount, commission, receiver_gets
     draw.line([(18, 175), (W-18, 175)], fill=BORDER, width=1)
     draw.text((W//2, 195), f"Komissiya: {commission} coin (20%)   |   Balans: {from_balance} coin", font=f_lbl, fill=GRAY, anchor="mm")
     draw.text((28, H-18), "Zenith's Academy", font=f_lbl, fill=GRAY)
-    img.save(output_path); return output_path
+    _finalize(img).save(output_path); return output_path
 
 
 # ── OYUNCU AXTARISI KARTI ───────────────────────────────────────────────────
@@ -1032,7 +1078,7 @@ def generate_search_results_card(query, results, output_path):
         draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
         y += ROW_H
     draw.text((28, H-FOOTER_H+6), "Zenith's Academy", font=_font(11), fill=GRAY)
-    img.save(output_path); return output_path
+    _finalize(img).save(output_path); return output_path
 
 
 # ── SKiN KATALOQ KARTI ──────────────────────────────────────────────────────
@@ -1057,7 +1103,149 @@ def generate_skin_catalog_card(skins, output_path):
         draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
         y += ROW_H
     draw.text((28, H-FOOTER_H+6), "Zenith's Academy", font=_font(11), fill=GRAY)
-    img.save(output_path); return output_path
+    _finalize(img).save(output_path); return output_path
+
+
+# ── ELO KARTLARI (AZN market) ─────────────────────────────────────────────────
+
+def generate_elo_cards_market_card(balance_azn, card_counts, packs, output_path):
+    """
+    balance_azn: oyunçunun AZN balansı
+    card_counts: {"boost50": int, "boost100": int, "protect": int} — sahib olunan kartlar
+    packs: ELO_CARD_PACKS siyahısı (market_config-dən)
+    """
+    HEADER_H = 92
+    SEC_HEAD_H = 34
+    ROW_H = 46
+    FOOTER_H = 30
+    GAP = 10
+
+    sections = [
+        ("50% ELO BOOST", "boost50", GREEN),
+        ("100% ELO BOOST", "boost100", GOLD),
+        ("ELO QORUMA", "protect", BLUE),
+    ]
+
+    H = HEADER_H
+    for _, ctype, _c in sections:
+        rows = [p for p in packs if p["card_type"] == ctype]
+        H += SEC_HEAD_H + len(rows) * ROW_H + GAP
+    H += FOOTER_H
+
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (WIDTH - 1, H - 1)], outline=BORDER, width=2)
+
+    draw.text((28, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 32), "ELO KARTLARI", font=_font(24, True), fill=WHITE)
+    bal_t = f"{balance_azn:.2f} AZN"
+    draw.text((WIDTH - 28, 20), bal_t, font=_font(18, True), fill=SILVER, anchor="ra")
+    owned_t = (f"Sizdə: {card_counts.get('boost50', 0)} × 50%  ·  "
+               f"{card_counts.get('boost100', 0)} × 100%  ·  {card_counts.get('protect', 0)} × Qoruma")
+    draw.text((WIDTH - 28, 46), owned_t, font=_font(11), fill=GRAY, anchor="ra")
+    draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)
+
+    y = HEADER_H
+    for label, ctype, accent in sections:
+        rows = [p for p in packs if p["card_type"] == ctype]
+        draw.rectangle([(2, y), (WIDTH - 2, y + SEC_HEAD_H - 1)], fill=PANEL)
+        draw.text((20, y + SEC_HEAD_H // 2), label, font=_font(14, True), fill=accent, anchor="lm")
+        y += SEC_HEAD_H
+        for i, pack in enumerate(rows):
+            if i % 2 == 0:
+                draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=(21, 19, 25))
+            _bar(draw, 20, y, ROW_H, accent)
+            draw.text((42, y + ROW_H // 2), f"{pack['qty']} ədəd", font=_font(15, True), fill=WHITE, anchor="lm")
+            draw.text((WIDTH - 28, y + ROW_H // 2), f"{pack['price_azn']} AZN",
+                      font=_font(16, True), fill=accent, anchor="rm")
+            draw.line([(18, y + ROW_H - 1), (WIDTH - 18, y + ROW_H - 1)], fill=BORDER, width=1)
+            y += ROW_H
+        y += GAP
+
+    draw.text((28, H - FOOTER_H + 6),
+              "Kartlar avtomatik olaraq növbəti uyğun matç nəticəsində tətbiq olunur",
+              font=_font(10), fill=GRAY)
+    _finalize(img).save(output_path)
+    return output_path
+
+
+# ── AYIN ELO ÇEMPİONU MÜKAFAT KARTI ──────────────────────────────────────────
+
+def generate_monthly_reward_card(knife_image_path, top_players, output_path):
+    """
+    knife_image_path: mükafat bıçağının şəkil faylı (jpg/png/webp)
+    top_players: [{"nick": str, "elo": int}, ...] ELO-ya görə azalan sırada (məs. top 5)
+    """
+    PAD = 28
+    HEADER_H = 90
+    IMG_W = WIDTH - PAD * 2
+    IMG_H = int(IMG_W * 508 / 1024)
+    CAPTION_H = 40
+    LB_HEADER_H = 34
+    ROW_H = 38
+    CTA_H = 62
+    FOOTER_H = 26
+
+    n_rows = max(len(top_players), 1)
+    H = HEADER_H + IMG_H + CAPTION_H + LB_HEADER_H + n_rows * ROW_H + CTA_H + FOOTER_H
+
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (WIDTH - 1, H - 1)], outline=BORDER, width=2)
+
+    draw.text((PAD, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((PAD, 32), "AYIN ELO ÇEMPİONU MÜKAFATI", font=_font(22, True), fill=WHITE)
+    draw.text((PAD, 64), "Hər ayın son günü ən yüksək ELO-ya sahib oyunçu bu bıçağı qazanır",
+              font=_font(12), fill=GRAY)
+    draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)
+
+    y = HEADER_H
+    try:
+        knife = Image.open(knife_image_path).convert("RGB")
+        knife = knife.resize((IMG_W, IMG_H), Image.LANCZOS)
+        img.paste(knife, (PAD, y))
+    except Exception:
+        draw.rectangle([(PAD, y), (PAD + IMG_W, y + IMG_H)], fill=PANEL)
+        draw.text((WIDTH // 2, y + IMG_H // 2), "Dual Daggers \"Grunge\"",
+                  font=_font(16, True), fill=GRAY, anchor="mm")
+    draw.rectangle([(PAD, y), (PAD + IMG_W, y + IMG_H)], outline=GOLD, width=2)
+    y += IMG_H
+
+    draw.text((WIDTH // 2, y + CAPTION_H // 2), "Dual Daggers \"Grunge\"  ·  Arcane  ·  Sharp Collection",
+              font=_font(14, True), fill=SILVER, anchor="mm")
+    y += CAPTION_H
+
+    draw.rectangle([(2, y), (WIDTH - 2, y + LB_HEADER_H - 1)], fill=PANEL)
+    draw.text((PAD, y + LB_HEADER_H // 2), "CANLI SIRALAMA — ƏN YÜKSƏK ELO",
+              font=_font(12, True), fill=GOLD, anchor="lm")
+    y += LB_HEADER_H
+
+    medal_colors = [(255, 200, 50), (200, 200, 200), (180, 120, 60)]
+    if top_players:
+        for i, p in enumerate(top_players):
+            if i % 2 == 0:
+                draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=(21, 19, 25))
+            rank_col = medal_colors[i] if i < 3 else GRAY
+            draw.text((PAD, y + ROW_H // 2), f"#{i + 1}", font=_font(14, True), fill=rank_col, anchor="lm")
+            draw.text((PAD + 46, y + ROW_H // 2), p["nick"][:28], font=_font(14, True), fill=WHITE, anchor="lm")
+            draw.text((WIDTH - PAD, y + ROW_H // 2), f"{p['elo']} ELO",
+                      font=_font(14, True), fill=GREEN, anchor="rm")
+            draw.line([(18, y + ROW_H - 1), (WIDTH - 18, y + ROW_H - 1)], fill=BORDER, width=1)
+            y += ROW_H
+    else:
+        draw.text((WIDTH // 2, y + ROW_H // 2), "Hələ qeydiyyatdan keçən oyunçu yoxdur.",
+                  font=_font(12), fill=GRAY, anchor="mm")
+        y += ROW_H
+
+    draw.rounded_rectangle([(PAD, y + 10), (WIDTH - PAD, y + CTA_H - 6)], radius=8, fill=PANEL, outline=GOLD, width=2)
+    draw.text((WIDTH // 2, y + CTA_H // 2 + 2),
+              "ELO-nu artır — Market → ELO Kartları-dan Boost kartı al!",
+              font=_font(13, True), fill=GOLD, anchor="mm")
+    y += CTA_H
+
+    draw.text((PAD, H - FOOTER_H + 4), "Zenith's Academy", font=_font(10), fill=GRAY)
+    _finalize(img).save(output_path)
+    return output_path
 
 
 # ── MERC KARTI ──────────────────────────────────────────────────────────────
@@ -1105,7 +1293,7 @@ def generate_bet_card(match_number, balance, output_path,
 
     # CTA
     draw.text((W//2, 252), "Komandani secin:", font=_font(11,True), fill=GOLD, anchor="mm")
-    img.save(output_path); return output_path
+    _finalize(img).save(output_path); return output_path
 
 
 # ── XƏRİTƏ STATİSTİKASI ───────────────────────────────────────────────────────
@@ -1145,7 +1333,7 @@ def generate_map_stats_card(nick, map_stats, output_path):
             y += ROW_H
 
     draw.text((28, height - FOOTER + 2), "Zenith's Academy", font=_font(10), fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -1180,7 +1368,126 @@ def generate_personal_record_card(nick, record, output_path):
     draw.text((28, 172), match_txt, font=_font(12), fill=GRAY)
 
     draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
+    return output_path
+
+
+# ── ELO İNKİŞAF QRAFİKİ ─────────────────────────────────────────────────────
+
+def generate_elo_chart_card(nick, history, output_path):
+    """history: xronoloji sırada [{"match_number": int, "elo_after": int}, ...]"""
+    H = 320
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
+
+    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 30), f"{nick} — ELO İNKİŞAFI", font=_font(20, True), fill=WHITE)
+    draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
+
+    if not history:
+        draw.text((28, 100), "Hələ heç bir matç oynanılmayıb.", font=_font(14), fill=GRAY)
+        draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+        _finalize(img).save(output_path)
+        return output_path
+
+    PAD_L, PAD_R, PAD_T, PAD_B = 55, 30, 80, 40
+    plot_w = WIDTH - PAD_L - PAD_R
+    plot_h = H - PAD_T - PAD_B
+
+    elos = [h["elo_after"] for h in history]
+    min_e, max_e = min(elos), max(elos)
+    if min_e == max_e:
+        min_e -= 10
+        max_e += 10
+    pad_range = (max_e - min_e) * 0.1
+    min_e -= pad_range
+    max_e += pad_range
+
+    def xy(i, elo):
+        x = PAD_L + (i / max(len(history) - 1, 1)) * plot_w
+        y = PAD_T + plot_h - ((elo - min_e) / (max_e - min_e)) * plot_h
+        return x, y
+
+    for gi in range(5):
+        gy = PAD_T + plot_h * gi / 4
+        draw.line([(PAD_L, gy), (WIDTH - PAD_R, gy)], fill=BORDER, width=1)
+        val = int(max_e - (max_e - min_e) * gi / 4)
+        draw.text((PAD_L - 8, gy), str(val), font=_font(10), fill=GRAY, anchor="rm")
+
+    points = [xy(i, h["elo_after"]) for i, h in enumerate(history)]
+    for i in range(len(points) - 1):
+        draw.line([points[i], points[i + 1]], fill=GOLD, width=3)
+    for x, y in points:
+        draw.ellipse([x - 4, y - 4, x + 4, y + 4], fill=GOLD, outline=WHITE, width=1)
+
+    label_idxs = sorted(set([0, len(history) // 2, len(history) - 1]))
+    for i in label_idxs:
+        x, _ = points[i]
+        draw.text((x, PAD_T + plot_h + 16), f"#{history[i]['match_number']}", font=_font(10), fill=GRAY, anchor="mm")
+
+    gain = elos[-1] - elos[0]
+    gain_txt = f"{'+' if gain >= 0 else ''}{gain} ELO ({len(history)} matç)"
+    gain_color = GREEN if gain >= 0 else RED
+    draw.text((WIDTH - 28, 40), gain_txt, font=_font(14, True), fill=gain_color, anchor="rm")
+
+    draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+    _finalize(img).save(output_path)
+    return output_path
+
+
+# ── QUESTLƏR ─────────────────────────────────────────────────────────────────
+
+def generate_quest_card(nick, quests, output_path):
+    """quests: get_player_quests() çıxışı."""
+    HEADER, FOOTER, CHAIN_H = 72, 30, 100
+    H = HEADER + max(1, len(quests)) * CHAIN_H + FOOTER
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
+
+    draw.text((20, 12), "Zenith's Academy", font=_font(13, True), fill=GOLD)
+    draw.text((20, 28), f"{nick} — QUESTLƏR", font=_font(22, True), fill=WHITE)
+    draw.line([(0, 68), (WIDTH, 68)], fill=BORDER, width=1)
+
+    if not quests:
+        draw.text((20, HEADER + 10), "Hələ heç bir quest yoxdur.", font=_font(14), fill=GRAY)
+        draw.text((20, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+        _finalize(img).save(output_path)
+        return output_path
+
+    y = HEADER
+    for q in quests:
+        draw.rounded_rectangle([(18, y + 6), (WIDTH - 18, y + CHAIN_H - 10)], radius=8, fill=PANEL, outline=BORDER, width=1)
+        status = "TAMAMLANDI ✓" if q["completed"] else f"{q['reward_coins']} coin"
+        status_color = GREEN if q["completed"] else GOLD
+        draw.text((30, y + 14), q["name"], font=_font(16, True), fill=WHITE)
+        draw.text((WIDTH - 30, y + 16), status, font=_font(12, True), fill=status_color, anchor="rm")
+
+        steps = q["steps"]
+        n = len(steps)
+        step_w = (WIDTH - 60) / n
+        for i, step in enumerate(steps):
+            sx = 30 + i * step_w
+            sy = y + 44
+            bar_w = step_w - 10
+            bar_h = 14
+            if i < q["current_step"] or q["completed"]:
+                fill_frac, color = 1.0, GREEN
+            elif i == q["current_step"]:
+                fill_frac, color = min(1.0, q["step_progress"] / step["target"]), GOLD
+            else:
+                fill_frac, color = 0.0, BORDER
+
+            draw.rounded_rectangle([(sx, sy), (sx + bar_w, sy + bar_h)], radius=4, fill=(30, 28, 34), outline=BORDER, width=1)
+            if fill_frac > 0:
+                draw.rectangle([(sx, sy), (sx + bar_w * fill_frac, sy + bar_h)], fill=color)
+            draw.text((sx, sy + bar_h + 4), step["desc"][:22], font=_font(9), fill=GRAY)
+
+        y += CHAIN_H
+
+    draw.text((20, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -1205,5 +1512,31 @@ def generate_squad_card(nick, squad_info, output_path):
         draw.text((28, 116), f"Birlikdə qələbə: {squad_info['wins_together']}", font=_font(14), fill=GREEN)
 
     draw.text((28, H - 20), "Zenith's Academy", font=_font(10), fill=GRAY)
-    img.save(output_path)
+    _finalize(img).save(output_path)
+    return output_path
+
+
+# ── GİZLİ SİNERGİYA ──────────────────────────────────────────────────────────
+
+def generate_synergy_card(nick, synergy, output_path):
+    """synergy: get_best_duo() çıxışı ({"partner_nick","wins","matches","win_rate"}) və ya None."""
+    H = 190
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
+
+    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 30), "GİZLİ SİNERGİYA", font=_font(22, True), fill=WHITE)
+    draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
+
+    if not synergy:
+        draw.text((28, 84), f"{nick} üçün hələ kifayət qədər ortaq matç yoxdur.", font=_font(14), fill=GRAY)
+        draw.text((28, 108), "Eyni komandada daha çox oynadıqca burada görünəcək.", font=_font(12), fill=GRAY)
+    else:
+        draw.text((28, 82), f"{nick}  &  {synergy['partner_nick']}", font=_font(18, True), fill=GOLD)
+        draw.text((28, 116), f"Birlikdə: {synergy['wins']}Q / {synergy['matches']} matç", font=_font(14), fill=WHITE)
+        draw.text((28, 140), f"Qazanma faizi: {synergy['win_rate']}%", font=_font(14, True), fill=GREEN)
+
+    draw.text((28, H - 20), "Zenith's Academy", font=_font(10), fill=GRAY)
+    _finalize(img).save(output_path)
     return output_path

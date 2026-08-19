@@ -1,5 +1,14 @@
-﻿from PIL import Image, ImageDraw, ImageFont
+﻿from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import os
+
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
 
 WIDTH = 900
 HEADER_HEIGHT = 110
@@ -8,14 +17,15 @@ TEAM_HEADER_HEIGHT = 40
 FOOTER_HEIGHT = 50
 GAP = 24
 
-BG_TOP = (18, 16, 22)
-BG_BOTTOM = (10, 9, 12)
-PANEL = (22, 20, 26)
-PANEL_ALT = (27, 25, 31)
-BORDER = (45, 42, 50)
-GOLD = (240, 180, 41)
+BG_TOP = (16, 13, 24)
+BG_BOTTOM = (8, 7, 12)
+PANEL = (20, 17, 28)
+PANEL_ALT = (25, 21, 34)
+BORDER = (52, 44, 70)
+GOLD = (138, 92, 230)
+SILVER = (186, 178, 202)
 WHITE = (244, 241, 234)
-GRAY = (141, 135, 148)
+GRAY = (150, 142, 168)
 BLUE = (90, 140, 230)
 RED_TEAM = (214, 69, 61)
 GREEN = (95, 208, 122)
@@ -130,7 +140,7 @@ def generate_match_card(match_number, selected_map, team_a, team_b, captain_a_id
     draw.regular_polygon((40, footer_y + 25, 6), n_sides=3, rotation=0, fill=GOLD)
     draw.text((55, footer_y + 18), "Kapitan  ·  Hər kapitan öz komandasının hazır düyməsini basmalıdır", font=footer_font, fill=GRAY)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -214,5 +224,5 @@ def generate_result_card(match_number, winner_label, loser_label,
     draw.line([(0, footer_y), (WIDTH, footer_y)], fill=BORDER, width=1)
     draw.text((30, footer_y + 18), "Zenith's Academy  ·  ELO & Coin yeniləndi", font=footer_font, fill=GRAY)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path

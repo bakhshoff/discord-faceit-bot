@@ -42,3 +42,40 @@ def get_item_by_id(item_id):
         if item["id"] == item_id:
             return item
     return None
+
+
+# ── ELO Kartları (AZN balansı ilə satın alınır — pul-qazanma mexanizmi) ─────────
+# card_type: "boost50" (qələbədə +50% ELO), "boost100" (qələbədə +100% ELO),
+# "protect" (məğlubiyyətdə ELO itkisinin qarşısını alır). Hər kart tək-istifadəlikdir,
+# növbəti uyğun matç nəticəsində avtomatik istifadə olunur (bax: apply_elo_modifiers).
+# 100% qiymətləri 50%-ə nisbətən düz 2x təyin olunub (2x effekt üçün 2x qiymət balansı).
+# Qeyd: bütün qiymətlər 2026-08-18-də 50% ENDİRİMLƏ (ilkin qiymətin yarısı) təyin olunub.
+ELO_CARD_PACKS = [
+    {"id": "boost50_10",   "card_type": "boost50",  "qty": 10,  "price_azn": 0.5,
+     "label": "50% ELO Boost — 10 ədəd"},
+    {"id": "boost50_50",   "card_type": "boost50",  "qty": 50,  "price_azn": 2,
+     "label": "50% ELO Boost — 50 ədəd"},
+    {"id": "boost50_100",  "card_type": "boost50",  "qty": 100, "price_azn": 4,
+     "label": "50% ELO Boost — 100 ədəd"},
+
+    {"id": "boost100_10",  "card_type": "boost100", "qty": 10,  "price_azn": 1,
+     "label": "100% ELO Boost — 10 ədəd"},
+    {"id": "boost100_50",  "card_type": "boost100", "qty": 50,  "price_azn": 4,
+     "label": "100% ELO Boost — 50 ədəd"},
+    {"id": "boost100_100", "card_type": "boost100", "qty": 100, "price_azn": 8,
+     "label": "100% ELO Boost — 100 ədəd"},
+
+    {"id": "protect_10",   "card_type": "protect",  "qty": 10,  "price_azn": 1,
+     "label": "ELO Qoruma — 10 ədəd"},
+    {"id": "protect_50",   "card_type": "protect",  "qty": 50,  "price_azn": 4.5,
+     "label": "ELO Qoruma — 50 ədəd"},
+    {"id": "protect_100",  "card_type": "protect",  "qty": 100, "price_azn": 8.5,
+     "label": "ELO Qoruma — 100 ədəd"},
+]
+
+
+def get_elo_card_pack(pack_id):
+    for pack in ELO_CARD_PACKS:
+        if pack["id"] == pack_id:
+            return pack
+    return None

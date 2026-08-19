@@ -1,89 +1,35 @@
 ﻿"""S2-stil Battle Pass vizual kartı — ayrıca fayl."""
 import os, math as _math
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
+from database import (
+    BP_LEVEL_REWARDS as PASS_FREE_REWARDS, BP_PREMIUM_REWARDS as PASS_PREM_REWARDS,
+    BP_MAX_LEVEL, BP_PRICE_AZN, BP_SEASON_NAME, BP_SEASON_NAME_AZ
+)
+
+SEASON_LABEL = f"{BP_SEASON_NAME.upper()} ({BP_SEASON_NAME_AZ.upper()})"
 
 BASE_DIR2 = os.path.dirname(os.path.abspath(__file__))
 
-PASS_BG2     = (18, 15, 28)
-PASS_HEADER  = (10, 8, 20)
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
+PASS_BG2     = (16, 13, 26)
+PASS_HEADER  = (9, 7, 18)
 PASS_GOLD    = (255, 200, 50)
-PASS_PURPLE  = (130, 60, 255)
+PASS_PURPLE  = (138, 92, 230)
 PASS_TEAL    = (30, 200, 180)
 PASS_FREE_BG = (22, 28, 22)
 PASS_PREM_BG = (28, 18, 38)
-PASS_BORDER  = (60, 50, 85)
+PASS_BORDER  = (58, 48, 82)
 WHITE2       = (240, 238, 230)
-GRAY2        = (130, 125, 145)
+GRAY2        = (150, 142, 168)
 
-PASS_MILESTONES = [5, 10, 15, 20, 25, 30]
-
-# Bütün 30 level üçün FREE mükafatlar
-PASS_FREE_REWARDS = {
-    1:  {"label": "50 Coin",   "color": PASS_GOLD},
-    2:  {"label": "25 Coin",   "color": PASS_GOLD},
-    3:  {"label": "25 Coin",   "color": PASS_GOLD},
-    4:  {"label": "25 Coin",   "color": PASS_GOLD},
-    5:  {"label": "200 Coin",  "color": PASS_GOLD},
-    6:  {"label": "50 Coin",   "color": PASS_GOLD},
-    7:  {"label": "50 Coin",   "color": PASS_GOLD},
-    8:  {"label": "50 Coin",   "color": PASS_GOLD},
-    9:  {"label": "50 Coin",   "color": PASS_GOLD},
-    10: {"label": "300 Coin",  "color": PASS_GOLD},
-    11: {"label": "75 Coin",   "color": PASS_GOLD},
-    12: {"label": "75 Coin",   "color": PASS_GOLD},
-    13: {"label": "75 Coin",   "color": PASS_GOLD},
-    14: {"label": "75 Coin",   "color": PASS_GOLD},
-    15: {"label": "400 Coin",  "color": PASS_GOLD},
-    16: {"label": "100 Coin",  "color": PASS_GOLD},
-    17: {"label": "100 Coin",  "color": PASS_GOLD},
-    18: {"label": "100 Coin",  "color": PASS_GOLD},
-    19: {"label": "100 Coin",  "color": PASS_GOLD},
-    20: {"label": "500 Coin",  "color": PASS_GOLD},
-    21: {"label": "150 Coin",  "color": PASS_GOLD},
-    22: {"label": "150 Coin",  "color": PASS_GOLD},
-    23: {"label": "150 Coin",  "color": PASS_GOLD},
-    24: {"label": "150 Coin",  "color": PASS_GOLD},
-    25: {"label": "750 Coin",  "color": PASS_GOLD},
-    26: {"label": "200 Coin",  "color": PASS_GOLD},
-    27: {"label": "200 Coin",  "color": PASS_GOLD},
-    28: {"label": "200 Coin",  "color": PASS_GOLD},
-    29: {"label": "200 Coin",  "color": PASS_GOLD},
-    30: {"label": "1000 Coin", "color": PASS_GOLD},
-}
-
-# Bütün 30 level üçün PREMIUM mükafatlar
-PASS_PREM_REWARDS = {
-    1:  {"label": "50 Coin",   "color": PASS_GOLD},
-    2:  {"label": "25 Coin",   "color": PASS_GOLD},
-    3:  {"label": "25 Coin",   "color": PASS_GOLD},
-    4:  {"label": "25 Coin",   "color": PASS_GOLD},
-    5:  {"label": "S1 Banner", "color": PASS_TEAL},
-    6:  {"label": "50 Coin",   "color": PASS_GOLD},
-    7:  {"label": "50 Coin",   "color": PASS_GOLD},
-    8:  {"label": "50 Coin",   "color": PASS_GOLD},
-    9:  {"label": "50 Coin",   "color": PASS_GOLD},
-    10: {"label": "ELO Boost", "color": PASS_PURPLE},
-    11: {"label": "75 Coin",   "color": PASS_GOLD},
-    12: {"label": "75 Coin",   "color": PASS_GOLD},
-    13: {"label": "75 Coin",   "color": PASS_GOLD},
-    14: {"label": "75 Coin",   "color": PASS_GOLD},
-    15: {"label": "1000 Coin", "color": PASS_GOLD},
-    16: {"label": "100 Coin",  "color": PASS_GOLD},
-    17: {"label": "100 Coin",  "color": PASS_GOLD},
-    18: {"label": "100 Coin",  "color": PASS_GOLD},
-    19: {"label": "100 Coin",  "color": PASS_GOLD},
-    20: {"label": "S1 Frame",  "color": PASS_TEAL},
-    21: {"label": "150 Coin",  "color": PASS_GOLD},
-    22: {"label": "150 Coin",  "color": PASS_GOLD},
-    23: {"label": "150 Coin",  "color": PASS_GOLD},
-    24: {"label": "150 Coin",  "color": PASS_GOLD},
-    25: {"label": "2000 Coin", "color": PASS_GOLD},
-    26: {"label": "200 Coin",  "color": PASS_GOLD},
-    27: {"label": "200 Coin",  "color": PASS_GOLD},
-    28: {"label": "200 Coin",  "color": PASS_GOLD},
-    29: {"label": "200 Coin",  "color": PASS_GOLD},
-    30: {"label": "AWM BOOM",  "color": (255, 220, 0)},
-}
+PASS_MILESTONES = [5, 10, 15, 20, 25, 30, 35]
 
 FONT_PATHS_B = [
     os.path.join(BASE_DIR2, "fonts", "DejaVuSans-Bold.ttf"),
@@ -124,18 +70,41 @@ def _coin_icon(draw, cx, cy, r, amount, gold=(255, 200, 50)):
     draw.text((cx, cy), txt, font=_f(10, True), fill=(80,50,0), anchor="mm")
 
 
+def _reward_color(reward):
+    """reward dict-i database.py-dan gəlir (type/value/label) — 'color' açarı yoxdur,
+    ona görə növünə görə uyğun rəng hesablanır."""
+    rtype = reward.get("type", "coins")
+    if rtype == "coins":
+        return PASS_GOLD
+    if rtype in ("banner", "avatar_frame"):
+        return PASS_TEAL
+    if rtype == "boost":
+        return PASS_PURPLE
+    if rtype == "elo_card":
+        v = reward.get("value") or {}
+        return (90, 210, 130) if v.get("card_type") == "protect" else PASS_PURPLE
+    if rtype == "azn":
+        return (110, 220, 140)
+    if rtype == "skin":
+        return (255, 220, 0)
+    return WHITE2
+
+
 def _reward_img(level: int, is_premium: bool, size=(130, 100)):
     w, h = size
     img  = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    reward = (PASS_PREM_REWARDS if is_premium else PASS_FREE_REWARDS)[level]
+    reward = (PASS_PREM_REWARDS if is_premium else PASS_FREE_REWARDS).get(level)
+    if not reward:
+        return img
     lbl    = reward["label"]
-    col    = reward["color"]
+    rtype  = reward.get("type", "coins")
+    col    = _reward_color(reward)
     body_h = h - 20  # Label üçün alt boşluq
 
-    # ── AWM BOOM — real şəkil ────────────────────────────────────────────────
-    if is_premium and level == 30:
+    # ── SKİN (AWM BOOM və s.) — real şəkil ────────────────────────────────────
+    if rtype == "skin":
         boom = os.path.join(BASE_DIR2, "assets", "awm_boom.png")
         try:
             sk = Image.open(boom).convert("RGBA")
@@ -145,14 +114,14 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
             img.paste(sk, (ox, oy), sk)
             # Qızılı glow border
             draw.rounded_rectangle([(1,1),(w-2,body_h+2)], radius=6, outline=(255,220,0), width=2)
-            draw.text((w//2, h-8), "AWM BOOM", font=_f(9, True), fill=(255,220,0), anchor="mm")
+            draw.text((w//2, h-8), lbl[:14], font=_f(9, True), fill=(255,220,0), anchor="mm")
             return img
         except Exception:
             pass
 
     # ── COIN mükafatları ──────────────────────────────────────────────────────
-    if "Coin" in lbl:
-        amount = lbl.replace(" Coin","").replace("Coin","").strip()
+    if rtype == "coins":
+        amount = str(reward.get("value", "")).strip()
         gold   = (255, 200, 50)
         # Arxa panel
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=8,
@@ -178,8 +147,8 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=gold, anchor="mm")
         return img
 
-    # ── S1 BANNER ─────────────────────────────────────────────────────────────
-    if "Banner" in lbl:
+    # ── BANNER ────────────────────────────────────────────────────────────────
+    if rtype == "banner":
         # Mini profil banner mockup içəridə
         BX, BY, BW, BH = 6, 5, w - 12, body_h - 10
         # Arxa plan: dərin teal-yaşıl gradient
@@ -203,30 +172,33 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
                     int(cy + R*_m2.sin(_m2.radians(60*i - 30)))) for i in range(6)]
         draw.polygon(hex_pts, fill=(0, 130, 110, 180), outline=(0, 220, 180), width=2)
 
-        # Emblem içi: "S1" mətni
-        draw.text((cx, cy), "S", font=_f(12, True), fill=(0, 255, 200), anchor="mm")
+        # Emblem içi: "G" (Genesis) mətni
+        draw.text((cx, cy), "G", font=_f(12, True), fill=(0, 255, 200), anchor="mm")
 
-        # Üst sağ küncdə "SEASON" badge
-        draw.rectangle([(BX+BW-46, BY+4), (BX+BW-4, BY+16)], fill=(0,80,70))
-        draw.text((BX+BW-25, BY+10), "SEASON", font=_f(7, True), fill=(0,255,200), anchor="mm")
+        # Üst sağ küncdə "GENESIS" badge
+        draw.rectangle([(BX+BW-52, BY+4), (BX+BW-4, BY+16)], fill=(0,80,70))
+        draw.text((BX+BW-28, BY+10), "GENESIS", font=_f(7, True), fill=(0,255,200), anchor="mm")
 
         # Aşağı band: oyunçu adı yer saxlayıcısı
         nby = BY + BH - 18
         draw.rectangle([(BX+4, nby), (BX+BW-4, BY+BH-3)], fill=(0, 30, 28, 200))
-        draw.text((BX + 10, nby + 6), "[ Zenith's Academy S1 ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
+        draw.text((BX + 10, nby + 6), "[ Zenith's Academy — Genesis ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
 
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
         return img
 
-    # ── S1 FRAME ──────────────────────────────────────────────────────────────
-    if "Frame" in lbl:
+    # ── FRAME ─────────────────────────────────────────────────────────────────
+    if rtype == "avatar_frame":
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
                                fill=(8, 18, 28), outline=PASS_TEAL, width=2)
 
         # Profil çərçivəsi — dairəvi avatar mərkəzdə
         cx, cy = w//2, (body_h)//2 - 2
-        R_out = min(w, body_h)//2 - 16   # xarici halqa
-        R_in  = R_out - 8                # inner circle (avatar)
+        # Kiçik kart ölçülərində (məs. bütün-levellər grid kartı) sabit -16/-8
+        # padding radiusu mənfiyə apara bilirdi (ValueError) — indi ölçüyə uyğun
+        # klemplənir ki R_in həmişə müsbət və R_out-dan kiçik qalsın.
+        R_out = max(min(w, body_h)//2 - 16, 20)   # xarici halqa
+        R_in  = max(R_out - 8, 12)                # inner circle (avatar)
 
         # Outer glow ring (layered circles)
         for rr, alpha in [(R_out+5, 40), (R_out+3, 80), (R_out+1, 140)]:
@@ -259,15 +231,16 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
             oy = int(cy + R_out * _m3.sin(_m3.radians(ang)))
             draw.ellipse([(ox-4,oy-4),(ox+4,oy+4)], fill=(0,255,200), outline=(0,80,60), width=1)
 
-        # "S1 FRAME" etiket plitəsi aşağıda
-        draw.rectangle([(cx-26, body_h-18),(cx+26, body_h-5)], fill=(0,60,50))
-        draw.text((cx, body_h-11), "S1  FRAME", font=_f(7, True), fill=(0,220,180), anchor="mm")
+        # "FRAME" etiket plitəsi aşağıda (kart eninə uyğun klemplənir)
+        plate_hw = max(min(26, w // 2 - 4), 10)
+        draw.rectangle([(cx-plate_hw, body_h-18),(cx+plate_hw, body_h-5)], fill=(0,60,50))
+        draw.text((cx, body_h-11), "FRAME", font=_f(7, True), fill=(0,220,180), anchor="mm")
 
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
         return img
 
     # ── ELO BOOST ─────────────────────────────────────────────────────────────
-    if "Boost" in lbl:
+    if rtype == "boost":
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
                                fill=(20,10,40), outline=PASS_PURPLE, width=2)
         boost_path = os.path.join(BASE_DIR2, "assets", "elo_boost.png")
@@ -290,6 +263,56 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_PURPLE, anchor="mm")
         return img
 
+    # ── ELO KART PAKETİ (Market ELO Kartları ilə eyni sistem — boost50/boost100/protect) ──
+    if rtype == "elo_card":
+        v = reward.get("value") or {}
+        card_type = v.get("card_type", "boost50")
+        qty = v.get("qty", 1)
+        is_protect = card_type == "protect"
+        panel_col = (90, 210, 130) if is_protect else PASS_PURPLE
+        draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
+                               fill=(10,30,20) if is_protect else (20,10,40), outline=panel_col, width=2)
+        icon_cx, icon_cy = w//2, body_h//2 - 6
+        if is_protect:
+            # Qalxan (shield) formalı ikon — real asset yoxdur, primitiv çəkilir
+            R = min(w, body_h) // 4
+            shield = [
+                (icon_cx, icon_cy - R), (icon_cx + R*0.8, icon_cy - R*0.5),
+                (icon_cx + R*0.8, icon_cy + R*0.3), (icon_cx, icon_cy + R*1.1),
+                (icon_cx - R*0.8, icon_cy + R*0.3), (icon_cx - R*0.8, icon_cy - R*0.5),
+            ]
+            draw.polygon(shield, fill=panel_col, outline=(230, 255, 240), width=2)
+            draw.text((icon_cx, icon_cy + 2), "✓", font=_f(int(R*0.7), True), fill=(10,30,20), anchor="mm")
+        else:
+            # Qeyd: assets/elo_boost.png yanlış marka loqosudur (ödəniş kartı "Elo" loqosu,
+            # boost-la əlaqəsi yoxdur) — istifadə olunmur, əvəzinə çəkilmiş ildırım ikonu.
+            R = min(w, body_h) // 4
+            bolt = [(icon_cx-R*0.4,icon_cy-R),(icon_cx+R*0.3,icon_cy-R),(icon_cx-R*0.2,icon_cy),
+                    (icon_cx+R*0.5,icon_cy),(icon_cx-R*0.5,icon_cy+R),(icon_cx+R*0.1,icon_cy+R*0.15),
+                    (icon_cx-R*0.2,icon_cy+R*0.15),(icon_cx-R*0.7,icon_cy)]
+            draw.polygon(bolt, fill=panel_col, outline=(230,210,255), width=1)
+        # Miqdar badge (sağ üst küncdə, aydın görünsün deyə)
+        qty_txt = f"×{qty}"
+        qbw = _f(11, True).getlength(qty_txt) if hasattr(_f(11, True), "getlength") else len(qty_txt)*7
+        draw.rounded_rectangle([(w-14-qbw, 6), (w-4, 20)], radius=6, fill=panel_col)
+        draw.text((w-9-qbw/2, 13), qty_txt, font=_f(11, True), fill=(10,10,15), anchor="mm")
+        draw.text((w//2, h-8), lbl[:20], font=_f(8, True), fill=panel_col, anchor="mm")
+        return img
+
+    # ── AZN (currency) mükafatı ─────────────────────────────────────────────────
+    if rtype == "azn":
+        amount = reward.get("value", 0)
+        green = (110, 220, 140)
+        draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=8,
+                               fill=(10,32,18), outline=green, width=1)
+        R = min(body_h - 24, w - 24) // 2
+        cx2, cy2 = w//2, body_h//2 - 4
+        draw.ellipse([(cx2-R,cy2-R),(cx2+R,cy2+R)], fill=(20,60,35), outline=green, width=2)
+        draw.text((cx2, cy2), "₼", font=_f(int(R*1.1), True), fill=green, anchor="mm")
+        draw.text((w//2, body_h - 6), f"{amount:g} AZN", font=_f(10, True), fill=green, anchor="mm")
+        draw.text((w//2, h-8), lbl, font=_f(9, True), fill=green, anchor="mm")
+        return img
+
     # ── Fallback ──────────────────────────────────────────────────────────────
     dim = tuple(max(c//4, 0) for c in col)
     draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6, fill=dim, outline=col, width=2)
@@ -299,7 +322,7 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
 
 
 def _draw_frame(pass_data: dict, missions: list, glow: float):
-    COLS   = 6
+    COLS   = len(PASS_MILESTONES)
     CELL_W = 148
     FREE_H = 140
     BAR_H  = 54
@@ -316,16 +339,16 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
     level      = pass_data.get("level", 0)
     xp         = pass_data.get("xp", 0)
     is_premium = pass_data.get("is_premium", False)
-    MAX_LVL    = 30
+    MAX_LVL    = BP_MAX_LEVEL
     XP_NEED    = 500
 
     # Header
     draw.rectangle([(0, 0), (W, 62)], fill=PASS_HEADER)
     draw.line([(0, 60), (W, 60)], fill=PASS_GOLD, width=2)
     draw.text((14, 8),  "Zenith's Academy",       font=_f(11, True), fill=PASS_GOLD)
-    draw.text((14, 24), "SEASON 1 PASS",   font=_f(20, True), fill=WHITE2)
-    tier     = "GOLD PASS" if is_premium else "FREE PASS"
-    tier_col = PASS_GOLD  if is_premium else (140, 140, 160)
+    draw.text((14, 24), SEASON_LABEL,   font=_f(18, True), fill=WHITE2)
+    tier     = "VIP PASS" if is_premium else "FREE PASS"
+    tier_col = PASS_PURPLE  if is_premium else (140, 140, 160)
     draw.text((W - 14, 16), tier,          font=_f(13, True), fill=tier_col,  anchor="rm")
     draw.text((W - 14, 34), f"LVL {level}/{MAX_LVL}", font=_f(12, True), fill=PASS_GOLD, anchor="rm")
 
@@ -342,14 +365,14 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
 
     pl_y = y0 + FREE_H + BAR_H + PREM_H // 2
     if is_premium:
-        gc = int(80 + 80 * glow)
-        draw.rectangle([(0, y0+FREE_H+BAR_H), (3, y0+FREE_H+BAR_H+PREM_H)], fill=(gc, gc//2, 0))
-        draw.text((LEFT_W // 2, pl_y - 10), "GOLD", font=_f(14, True), fill=PASS_GOLD, anchor="mm")
-        draw.text((LEFT_W // 2, pl_y + 8),  "PASS", font=_f(14, True), fill=PASS_GOLD, anchor="mm")
+        gc = int(90 + 60 * glow)
+        draw.rectangle([(0, y0+FREE_H+BAR_H), (3, y0+FREE_H+BAR_H+PREM_H)], fill=(gc//2, gc//3, gc))
+        draw.text((LEFT_W // 2, pl_y - 10), "VIP", font=_f(14, True), fill=PASS_PURPLE, anchor="mm")
+        draw.text((LEFT_W // 2, pl_y + 8),  "PASS", font=_f(14, True), fill=PASS_PURPLE, anchor="mm")
     else:
-        draw.text((LEFT_W // 2, pl_y - 14), "GOLD", font=_f(14, True), fill=(80, 60, 100), anchor="mm")
+        draw.text((LEFT_W // 2, pl_y - 14), "VIP", font=_f(14, True), fill=(80, 60, 100), anchor="mm")
         draw.text((LEFT_W // 2, pl_y + 4),  "PASS", font=_f(14, True), fill=(80, 60, 100), anchor="mm")
-        draw.text((LEFT_W // 2, pl_y + 24), "7 AZN", font=_f(11, True), fill=PASS_GOLD,    anchor="mm")
+        draw.text((LEFT_W // 2, pl_y + 24), f"{BP_PRICE_AZN} AZN", font=_f(11, True), fill=PASS_PURPLE,    anchor="mm")
 
     # Reward cells
     for ci, lv in enumerate(PASS_MILESTONES):
@@ -373,10 +396,6 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
         pi_h = PREM_H - 28
         pi = _reward_img(lv, True, (CELL_W - 12, pi_h))
         img.paste(pi, (cx + 6, y0 + FREE_H + BAR_H + 6), pi)
-        rew  = PASS_PREM_REWARDS[lv]
-        rcol = rew["color"] if is_premium else (70, 55, 95)
-        draw.text((cx + CELL_W // 2, y0+FREE_H+BAR_H+PREM_H-10), rew["label"],
-                  font=_f(9, True), fill=rcol, anchor="mm")
         if done and is_premium:
             draw.text((cx + CELL_W // 2, y0+FREE_H+BAR_H+8), "ALINDI",
                       font=_f(9, True), fill=PASS_GOLD, anchor="mm")
@@ -433,10 +452,10 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
 
     # Footer
     draw.rectangle([(0, H - FOOT_H), (W, H)], fill=PASS_HEADER)
-    draw.text((14, H - FOOT_H + 8), "Zenith's Academy  •  Season 1", font=_f(9), fill=GRAY2)
+    draw.text((14, H - FOOT_H + 8), f"Zenith's Academy  •  {BP_SEASON_NAME}", font=_f(9), fill=GRAY2)
     if not is_premium:
-        draw.text((W - 14, H - FOOT_H + 8), "/pass_al ile Premium al — 7 AZN",
-                  font=_f(9, True), fill=PASS_GOLD, anchor="rm")
+        draw.text((W - 14, H - FOOT_H + 8), f"\"VIP Pass Al\" düyməsi — {BP_PRICE_AZN} AZN",
+                  font=_f(9, True), fill=PASS_PURPLE, anchor="rm")
 
     return img
 
@@ -454,24 +473,25 @@ def generate_pass_gif(pass_data: dict, missions: list, output_path: str):
 
 def generate_pass_card(pass_data: dict, missions: list, output_path: str):
     img = _draw_frame(pass_data, missions, 0.85)
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
 def generate_pass_levels_card(pass_data: dict, output_path: str):
-    """1-30 bütün levellərin mükafat siyahısı — ayrıca statik kart."""
-    from database import BP_LEVEL_REWARDS
-    COLS   = 6
-    ROWS   = 5          # 30 level / 6 = 5 sıra
-    CW     = 148        # cell width
-    FREE_H = 88
-    PREM_H = 110
+    """1-BP_MAX_LEVEL bütün levellərin mükafat siyahısı — tək statik kart, hər sütunda
+    ÜSTDƏ VIP (premium), ALTDA FREE mükafatı (istifadəçinin təsdiqlədiyi düzülüş)."""
+    COLS   = 7
+    ROWS   = -(-BP_MAX_LEVEL // COLS)  # ceil division
+    CW     = 150
+    VIP_H  = 108
+    FREE_H = 86
     GAP    = 4
-    PAD    = 12
-    HEAD   = 56
-    FOOT   = 28
-    W      = PAD*2 + COLS * CW
-    H      = HEAD + ROWS * (FREE_H + PREM_H + GAP + 30) + FOOT
+    PAD    = 14
+    HEAD   = 64
+    FOOT   = 30
+    W      = PAD * 2 + COLS * CW
+    BLOCK_H = 24 + VIP_H + GAP + FREE_H
+    H      = HEAD + ROWS * (BLOCK_H + 10) + FOOT
 
     level      = pass_data.get("level", 0)
     is_premium = pass_data.get("is_premium", False)
@@ -480,62 +500,73 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
     draw = ImageDraw.Draw(img)
 
     # Header
-    draw.rectangle([(0,0),(W,HEAD)], fill=PASS_HEADER)
-    draw.line([(0,HEAD-2),(W,HEAD-2)], fill=PASS_GOLD, width=2)
-    draw.text((PAD, 10), "Zenith's Academy", font=_f(11, True), fill=PASS_GOLD)
-    draw.text((PAD, 26), "SEASON 1 — BUTUN LEVELLERIN MUKAFATLARI", font=_f(14, True), fill=WHITE2)
-    tier = "GOLD PASS" if is_premium else "FREE PASS"
-    draw.text((W-PAD, 30), tier, font=_f(12, True), fill=PASS_GOLD if is_premium else GRAY2, anchor="rm")
+    draw.rectangle([(0, 0), (W, HEAD)], fill=PASS_HEADER)
+    draw.line([(0, HEAD - 2), (W, HEAD - 2)], fill=PASS_PURPLE, width=2)
+    draw.text((PAD, 12), "Zenith's Academy", font=_f(12, True), fill=PASS_PURPLE)
+    draw.text((PAD, 30), f"{SEASON_LABEL} — BÜTÜN LEVELLƏR (1-{BP_MAX_LEVEL})", font=_f(14, True), fill=WHITE2)
+    tier = "VIP PASS" if is_premium else "FREE PASS"
+    tier_col = PASS_PURPLE if is_premium else GRAY2
+    draw.text((W - PAD, 22), tier, font=_f(13, True), fill=tier_col, anchor="rm")
+    draw.text((W - PAD, 40), f"LVL {level}/{BP_MAX_LEVEL}", font=_f(12, True), fill=WHITE2, anchor="rm")
 
-    # All 30 levels in grid
     for row in range(ROWS):
         for col in range(COLS):
-            lv    = row * COLS + col + 1
-            if lv > 30:
+            lv = row * COLS + col + 1
+            if lv > BP_MAX_LEVEL:
                 break
-            cx   = PAD + col * CW
-            cy   = HEAD + row * (FREE_H + PREM_H + GAP + 30)
+            cx = PAD + col * CW
+            cy = HEAD + row * (BLOCK_H + 10)
             done = lv <= level
+            is_milestone = lv in PASS_MILESTONES
 
-            # Level number bar
-            lv_col = PASS_GOLD if lv in {5,10,15,20,25,30} else (60,55,80)
-            draw.rectangle([(cx, cy),(cx+CW-2, cy+22)], fill=lv_col if done else (30,25,45))
-            draw.text((cx+CW//2, cy+11), f"LVL {lv}", font=_f(9, True),
-                      fill=(20,15,5) if done else GRAY2, anchor="mm")
+            # Level number strip
+            lv_col = PASS_PURPLE if is_milestone else (60, 55, 80)
+            draw.rectangle([(cx, cy), (cx + CW - 2, cy + 22)], fill=lv_col if done else (28, 24, 40))
+            draw.text((cx + CW // 2, cy + 11), f"LVL {lv}", font=_f(9, True),
+                      fill=(20, 15, 30) if done else GRAY2, anchor="mm")
 
-            # FREE cell
-            fc = (28,40,28) if done else PASS_FREE_BG
-            draw.rectangle([(cx, cy+22),(cx+CW-2, cy+22+FREE_H)], fill=fc)
-            fi = _reward_img(lv, False, (CW-12, FREE_H-16))
-            img.paste(fi, (cx+6, cy+24), fi)
-            if done:
-                draw.text((cx+CW//2, cy+22+FREE_H-6), "✓", font=_f(9,True), fill=(60,200,60), anchor="mm")
-            draw.line([(cx,cy+22),(cx+CW-2,cy+22)], fill=PASS_BORDER, width=1)
-
-            # PREM cell
-            pc = (40,28,62) if (done and is_premium) else (22,15,35)
-            draw.rectangle([(cx, cy+22+FREE_H+GAP),(cx+CW-2, cy+22+FREE_H+GAP+PREM_H)], fill=pc)
-            pi = _reward_img(lv, True, (CW-12, PREM_H-16))
-            img.paste(pi, (cx+6, cy+22+FREE_H+GAP+4), pi)
+            # VIP cell (TOP)
+            vc = (42, 28, 65) if (done and is_premium) else (26, 20, 40)
+            draw.rectangle([(cx, cy + 22), (cx + CW - 2, cy + 22 + VIP_H)], fill=vc)
+            vi = _reward_img(lv, True, (CW - 12, VIP_H - 22))
+            img.paste(vi, (cx + 6, cy + 24), vi)
             if done and is_premium:
-                draw.text((cx+CW//2, cy+22+FREE_H+GAP+PREM_H-6), "✓",
-                          font=_f(9,True), fill=PASS_GOLD, anchor="mm")
+                draw.text((cx + CW - 12, cy + 22 + 10), "✓", font=_f(11, True),
+                          fill=PASS_PURPLE, anchor="mm")
+            draw.line([(cx, cy + 22), (cx + CW - 2, cy + 22)], fill=PASS_BORDER, width=1)
 
-            # Borders
-            draw.line([(cx,cy),(cx,cy+22+FREE_H+GAP+PREM_H)], fill=PASS_BORDER, width=1)
-            draw.line([(cx,cy+22+FREE_H+GAP),(cx+CW-2,cy+22+FREE_H+GAP)], fill=PASS_BORDER, width=1)
+            # Divider between VIP and FREE
+            div_y = cy + 22 + VIP_H
+            draw.line([(cx, div_y), (cx + CW - 2, div_y)], fill=PASS_BORDER, width=2)
 
-    # Footer
-    draw.rectangle([(0,H-FOOT),(W,H)], fill=PASS_HEADER)
-    draw.text((PAD, H-FOOT+8), "Zenith's Academy Season 1 Pass  •  /pass_al — 7 AZN", font=_f(9), fill=GRAY2)
+            # FREE cell (BOTTOM)
+            fc = (26, 34, 26) if done else (20, 24, 20)
+            draw.rectangle([(cx, div_y + GAP), (cx + CW - 2, div_y + GAP + FREE_H)], fill=fc)
+            fi = _reward_img(lv, False, (CW - 14, FREE_H - 20))
+            img.paste(fi, (cx + 7, div_y + GAP + 2), fi)
+            if done:
+                draw.text((cx + CW - 12, div_y + GAP + 10), "✓", font=_f(10, True),
+                          fill=(90, 210, 110), anchor="mm")
 
-    img.save(output_path)
+            draw.line([(cx, cy), (cx, div_y + GAP + FREE_H)], fill=PASS_BORDER, width=1)
+
+            if is_milestone:
+                draw.rectangle([(cx, cy), (cx + CW - 2, div_y + GAP + FREE_H)],
+                                outline=PASS_PURPLE, width=2)
+
+    draw.rectangle([(0, H - FOOT), (W, H)], fill=PASS_HEADER)
+    draw.text((PAD, H - FOOT + 6), f"Zenith's Academy {BP_SEASON_NAME} Pass  •  \"VIP Pass Al\" — {BP_PRICE_AZN} AZN",
+              font=_f(9), fill=GRAY2)
+    draw.text((W - PAD, H - FOOT + 6), "ÜSTDƏ VIP  •  ALTDA FREE",
+              font=_f(9, True), fill=PASS_PURPLE, anchor="ra")
+
+    _finalize(img).save(output_path)
     return output_path
 
 
 def generate_pass_announcement(output_path: str):
-    """Season 1 Battle Pass tanıtım elan kartı — kanal elanı üçün."""
-    W, H = 900, 560
+    """Genesis (Yaranış) Battle Pass tanıtım elan kartı — kanal elanı üçün."""
+    W, H = 900, 580
     img  = Image.new("RGBA", (W, H), (0,0,0,255))
     draw = ImageDraw.Draw(img)
 
@@ -558,26 +589,27 @@ def generate_pass_announcement(output_path: str):
     draw = ImageDraw.Draw(img)
 
     # ── Sol üst logo şeridi ───────────────────────────────────────────────────
-    draw.rectangle([(0,0),(W,5)], fill=PASS_GOLD)
-    draw.text((28,14), "Zenith's Academy  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_GOLD)
+    draw.rectangle([(0,0),(W,5)], fill=PASS_PURPLE)
+    draw.text((28,14), "Zenith's Academy  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_PURPLE)
 
     # ── Mərkəz başlıq ─────────────────────────────────────────────────────────
     draw.text((W//2, 52),  "BATTLE PASS",  font=_f(52,True), fill=WHITE2, anchor="mm")
-    draw.text((W//2, 100), "S E A S O N   1",  font=_f(18,True), fill=PASS_TEAL,  anchor="mm")
+    draw.text((W//2, 100), "G E N E S I S",  font=_f(20,True), fill=PASS_PURPLE,  anchor="mm")
+    draw.text((W//2, 122), f"( {BP_SEASON_NAME_AZ} )",  font=_f(13,True), fill=PASS_TEAL,  anchor="mm")
 
     # Başlıq altı xətt
-    draw.line([(60,115),(W-60,115)], fill=PASS_BORDER, width=1)
+    draw.line([(60,138),(W-60,138)], fill=PASS_BORDER, width=1)
 
     # ── 3 əsas mükafat kartı ─────────────────────────────────────────────────
     CARD_W, CARD_H = 220, 200
     cards = [
-        (5,  False, "LVL 5 — FREE",   "S1 Banner",  PASS_TEAL),
-        (20, True,  "LVL 20 — VIP",   "S1 Frame",   PASS_TEAL),
-        (30, True,  "LVL 30 — VIP",   "AWM BOOM",   PASS_GOLD),
+        (5,  False, "LVL 5 — FREE",   "50% Boost Kartı",   PASS_TEAL),
+        (15, True,  "LVL 15 — VIP",   "Genesis Çərçivəsi", PASS_TEAL),
+        (35, True,  "LVL 35 — VIP",   "AWM BOOM SKIN",     PASS_GOLD),
     ]
     total_cards = len(cards)
     spacing = (W - total_cards * CARD_W) // (total_cards + 1)
-    cy0 = 130
+    cy0 = 152
 
     for ci, (lv, prem, badge, name, col) in enumerate(cards):
         cx0 = spacing + ci * (CARD_W + spacing)
@@ -594,14 +626,10 @@ def generate_pass_announcement(output_path: str):
         draw.text((cx0+CARD_W//2, cy0+15), badge, font=_f(9,True),
                   fill=(20,15,10) if col==PASS_GOLD else (10,30,28), anchor="mm")
 
-        # Mükafat ikonu (mükafat_img funksiyasından)
-        icon_size = (CARD_W-24, CARD_H-70)
+        # Mükafat ikonu (_reward_img öz içində adını da çəkir, təkrar yazmırıq)
+        icon_size = (CARD_W-24, CARD_H-46)
         icon = _reward_img(lv, prem, icon_size)
         img.paste(icon, (cx0+12, cy0+30), icon)
-
-        # Ad
-        draw.text((cx0+CARD_W//2, cy0+CARD_H-14), name, font=_f(11,True),
-                  fill=col, anchor="mm")
 
     # ── Free vs VIP müqayisə paneli ───────────────────────────────────────────
     PY = cy0 + CARD_H + 20
@@ -613,27 +641,27 @@ def generate_pass_announcement(output_path: str):
     draw.rounded_rectangle([(PX, PY),(PX+PW, PY+PH)],
                            radius=6, fill=(14,28,20), outline=PASS_TEAL, width=2)
     draw.text((PX+PW//2, PY+12), "FREE PASS", font=_f(13,True), fill=PASS_TEAL, anchor="mm")
-    for ri, row in enumerate(["Coin mükafatlar hər leveldə",
-                               "1000 Coin sezon sonu"]):
+    for ri, row in enumerate(["Hər leveldə coin mükafatı",
+                               "Milestone-larda (5-35) ELO kartları"]):
         draw.text((PX+14, PY+28+ri*16), f"• {row}", font=_f(9), fill=WHITE2)
 
     # VIP panel
     VX = PX + PW + 20
     draw.rounded_rectangle([(VX, PY),(VX+PW, PY+PH)],
-                           radius=6, fill=(30,18,8), outline=PASS_GOLD, width=2)
-    draw.text((VX+PW//2, PY+12), "VIP PASS — 7 AZN", font=_f(13,True), fill=PASS_GOLD, anchor="mm")
-    for ri, row in enumerate(["Banner + Frame + ELO Boost",
-                               "AWM BOOM skin (Lv.30)"]):
+                           radius=6, fill=(28,18,42), outline=PASS_PURPLE, width=2)
+    draw.text((VX+PW//2, PY+12), f"VIP PASS — {BP_PRICE_AZN} AZN", font=_f(13,True), fill=PASS_PURPLE, anchor="mm")
+    for ri, row in enumerate(["Bütün FREE + AZN/Coin/ELO kart bonusu",
+                               f"Çərçivə(15) · Banner(20) · AWM Boom(Lv.{BP_MAX_LEVEL})"]):
         draw.text((VX+14, PY+28+ri*16), f"• {row}", font=_f(9), fill=WHITE2)
 
     # ── Alt CTA şeridi ────────────────────────────────────────────────────────
     FY = H - 46
     draw.rectangle([(0,FY),(W,H)], fill=(8,6,14))
-    draw.line([(0,FY),(W,FY)], fill=PASS_GOLD, width=2)
+    draw.line([(0,FY),(W,FY)], fill=PASS_PURPLE, width=2)
     draw.text((W//2, FY+23),
               "/pass  →  Battle Pass-ınızı açın",
               font=_f(16,True), fill=WHITE2, anchor="mm")
 
     img = img.convert("RGB")
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path

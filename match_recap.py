@@ -3,18 +3,27 @@ Matç sonu xülasə kartı — PIL vizual.
 Göstərir: skor, hər oyunçu K/A/D + ELO±, MVP / Top Fragger / Best Assist badge-ləri.
 """
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-BG_TOP    = (12, 10, 18)
-BG_BOT    = (8,  7, 12)
-PANEL     = (22, 20, 30)
-PANEL2    = (28, 26, 38)
-BORDER    = (48, 44, 60)
-GOLD      = (240, 185, 40)
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
+BG_TOP    = (14, 11, 22)
+BG_BOT    = (7,  6, 12)
+PANEL     = (20, 17, 28)
+PANEL2    = (26, 22, 36)
+BORDER    = (54, 46, 72)
+GOLD      = (138, 92, 230)
+SILVER    = (186, 178, 202)
 WHITE     = (244, 241, 234)
-GRAY      = (130, 125, 145)
+GRAY      = (150, 142, 168)
 GREEN     = (88, 210, 110)
 RED       = (210, 65, 58)
 BLUE      = (80, 155, 230)
@@ -169,9 +178,9 @@ def generate_match_recap_card(
         best_assist = max(all_players, key=lambda p: p["assists"])
 
         badges = [
-            ("🏆 MVP",         mvp["nick"],         GOLD),
-            ("🔫 Top Fragger", top_fragger["nick"],  RED),
-            ("🤝 Best Assist",  best_assist["nick"],  TEAL),
+            ("MVP",         mvp["nick"],         GOLD),
+            ("TOP FRAGGER", top_fragger["nick"],  RED),
+            ("BEST ASSIST", best_assist["nick"],  TEAL),
         ]
         bw = W // len(badges)
         for bi, (badge_lbl, badge_nick, badge_col) in enumerate(badges):
@@ -189,5 +198,5 @@ def generate_match_recap_card(
     draw.text((W - 28, fy + FOOT_H // 2), f"Xəritə: {map_name}  •  Matç No{match_number}",
               font=_f(11), fill=GRAY, anchor="rm")
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path

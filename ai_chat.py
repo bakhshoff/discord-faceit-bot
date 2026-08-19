@@ -6,6 +6,7 @@ from groq import Groq
 
 DB_PATH = os.path.join(os.environ.get("DATA_DIR", "."), "bot_database.db")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
@@ -130,3 +131,105 @@ def ask_groq(discord_id: int, username: str, user_message: str, player_data=None
     add_to_history(discord_id, "assistant", reply)
 
     return reply
+
+
+COACH_SYSTEM_PROMPT = """Sen Zenith's Academy-nin Standoff 2 oyun köməkçisisən.
+Oyunçuya bir matçdan sonra qısa, konkret, 1-2 cümləlik məsləhət ver.
+Azərbaycan dilində yaz. Emoji istifadə etmə. Ümumi sözlər yox, verilən
+statistikaya əsaslanan konkret müşahidə et (məs. çox ölüb az kill edibsə,
+mövqe seçimini qeyd et; yaxşı nəticə olubsa, təbrik edib nə davam etdirməli
+olduğunu de)."""
+
+
+def generate_match_coach_tip(nick, kills, assists, deaths, elo_before, elo_after, won) -> str:
+    """Qısa, tək-mərhələli AI Coach məsləhəti qaytarır. Xəta/açar yoxdursa None."""
+    if not client:
+        return None
+    kd = round(kills / max(deaths, 1), 2)
+    elo_diff = elo_after - elo_before
+    prompt = (
+        f"Oyunçu: {nick}\n"
+        f"Nəticə: {'Qələbə' if won else 'Məğlubiyyət'}\n"
+        f"K/A/D: {kills}/{assists}/{deaths} (K/D {kd})\n"
+        f"ELO dəyişimi: {'+' if elo_diff >= 0 else ''}{elo_diff} ({elo_before} → {elo_after})"
+    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": COACH_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=150,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None
+
+
+NEWS_SYSTEM_PROMPT = """Sen Zenith's Academy-nin (Standoff 2 Azərbaycan icması) rəsmi
+"Zenith Xəbərləri" bülleteni yazarısan. Verilmiş gündəlik statistikaya əsasən,
+real idman jurnalisti üslubunda, canlı və maraqlı bir paraqraf (3-5 cümlə) yaz.
+Azərbaycan dilində yaz. Emoji istifadə etmə. Quru rəqəm sadalama yox, hekayə kimi yaz."""
+
+
+def generate_daily_news(stats: dict) -> str:
+    """Gündəlik statistikadan Claude ilə qısa "xəbər bülleteni" mətni yaradır. Xəta/açar yoxdursa None."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    top = stats.get("top_player")
+    prompt = (
+        f"Bugünkü statistika:\n"
+        f"Matç sayı: {stats.get('match_count', 0)}\n"
+        f"Yeni qeydiyyat: {stats.get('new_players', 0)}\n"
+        f"Ümumi kill: {stats.get('total_kills', 0)}\n"
+        f"Ən aktiv oyunçu: {(top[0] + ' (' + str(top[1]) + ' matç)') if top else 'yoxdur'}"
+    )
+    try:
+        import anthropic as _ant
+        client_a = _ant.Anthropic(api_key=ANTHROPIC_API_KEY)
+        msg = client_a.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[
+                {"role": "user", "content": f"{NEWS_SYSTEM_PROMPT}\n\n{prompt}"}
+            ]
+        )
+        return msg.content[0].text.strip()
+    except Exception:
+        return None
+
+
+INTEL_SYSTEM_PROMPT = """Sen Zenith's Academy-nin Standoff 2 taktiki köməkçisisən.
+Oyunçuya matç başlamazdan əvvəl, rəqib komandanın seçilmiş xəritədəki tarixi
+performansına əsasən, 1-2 cümləlik qısa "kəşfiyyat" qeydi ver. Azərbaycan dilində
+yaz. Emoji istifadə etmə. Konkret və taktiki ol, ümumi sözlər yazma."""
+
+
+def generate_intel_briefing(nick, opponent_map_stats: dict, selected_map: str) -> str:
+    """Rəqib komandanın xəritə statistikasına əsaslanan qısa taktiki DM mətni. Xəta/açar yoxdursa None."""
+    if not client:
+        return None
+    wins = opponent_map_stats.get("wins", 0)
+    losses = opponent_map_stats.get("losses", 0)
+    total = wins + losses
+    if total == 0:
+        win_rate_text = "rəqib komandanın bu xəritədə əvvəlki məlumatı yoxdur"
+    else:
+        wr = round(wins / total * 100, 1)
+        win_rate_text = f"rəqib komanda {selected_map} xəritəsində tarixən {wr}% qalib gəlib ({wins}Q/{losses}M)"
+    prompt = f"Oyunçu: {nick}\nXəritə: {selected_map}\n{win_rate_text}"
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": INTEL_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=120,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None

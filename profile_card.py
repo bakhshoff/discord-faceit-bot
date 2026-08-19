@@ -1,19 +1,30 @@
-﻿from PIL import Image, ImageDraw, ImageFont, ImageOps
+﻿from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageEnhance
 import os
 import io
 import math
+from i18n import t
+
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
 
 WIDTH  = 900
 HEIGHT = 540
 
-BG_TOP    = (14, 12, 18)
-BG_BOTTOM = (8,  7, 11)
-PANEL     = (22, 20, 28)
-PANEL2    = (28, 26, 34)
-BORDER    = (42, 39, 48)
-GOLD      = (240, 180, 41)
+BG_TOP    = (14, 11, 20)
+BG_BOTTOM = (7,  6, 11)
+PANEL     = (20, 17, 28)
+PANEL2    = (26, 22, 34)
+BORDER    = (50, 43, 68)
+GOLD      = (138, 92, 230)
+SILVER    = (186, 178, 202)
 WHITE     = (244, 241, 234)
-GRAY      = (130, 125, 138)
+GRAY      = (150, 142, 168)
 GREEN     = (88, 200, 110)
 RED       = (210, 65, 58)
 BLUE      = (80, 150, 230)
@@ -102,7 +113,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           season_wins=0, season_losses=0,
                           season_kills=0, season_assists=0, season_deaths=0,
                           pass_status=None, pass_level=0,
-                          theme_colors=None, show_season=False):
+                          theme_colors=None, show_season=False, title=None, lang="az"):
 
     # ── Arxa plan ────────────────────────────────────────────────────────────
     if banner_path and os.path.exists(banner_path):
@@ -154,7 +165,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
 
     # ── Header şerid ─────────────────────────────────────────────────────────
     draw.text((28, 18), "Zenith's Academy", font=f_brand, fill=t_accent)
-    draw.text((28, 34), "FACEIT PROFILE", font=f_title, fill=WHITE)
+    draw.text((28, 34), t("profile.header", lang), font=f_title, fill=WHITE)
 
     # Coin + AZN (sağ üst)
     coin_text = str(coins)
@@ -203,14 +214,18 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     # ── Nick + ID + Level ─────────────────────────────────────────────────────
     tx = av_x + av_size + 26
     draw.text((tx, 90),  nick[:24],              font=f_nick,   fill=WHITE)
-    draw.text((tx, 130), f"SO2 ID: {so2_id}",   font=f_id,     fill=GRAY)
+    if title:
+        nick_bbox = draw.textbbox((tx, 90), nick[:24], font=f_nick)
+        draw.text((nick_bbox[2] + 12, 100), f"« {title[:20]} »", font=f_id, fill=GOLD)
+    draw.text((tx, 130), t("profile.so2id", lang, id=so2_id),   font=f_id,     fill=GRAY)
     # Rank hesabla
     _rank_ranges = [
-        (0,900,"Gumus I"),(900,1000,"Gumus II"),(1000,1100,"Qizil I"),(1100,1200,"Qizil II"),
-        (1200,1350,"Almaz I"),(1350,1500,"Almaz II"),(1500,1700,"Elite"),(1700,9999,"Master"),
+        (0,900,"rank.gumus1"),(900,1000,"rank.gumus2"),(1000,1100,"rank.qizil1"),(1100,1200,"rank.qizil2"),
+        (1200,1350,"rank.almaz1"),(1350,1500,"rank.almaz2"),(1500,1700,"rank.elite"),(1700,9999,"rank.master"),
     ]
-    rank_name = next((n for lo,hi,n in _rank_ranges if lo<=elo<hi), "Master")
-    draw.text((tx, 150), f"Level {level}  |  {rank_name}", font=f_elolbl, fill=level_color)
+    rank_key = next((k for lo,hi,k in _rank_ranges if lo<=elo<hi), "rank.master")
+    rank_name = t(rank_key, lang)
+    draw.text((tx, 150), t("profile.level_rank", lang, level=level, rank=rank_name), font=f_elolbl, fill=level_color)
 
     # ── Battle Pass badge ────────────────────────────────────────────────────
     if pass_status in ("free", "premium"):
@@ -238,7 +253,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
 
     # ELO (sağda)
     ex = WIDTH - 220
-    draw.text((ex, 82),  "ELO",    font=f_elolbl, fill=GRAY)
+    draw.text((ex, 82),  t("profile.elo", lang),    font=f_elolbl, fill=GRAY)
     draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
 
     # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
@@ -249,22 +264,22 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     if show_season:
         col_w = (WIDTH - 36) // 2
         draw.rectangle([18, sep1+4, 18+col_w, sep1+78], fill=t_panel, outline=t_border, width=1)
-        draw.text((26, sep1+7), "ÜMUMİ", font=_load_font(10, bold=True), fill=t_accent)
-        draw.text((26, sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
+        draw.text((26, sep1+7), t("profile.total", lang), font=_load_font(10, bold=True), fill=t_accent)
+        draw.text((26, sep1+22), t("profile.match_line", lang, matches=matches, wins=wins, losses=losses),
                   font=_load_font(13), fill=WHITE)
-        draw.text((26, sep1+42), f"Win Rate: {wr}%", font=_load_font(13, bold=True), fill=GREEN)
+        draw.text((26, sep1+42), t("profile.winrate", lang, wr=wr), font=_load_font(13, bold=True), fill=GREEN)
 
         draw.rectangle([18+col_w+6, sep1+4, WIDTH-18, sep1+78], fill=PANEL, outline=BORDER, width=1)
-        draw.text((26+col_w+6, sep1+7), "SEZON", font=_load_font(10, bold=True), fill=CYAN)
-        draw.text((26+col_w+6, sep1+22), f"Matç: {s_matches}   Qələbə: {season_wins}   Məğlubiyyət: {season_losses}",
+        draw.text((26+col_w+6, sep1+7), t("profile.season", lang), font=_load_font(10, bold=True), fill=CYAN)
+        draw.text((26+col_w+6, sep1+22), t("profile.match_line", lang, matches=s_matches, wins=season_wins, losses=season_losses),
                   font=_load_font(13), fill=WHITE)
-        draw.text((26+col_w+6, sep1+42), f"Win Rate: {s_wr}%", font=_load_font(13, bold=True), fill=CYAN)
+        draw.text((26+col_w+6, sep1+42), t("profile.winrate", lang, wr=s_wr), font=_load_font(13, bold=True), fill=CYAN)
     else:
         draw.rectangle([18, sep1+4, WIDTH-18, sep1+78], fill=t_panel, outline=t_border, width=1)
-        draw.text((26, sep1+7), "ÜMUMİ", font=_load_font(10, bold=True), fill=t_accent)
-        draw.text((26, sep1+22), f"Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
+        draw.text((26, sep1+7), t("profile.total", lang), font=_load_font(10, bold=True), fill=t_accent)
+        draw.text((26, sep1+22), t("profile.match_line", lang, matches=matches, wins=wins, losses=losses),
                   font=_load_font(13), fill=WHITE)
-        draw.text((26, sep1+42), f"Win Rate: {wr}%", font=_load_font(13, bold=True), fill=GREEN)
+        draw.text((26, sep1+42), t("profile.winrate", lang, wr=wr), font=_load_font(13, bold=True), fill=GREEN)
 
     # ── Ayırıcı 2 ─────────────────────────────────────────────────────────────
     sep2 = sep1 + 86
@@ -274,13 +289,13 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     box_y = sep2 + 6
     box_h = 90
     labels_vals = [
-        ("KİLL",  kills,  GREEN),
-        ("ASİST", assists, BLUE),
-        ("ÖLÜM",  deaths, RED),
-        ("K/D",   kd,     GOLD),
+        (t("profile.kill", lang),  kills,  GREEN),
+        (t("profile.assist", lang), assists, BLUE),
+        (t("profile.death", lang),  deaths, RED),
+        (t("profile.kd", lang),   kd,     GOLD),
     ]
     if show_season:
-        labels_vals.append(("SEZON K/D", season_kd, CYAN))
+        labels_vals.append((t("profile.season_kd", lang), season_kd, CYAN))
     bw = (WIDTH - 36) // len(labels_vals)
     for i, (lbl, val, col) in enumerate(labels_vals):
         bx2 = 18 + i * bw
@@ -291,7 +306,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
 
     draw = ImageDraw.Draw(img)  # refresh after alpha ops
     img  = img.convert("RGB")
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 

@@ -1,106 +1,103 @@
-﻿"""Zenith's Academy — AZ / TR lokalizasiya modulu."""
+"""
+Sadə çoxdilli lüğət sistemi. Hazırda tam lokallaşdırılan səth: profil kartı
+(profile_card.py) və ProfileHubView düymələri (bot.py). Digər komandalar
+hələ yalnız Azərbaycan dilindədir — eyni `t()` funksiyası ilə addım-addım
+genişləndirilə bilər.
+"""
 
 STRINGS = {
-    # ── AZƏRBAYCANCA ──────────────────────────────────────────────────────────
-    'az': {
-        # Xəbərdarlıq / Ban / Unban DM
-        'warn_dm':          "⚠️ **Zenith's Academy** — Xəbərdarlıq #{count}\n**Səbəb:** {reason}",
-        'ban_perm_dm':      "🔴 **Zenith's Academy** — DAİMİ banlandınız.\n**Səbəb:** {reason}",
-        'ban_temp_dm':      "🔴 **Zenith's Academy** — {label} banlandınız.\n**Səbəb:** {reason}\n**Bitmə:** {exp}",
-        'unban_dm':         "✅ **Zenith's Academy** — Banınız açıldı, yenidən qoşula bilərsiniz.",
-
-        # Matç bildirişləri
-        'match_start_dm':   "🎮 **Matç No{num}** başladı!\n**Komandanız:** {team}\n**Kanal:** {channel}\n\nTez qoşulun!",
-        'match_win_dm':     "🏆 **Matç No{num}** — Qalibsiniz!\n**+{elo} ELO** qazandınız. Yeni ELO: **{new_elo}**",
-        'match_loss_dm':    "💔 **Matç No{num}** — Məğlub oldunuz.\n**-{elo} ELO**. Yeni ELO: **{new_elo}**",
-        'match_cancel_dm':  "🚫 **Matç No{num}** ləğv edildi.",
-
-        # Növbə (queue)
-        'queue_joined':     "✅ Sıraya əlavə olundunuz. Mövqeyiniz: **{pos}/10**",
-        'queue_left':       "❌ Sıradan çıxdınız.",
-        'queue_full':       "🔔 Sıra doldu! Matç tezliklə başlayacaq.",
-
-        # Gündəlik bonus
-        'daily_bonus':      "🎁 Gündəlik bonus: **+{coins} coin**" ,
-        'daily_streak':     " (Giriş seriyası: {streak}🔥)",
-
-        # Qeydiyyat
-        'register_success': "✅ Qeydiyyat tamamlandı! Xoş gəldiniz, **{nick}**!\n`/profile` ilə profilinizə baxa bilərsiniz.",
-        'already_reg':      "❌ Siz artıq qeydiyyatdan keçmisiniz!",
-
-        # Parametrlər
-        'settings_title':   "⚙️ Parametrlər",
-        'settings_desc':    "Aşağıdan dil seçin. Seçim profilinizə saxlanılır.",
-        'lang_set_az':      "✅ Dil **Azərbaycanca** olaraq təyin edildi.",
-        'lang_set_tr':      "✅ Dil **Türkcə** olaraq təyin edildi.",
-        'current_lang':     "Hazırkı dil: 🇦🇿 Azərbaycanca",
-
-        # Coin
-        'coin_transfer_ok': "✅ **{recv} coin** <@{to}>-yə göndərildi. (Komissiya: {comm} coin)",
-        'coin_no_balance':  "❌ Kifayət qədər coin yoxdur.",
-
-        # Ümumi
-        'not_registered':   "❌ Qeydiyyatdan keçməmisən. `/register` istifadə et.",
-        'error_generic':    "❌ Xəta baş verdi. Yenidən cəhd edin.",
+    "az": {
+        "profile.header": "FACEIT PROFİLİ",
+        "profile.total": "ÜMUMİ",
+        "profile.season": "SEZON",
+        "profile.match_line": "Matç: {matches}   Qələbə: {wins}   Məğlubiyyət: {losses}",
+        "profile.winrate": "Win Rate: {wr}%",
+        "profile.kill": "KİLL",
+        "profile.assist": "ASİST",
+        "profile.death": "ÖLÜM",
+        "profile.kd": "K/D",
+        "profile.season_kd": "SEZON K/D",
+        "profile.level_rank": "Level {level}  |  {rank}",
+        "profile.so2id": "SO2 ID: {id}",
+        "profile.elo": "ELO",
+        "rank.gumus1": "Gümüş I", "rank.gumus2": "Gümüş II",
+        "rank.qizil1": "Qızıl I", "rank.qizil2": "Qızıl II",
+        "rank.almaz1": "Almaz I", "rank.almaz2": "Almaz II",
+        "rank.elite": "Elite", "rank.master": "Master",
+        "btn.stats": "Stats", "btn.history": "Tarixçə", "btn.inventory": "İnventar",
+        "btn.market": "Market", "btn.coins": "Coin", "btn.achievements": "Nailiyyətlər",
+        "btn.daily": "Gündəlik", "btn.maps": "Xəritələr", "btn.record": "Rekord",
+        "btn.squad": "Squad", "btn.share": "Paylaş", "btn.chart": "Qrafik",
+        "btn.title": "Ləqəb", "btn.lang": "Dil", "btn.quests": "Questlər", "btn.synergy": "Sinergiya",
+        "btn.pass": "Pass",
+        "lang.changed": "✅ Dil dəyişdirildi: {lang_name}",
+        "lang.select_placeholder": "Dili seçin...",
     },
-
-    # ── TÜRKCƏ ────────────────────────────────────────────────────────────────
-    'tr': {
-        # Uyarı / Ban / Unban DM
-        'warn_dm':          "⚠️ **Zenith's Academy** — Uyarı #{count}\n**Sebep:** {reason}",
-        'ban_perm_dm':      "🔴 **Zenith's Academy** — KALİCİ olarak yasaklandınız.\n**Sebep:** {reason}",
-        'ban_temp_dm':      "🔴 **Zenith's Academy** — {label} yasaklandınız.\n**Sebep:** {reason}\n**Bitiş:** {exp}",
-        'unban_dm':         "✅ **Zenith's Academy** — Yasağınız kaldırıldı, tekrar katılabilirsiniz.",
-
-        # Maç bildirimleri
-        'match_start_dm':   "🎮 **Maç No{num}** başladı!\n**Takımınız:** {team}\n**Kanal:** {channel}\n\nHemen katılın!",
-        'match_win_dm':     "🏆 **Maç No{num}** — Kazandınız!\n**+{elo} ELO** kazandınız. Yeni ELO: **{new_elo}**",
-        'match_loss_dm':    "💔 **Maç No{num}** — Kaybettiniz.\n**-{elo} ELO**. Yeni ELO: **{new_elo}**",
-        'match_cancel_dm':  "🚫 **Maç No{num}** iptal edildi.",
-
-        # Kuyruk (queue)
-        'queue_joined':     "✅ Sıraya eklendiniz. Sıranız: **{pos}/10**",
-        'queue_left':       "❌ Sıradan çıktınız.",
-        'queue_full':       "🔔 Sıra doldu! Maç yakında başlayacak.",
-
-        # Günlük bonus
-        'daily_bonus':      "🎁 Günlük bonus: **+{coins} coin**",
-        'daily_streak':     " (Giriş serisi: {streak}🔥)",
-
-        # Kayıt
-        'register_success': "✅ Kayıt tamamlandı! Hoş geldiniz, **{nick}**!\n`/profile` ile profilinizi görüntüleyebilirsiniz.",
-        'already_reg':      "❌ Zaten kayıtlısınız!",
-
-        # Ayarlar
-        'settings_title':   "⚙️ Ayarlar",
-        'settings_desc':    "Aşağıdan dil seçin. Seçiminiz profilinize kaydedilir.",
-        'lang_set_az':      "✅ Dil **Azerbaycanca** olarak ayarlandı.",
-        'lang_set_tr':      "✅ Dil **Türkçe** olarak ayarlandı.",
-        'current_lang':     "Mevcut dil: 🇹🇷 Türkçe",
-
-        # Coin
-        'coin_transfer_ok': "✅ **{recv} coin** <@{to}>'e gönderildi. (Komisyon: {comm} coin)",
-        'coin_no_balance':  "❌ Yeterli coin yok.",
-
-        # Genel
-        'not_registered':   "❌ Kayıtlı değilsin. `/register` kullan.",
-        'error_generic':    "❌ Bir hata oluştu. Tekrar deneyin.",
+    "en": {
+        "profile.header": "FACEIT PROFILE",
+        "profile.total": "TOTAL",
+        "profile.season": "SEASON",
+        "profile.match_line": "Matches: {matches}   Wins: {wins}   Losses: {losses}",
+        "profile.winrate": "Win Rate: {wr}%",
+        "profile.kill": "KILLS",
+        "profile.assist": "ASSISTS",
+        "profile.death": "DEATHS",
+        "profile.kd": "K/D",
+        "profile.season_kd": "SEASON K/D",
+        "profile.level_rank": "Level {level}  |  {rank}",
+        "profile.so2id": "SO2 ID: {id}",
+        "profile.elo": "ELO",
+        "rank.gumus1": "Silver I", "rank.gumus2": "Silver II",
+        "rank.qizil1": "Gold I", "rank.qizil2": "Gold II",
+        "rank.almaz1": "Diamond I", "rank.almaz2": "Diamond II",
+        "rank.elite": "Elite", "rank.master": "Master",
+        "btn.stats": "Stats", "btn.history": "History", "btn.inventory": "Inventory",
+        "btn.market": "Market", "btn.coins": "Coins", "btn.achievements": "Achievements",
+        "btn.daily": "Daily", "btn.maps": "Maps", "btn.record": "Record",
+        "btn.squad": "Squad", "btn.share": "Share", "btn.chart": "Chart",
+        "btn.title": "Title", "btn.lang": "Language", "btn.quests": "Quests", "btn.synergy": "Synergy",
+        "btn.pass": "Pass",
+        "lang.changed": "✅ Language changed: {lang_name}",
+        "lang.select_placeholder": "Select language...",
+    },
+    "ru": {
+        "profile.header": "ПРОФИЛЬ FACEIT",
+        "profile.total": "ОБЩЕЕ",
+        "profile.season": "СЕЗОН",
+        "profile.match_line": "Матчи: {matches}   Победы: {wins}   Поражения: {losses}",
+        "profile.winrate": "Процент побед: {wr}%",
+        "profile.kill": "УБИЙСТВА",
+        "profile.assist": "ПОМОЩЬ",
+        "profile.death": "СМЕРТИ",
+        "profile.kd": "K/D",
+        "profile.season_kd": "СЕЗОН K/D",
+        "profile.level_rank": "Уровень {level}  |  {rank}",
+        "profile.so2id": "SO2 ID: {id}",
+        "profile.elo": "ELO",
+        "rank.gumus1": "Серебро I", "rank.gumus2": "Серебро II",
+        "rank.qizil1": "Золото I", "rank.qizil2": "Золото II",
+        "rank.almaz1": "Алмаз I", "rank.almaz2": "Алмаз II",
+        "rank.elite": "Элита", "rank.master": "Мастер",
+        "btn.stats": "Статистика", "btn.history": "История", "btn.inventory": "Инвентарь",
+        "btn.market": "Магазин", "btn.coins": "Монеты", "btn.achievements": "Достижения",
+        "btn.daily": "Ежедневно", "btn.maps": "Карты", "btn.record": "Рекорд",
+        "btn.squad": "Отряд", "btn.share": "Поделиться", "btn.chart": "График",
+        "btn.title": "Титул", "btn.lang": "Язык", "btn.quests": "Квесты", "btn.synergy": "Синергия",
+        "btn.pass": "Пропуск",
+        "lang.changed": "✅ Язык изменён: {lang_name}",
+        "lang.select_placeholder": "Выберите язык...",
     },
 }
 
+LANG_NAMES = {"az": "Azərbaycan", "en": "English", "ru": "Русский"}
 
-def t(discord_id_or_lang, key: str, **kwargs) -> str:
-    """Get localized string for a user (by discord_id) or explicit lang code."""
-    if isinstance(discord_id_or_lang, str):
-        lang = discord_id_or_lang if discord_id_or_lang in STRINGS else 'az'
-    else:
+
+def t(key, lang="az", **kwargs):
+    table = STRINGS.get(lang) or STRINGS["az"]
+    text = table.get(key) or STRINGS["az"].get(key, key)
+    if kwargs:
         try:
-            from database import get_lang
-            lang = get_lang(discord_id_or_lang)
-        except Exception:
-            lang = 'az'
-
-    text = STRINGS.get(lang, STRINGS['az']).get(key)
-    if text is None:
-        text = STRINGS['az'].get(key, key)
-    return text.format(**kwargs) if kwargs else text
+            return text.format(**kwargs)
+        except (KeyError, IndexError):
+            return text
+    return text

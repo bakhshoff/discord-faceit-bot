@@ -1,16 +1,26 @@
-﻿from PIL import Image, ImageDraw, ImageFont
+﻿from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import os
 import textwrap
 
+
+def _finalize(img):
+    """Whole-image polish pass: 2x upscale+downscale smooths jagged shape edges, then a mild
+    sharpen recovers text crispness."""
+    w, h = img.size
+    img = img.resize((w * 2, h * 2), Image.LANCZOS).resize((w, h), Image.LANCZOS)
+    return ImageEnhance.Sharpness(img).enhance(1.15)
+
+
 WIDTH = 900
 
-BG_TOP = (18, 16, 22)
-BG_BOTTOM = (10, 9, 12)
-PANEL_ALT = (22, 20, 26)
-BORDER = (45, 42, 50)
-GOLD = (240, 180, 41)
+BG_TOP = (16, 13, 24)
+BG_BOTTOM = (8, 7, 12)
+PANEL_ALT = (20, 17, 28)
+BORDER = (52, 44, 70)
+GOLD = (138, 92, 230)
+SILVER = (186, 178, 202)
 WHITE = (244, 241, 234)
-GRAY = (141, 135, 148)
+GRAY = (150, 142, 168)
 GREEN = (95, 208, 122)
 RED = (214, 69, 61)
 
@@ -144,7 +154,7 @@ def generate_rules_card(sections, output_path="rules_card.png"):
     draw.line([(pad_x, footer_y), (WIDTH - pad_x, footer_y)], fill=BORDER, width=1)
     draw.text((pad_x, footer_y + 16), "Zenith's Academy  ·  FACEIT Rules", font=sub_font, fill=GRAY)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
 
 
@@ -175,5 +185,5 @@ def generate_register_banner(logo_path=None, output_path="register_banner.png"):
     draw.ellipse([(36, info_y + 64), (46, info_y + 74)], fill=GOLD)
     draw.text((58, info_y + 60), "Başlanğıc ELO: 1000  ·  Level 1-10 sistemi", font=value_font, fill=WHITE)
 
-    img.save(output_path)
+    _finalize(img).save(output_path)
     return output_path
