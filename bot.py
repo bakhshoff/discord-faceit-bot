@@ -1111,8 +1111,11 @@ class CancelMatchView(discord.ui.View):
             if add_to_queue(p["discord_id"], p["nick"], elo):
                 returned.append(p["nick"])
 
-        await _cleanup_match_voice_channels(interaction.guild, active)
+        # Əvvəlcə DB-də ləğv edilir (oyunçular dərhal sıraya qoşula bilsin), SONRA Discord
+        # tərəfi (səs kanalı silinməsi) — bu sıra ilə, Discord API xətası heç vaxt oyunçuları
+        # "aktiv matçda" vəziyyətində ilişik saxlaya bilməz.
         clear_active_match(self.match_number)
+        await _cleanup_match_voice_channels(interaction.guild, active)
 
         desc = f"Matç No{self.match_number} ləğv edildi."
         if penalized_nick:
@@ -1411,8 +1414,13 @@ class MatchResultView(discord.ui.View):
             if log_channel and log_channel.id != interaction.channel.id:
                 await log_channel.send(embed=upset_embed)
 
-        # Nəticə sistemə yazıldı — orijinal "Hazır" mesajını sil, dinamik səs
-        # kanallarını təmizlə (oyunçuları lobbiyə köçürüb), thread-i yekunlaşdır
+        # Əvvəlcə DB-də matç bağlanır (oyunçular dərhal sıraya qoşula bilsin) — SONRA Discord
+        # tərəfi (köhnə mesaj/səs kanalı/thread təmizliyi), ki bu best-effort addımlardan
+        # hər hansı biri xəta versə belə oyunçular "aktiv matçda" vəziyyətində ilişib qalmasın.
+        clear_active_match(self.match_number)
+
+        # Orijinal "Hazır" mesajını sil, dinamik səs kanallarını təmizlə
+        # (oyunçuları lobbiyə köçürüb), thread-i yekunlaşdır
         if active_before:
             if active_before.get("log_channel_id") and active_before.get("log_message_id"):
                 try:
@@ -1434,7 +1442,6 @@ class MatchResultView(discord.ui.View):
                         except discord.HTTPException:
                             pass
 
-        clear_active_match(self.match_number)
         await _start_match_if_ready(log_channel or interaction.channel, interaction.guild)
 
     @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a")
@@ -1648,7 +1655,12 @@ async def update_queue_status_message():
 
 
 async def _cleanup_match_voice_channels(guild, active):
-    """Matçın dinamik səs kanallarını (varsa) silir, içindəkiləri əvvəlcə lobbiyə köçürür."""
+    """Matçın dinamik səs kanallarını (varsa) silir, içindəkiləri əvvəlcə lobbiyə köçürür.
+    Bu funksiya HEÇ VAXT exception qaldırmamalıdır — çağıran yerlərdə (_finish/_on_select)
+    ondan dərhal sonra clear_active_match() gəlir; əvvəllər yalnız discord.Forbidden tutulurdu,
+    başqa növ xəta (HTTPException, rate-limit, gözlənilməz exception) bütün callback-i
+    dayandırıb clear_active_match-ı HEÇ VAXT işə düşməyə qoymurdu — nəticədə matç DB-də
+    'aktiv' qalıb oyunçular yenidən sıraya qoşula bilmirdi (bax: 'aktiv matçda göstərir' bug-ı)."""
     if not guild:
         return
     lobby_channel = guild.get_channel(LOBBY_VOICE_ID)
@@ -1656,19 +1668,19 @@ async def _cleanup_match_voice_channels(guild, active):
         vid = active.get(key)
         if not vid:
             continue
-        vc = guild.get_channel(vid)
-        if not vc:
-            continue
-        if lobby_channel:
-            for member in list(vc.members):
-                try:
-                    await member.move_to(lobby_channel)
-                except discord.Forbidden:
-                    pass
         try:
+            vc = guild.get_channel(vid)
+            if not vc:
+                continue
+            if lobby_channel:
+                for member in list(vc.members):
+                    try:
+                        await member.move_to(lobby_channel)
+                    except Exception:
+                        pass
             await vc.delete(reason="Matç bitdi/ləğv oldu")
-        except discord.Forbidden:
-            pass
+        except Exception as e:
+            print(f"[VOICE CLEANUP] Kanal {vid} silinərkən xəta (matç davam edir): {e}", flush=True)
 
 
 _match_start_lock = asyncio.Lock()
