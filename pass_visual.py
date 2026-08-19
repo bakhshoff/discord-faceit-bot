@@ -190,53 +190,64 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
     # ── FRAME ─────────────────────────────────────────────────────────────────
     if rtype == "avatar_frame":
         draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=6,
-                               fill=(8, 18, 28), outline=PASS_TEAL, width=2)
+                               fill=(14, 10, 24), outline=PASS_PURPLE, width=2)
 
-        # Profil çərçivəsi — dairəvi avatar mərkəzdə
         cx, cy = w//2, (body_h)//2 - 2
-        # Kiçik kart ölçülərində (məs. bütün-levellər grid kartı) sabit -16/-8
-        # padding radiusu mənfiyə apara bilirdi (ValueError) — indi ölçüyə uyğun
-        # klemplənir ki R_in həmişə müsbət və R_out-dan kiçik qalsın.
-        R_out = max(min(w, body_h)//2 - 16, 20)   # xarici halqa
-        R_in  = max(R_out - 8, 12)                # inner circle (avatar)
+        R = max(min(w, body_h)//2 - 10, 20)
 
-        # Outer glow ring (layered circles)
-        for rr, alpha in [(R_out+5, 40), (R_out+3, 80), (R_out+1, 140)]:
-            ring = Image.new("RGBA", img.size, (0,0,0,0))
-            rd = ImageDraw.Draw(ring)
-            rd.ellipse([(cx-rr, cy-rr),(cx+rr, cy+rr)], outline=(0,220,200,alpha), width=2)
-            img = Image.alpha_composite(img, ring)
-            draw = ImageDraw.Draw(img)
+        # Real çərçivə asseti varsa onu göstər (item.value -> market_config -> frames/*.png),
+        # yoxdursa aşağıdakı çəkilmiş mockup-a keçir.
+        real_loaded = False
+        item_id = reward.get("value")
+        if item_id:
+            try:
+                from market_config import get_item_by_id
+                item = get_item_by_id(item_id)
+                if item and item.get("file"):
+                    fp = os.path.join(BASE_DIR2, "frames", item["file"])
+                    fi = Image.open(fp).convert("RGBA")
+                    fi_size = R * 2
+                    fi.thumbnail((fi_size, fi_size), Image.LANCZOS)
+                    img.paste(fi, (cx - fi.width//2, cy - fi.height//2), fi)
+                    real_loaded = True
+            except Exception:
+                real_loaded = False
 
-        # Avatar dairəsi (arxa plan)
-        draw.ellipse([(cx-R_out, cy-R_out),(cx+R_out, cy+R_out)],
-                     fill=(12, 35, 45), outline=(0,220,200), width=3)
-        draw.ellipse([(cx-R_in, cy-R_in),(cx+R_in, cy+R_in)],
-                     fill=(15, 40, 52))
+        if not real_loaded:
+            # Profil çərçivəsi — dairəvi avatar mərkəzdə (fallback mockup)
+            R_out = R
+            R_in  = max(R_out - 8, 12)
 
-        # Avatar içi — silhuet insan fiquru
-        # baş
-        hr = R_in // 4
-        draw.ellipse([(cx-hr, cy-R_in+4),(cx+hr, cy-R_in+4+hr*2)],
-                     fill=(0, 160, 140))
-        # bədən
-        bw = int(hr * 1.8)
-        draw.rounded_rectangle([(cx-bw, cy-hr+4),(cx+bw, cy+R_in-4)],
-                               radius=bw//2, fill=(0, 130, 115))
+            for rr, alpha in [(R_out+5, 40), (R_out+3, 80), (R_out+1, 140)]:
+                ring = Image.new("RGBA", img.size, (0,0,0,0))
+                rd = ImageDraw.Draw(ring)
+                rd.ellipse([(cx-rr, cy-rr),(cx+rr, cy+rr)], outline=(*PASS_PURPLE, alpha), width=2)
+                img = Image.alpha_composite(img, ring)
+                draw = ImageDraw.Draw(img)
 
-        # 4 köşə ornamenti (diagonalda)
-        import math as _m3
-        for ang in [45, 135, 225, 315]:
-            ox = int(cx + R_out * _m3.cos(_m3.radians(ang)))
-            oy = int(cy + R_out * _m3.sin(_m3.radians(ang)))
-            draw.ellipse([(ox-4,oy-4),(ox+4,oy+4)], fill=(0,255,200), outline=(0,80,60), width=1)
+            draw.ellipse([(cx-R_out, cy-R_out),(cx+R_out, cy+R_out)],
+                         fill=(28, 18, 40), outline=PASS_PURPLE, width=3)
+            draw.ellipse([(cx-R_in, cy-R_in),(cx+R_in, cy+R_in)],
+                         fill=(34, 22, 48))
 
-        # "FRAME" etiket plitəsi aşağıda (kart eninə uyğun klemplənir)
-        plate_hw = max(min(26, w // 2 - 4), 10)
-        draw.rectangle([(cx-plate_hw, body_h-18),(cx+plate_hw, body_h-5)], fill=(0,60,50))
-        draw.text((cx, body_h-11), "FRAME", font=_f(7, True), fill=(0,220,180), anchor="mm")
+            hr = R_in // 4
+            draw.ellipse([(cx-hr, cy-R_in+4),(cx+hr, cy-R_in+4+hr*2)],
+                         fill=(160, 120, 230))
+            bw = int(hr * 1.8)
+            draw.rounded_rectangle([(cx-bw, cy-hr+4),(cx+bw, cy+R_in-4)],
+                                   radius=bw//2, fill=(130, 90, 210))
 
-        draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
+            import math as _m3
+            for ang in [45, 135, 225, 315]:
+                ox = int(cx + R_out * _m3.cos(_m3.radians(ang)))
+                oy = int(cy + R_out * _m3.sin(_m3.radians(ang)))
+                draw.ellipse([(ox-4,oy-4),(ox+4,oy+4)], fill=(200,170,255), outline=(60,30,90), width=1)
+
+            plate_hw = max(min(26, w // 2 - 4), 10)
+            draw.rectangle([(cx-plate_hw, body_h-18),(cx+plate_hw, body_h-5)], fill=(50,30,70))
+            draw.text((cx, body_h-11), "FRAME", font=_f(7, True), fill=(200,170,255), anchor="mm")
+
+        draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_PURPLE, anchor="mm")
         return img
 
     # ── ELO BOOST ─────────────────────────────────────────────────────────────
