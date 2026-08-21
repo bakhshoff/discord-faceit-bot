@@ -407,8 +407,9 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
     for ci, lv in enumerate(PASS_MILESTONES):
         cx   = LEFT_W + ci * CELL_W
         done = lv <= level
-        is_claimed = lv in claimed
-        pending_claim = done and not is_claimed
+        free_claimed = f"{lv}:free" in claimed
+        prem_claimed = f"{lv}:premium" in claimed
+        pending_claim = done and not free_claimed
         is_cur = (lv == level + 1 and lv > 0) or (level == 0 and lv == 5)
 
         # Free cell
@@ -430,7 +431,7 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
         draw.line([(cx, y0), (cx, y0 + FREE_H)], fill=PASS_BORDER, width=1)
 
         # Premium cell
-        prem_pending = pending_claim and is_premium
+        prem_pending = done and is_premium and not prem_claimed
         if prem_pending:
             pc = (55, 42, 8)
         elif done and is_premium:
@@ -566,8 +567,10 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
             cx = PAD + col * CW
             cy = HEAD + row * (BLOCK_H + 10)
             done = lv <= level
-            is_claimed = lv in claimed
-            pending_claim = done and not is_claimed
+            free_claimed = f"{lv}:free" in claimed
+            prem_claimed = f"{lv}:premium" in claimed
+            pending_claim = done and not free_claimed
+            prem_pending = done and is_premium and not prem_claimed
             is_milestone = lv in PASS_MILESTONES
 
             # Level number strip
@@ -577,7 +580,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
                       fill=(20, 15, 30) if done else GRAY2, anchor="mm")
 
             # VIP cell (TOP)
-            if pending_claim and is_premium:
+            if prem_pending:
                 vc = (55, 42, 8)
             elif done and is_premium:
                 vc = (42, 28, 65)
@@ -586,7 +589,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
             draw.rectangle([(cx, cy + 22), (cx + CW - 2, cy + 22 + VIP_H)], fill=vc)
             vi = _reward_img(lv, True, (CW - 12, VIP_H - 22))
             img.paste(vi, (cx + 6, cy + 24), vi)
-            if pending_claim and is_premium:
+            if prem_pending:
                 draw.text((cx + CW - 12, cy + 22 + 10), "!", font=_f(12, True),
                           fill=(255, 200, 50), anchor="mm")
             elif done and is_premium:

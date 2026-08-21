@@ -830,22 +830,13 @@ def pop_4_and_balance():
 
     players = [{"discord_id": r[0], "nick": r[1], "elo": r[2], "so2_id": r[3]} for r in rows]
 
-    # Real gücə görə sırala (ELO + K/D + son forma korreksiyası), yüksəkdən aşağıya,
-    # snake draft (1+4 vs 2+3) — 4 nəfər üçün ən balanslaşdırılmış bölgü budur.
-    def _power(p):
-        row = get_player(p["discord_id"])
-        return _player_power_score(row) if row else p["elo"]
-
-    players_sorted = sorted(players, key=_power, reverse=True)
-    team_a, team_b = [], []
-    for i, p in enumerate(players_sorted):
-        if i % 4 in (0, 3):
-            team_a.append(p)
-        else:
-            team_b.append(p)
-
-    random.shuffle(team_a)
-    random.shuffle(team_b)
+    # Komanda bölgüsü tam TƏSADÜFİDİR — əvvəllər ELO/K-D əsaslı balanslaşdırma (snake draft)
+    # istifadə olunurdu, amma eyni 4 nəfər sırayla qoşulduqda nisbi güc sıralaması demək olar
+    # dəyişmirdi, ona görə komanda tərkibi HƏMİŞƏ eyni cütlüyə düşürdü (eyni adamlar ardıcıl
+    # olaraq eyni komandada/ always eyni A-B tərəfində). Hər matçda tam yeni təsadüfi
+    # qarışdırma bu təkrarlanan naxışı kökündən aradan qaldırır.
+    random.shuffle(players)
+    team_a, team_b = players[:2], players[2:]
 
     captain_a = max(team_a, key=lambda p: p["elo"])
     captain_b = max(team_b, key=lambda p: p["elo"])
@@ -3596,6 +3587,22 @@ def is_premium_pass(discord_id: int) -> bool:
     return bool(row and row[0])
 
 
+def _normalize_bp_claimed(raw_list):
+    """claimed_levels əvvəllər sadəcə level nömrələrindən (int) ibarət idi — bir level FREE
+    olaraq tələb edilən kimi TAM claim olunmuş sayılırdı, yəni sonradan VIP alınsa, o levelin
+    artıq keçmiş PREMIUM mükafatı əbədi itirilirdi (claim_bp_rewards bütün levelı ötürürdü).
+    İndi claim FREE/PREMIUM üçün AYRI-AYRI "{level}:free" / "{level}:premium" açarları ilə
+    izlənir. Köhnə tək-ədədli qeydləri "{n}:free"-ə çeviririk (yalnız FREE-nin artıq
+    verildiyini bilirik — PREMIUM görünəndə YENİDƏN veriləcək, bu, itkidən daha təhlükəsizdir)."""
+    out = set()
+    for x in raw_list:
+        if isinstance(x, int):
+            out.add(f"{x}:free")
+        else:
+            out.add(x)
+    return out
+
+
 def get_pass_data(discord_id: int) -> dict:
     import json
     ensure_free_pass(discord_id)
@@ -3607,8 +3614,8 @@ def get_pass_data(discord_id: int) -> dict:
     conn.close()
     if not row:
         return {"level": 0, "xp": 0, "claimed": [], "is_premium": False}
-    return {"level": row[0], "xp": row[1], "claimed": json.loads(row[2] or "[]"),
-            "is_premium": bool(row[3])}
+    claimed = sorted(_normalize_bp_claimed(json.loads(row[2] or "[]")))
+    return {"level": row[0], "xp": row[1], "claimed": claimed, "is_premium": bool(row[3])}
 
 
 def _grant_bp_item_reward(discord_id, reward):
@@ -3667,24 +3674,26 @@ def add_bp_xp(discord_id: int, xp: int) -> dict:
 
 
 def get_pending_bp_reward_count(discord_id: int) -> int:
-    """Hazırda tələb edilməmiş (claim olunmamış) mükafat sayını qaytarır."""
+    """Hazırda tələb edilməmiş (claim olunmamış) mükafat sayını qaytarır. FREE və PREMIUM
+    hər level üçün AYRI-AYRI izlənir — VIP sonradan alınsa, əvvəlki levellərin PREMIUM
+    mükafatı da tələb ediləcək kimi görünür (bax: _normalize_bp_claimed)."""
     data = get_pass_data(discord_id)
     claimed = set(data["claimed"])
     count = 0
     for lv in range(1, data["level"] + 1):
-        if lv in claimed:
-            continue
-        if BP_LEVEL_REWARDS.get(lv):
+        if f"{lv}:free" not in claimed and BP_LEVEL_REWARDS.get(lv):
             count += 1
-        if data["is_premium"] and BP_PREMIUM_REWARDS.get(lv):
+        if data["is_premium"] and f"{lv}:premium" not in claimed and BP_PREMIUM_REWARDS.get(lv):
             count += 1
     return count
 
 
 def claim_bp_rewards(discord_id: int) -> list:
     """Çatılmış amma hələ tələb edilməmiş bütün levellərin mükafatlarını faktiki verir
-    (coin/kart/skin/AZN/banner/çərçivə inventara düşür) və həmin levelləri claimed_levels-ə
-    əlavə edir. Verilən mükafatların siyahısını (level/track/type/label) qaytarır."""
+    (coin/kart/skin/AZN/banner/çərçivə inventara düşür) və FREE/PREMIUM-u AYRI-AYRI
+    claimed_levels-ə əlavə edir. Beləliklə VIP-i levellər keçildikdən SONRA alan oyunçu,
+    claim etdikdə əvvəlki levellərin PREMIUM mükafatını da alır (FREE-nin artıq alınmış
+    olması PREMIUM-u əngəlləmir). Verilən mükafatların siyahısını qaytarır."""
     import json
     ensure_free_pass(discord_id)
     conn   = _get_conn()
@@ -3696,31 +3705,34 @@ def claim_bp_rewards(discord_id: int) -> list:
         conn.close(); return []
 
     level, claimed_json, is_premium = row
-    claimed = set(json.loads(claimed_json or "[]"))
+    claimed = _normalize_bp_claimed(json.loads(claimed_json or "[]"))
     granted = []
     pending_grants = []  # coins-olmayan mükafatlar — commit+close-dan SONRA tətbiq olunur
 
     for lv in range(1, level + 1):
-        if lv in claimed:
-            continue
-        free_reward = BP_LEVEL_REWARDS.get(lv)
-        if free_reward:
-            granted.append({"level": lv, "track": "free", **free_reward})
-            if free_reward["type"] == "coins":
-                cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?",
-                               (free_reward["value"], discord_id))
-            else:
-                pending_grants.append(free_reward)
-        if is_premium:
-            prem_reward = BP_PREMIUM_REWARDS.get(lv)
-            if prem_reward:
-                granted.append({"level": lv, "track": "premium", **prem_reward})
-                if prem_reward["type"] == "coins":
+        free_key = f"{lv}:free"
+        if free_key not in claimed:
+            free_reward = BP_LEVEL_REWARDS.get(lv)
+            if free_reward:
+                granted.append({"level": lv, "track": "free", **free_reward})
+                if free_reward["type"] == "coins":
                     cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?",
-                                   (prem_reward["value"], discord_id))
+                                   (free_reward["value"], discord_id))
                 else:
-                    pending_grants.append(prem_reward)
-        claimed.add(lv)
+                    pending_grants.append(free_reward)
+            claimed.add(free_key)
+        if is_premium:
+            prem_key = f"{lv}:premium"
+            if prem_key not in claimed:
+                prem_reward = BP_PREMIUM_REWARDS.get(lv)
+                if prem_reward:
+                    granted.append({"level": lv, "track": "premium", **prem_reward})
+                    if prem_reward["type"] == "coins":
+                        cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?",
+                                       (prem_reward["value"], discord_id))
+                    else:
+                        pending_grants.append(prem_reward)
+                claimed.add(prem_key)
 
     cursor.execute("UPDATE battle_pass SET claimed_levels=? WHERE discord_id=? AND season_id=?",
                    (json.dumps(sorted(claimed)), discord_id, BP_SEASON_ID))
