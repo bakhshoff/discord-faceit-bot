@@ -220,10 +220,10 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     draw.text((tx, 130), t("profile.so2id", lang, id=so2_id),   font=f_id,     fill=GRAY)
     # Rank hesabla
     _rank_ranges = [
-        (0,900,"rank.gumus1"),(900,1000,"rank.gumus2"),(1000,1100,"rank.qizil1"),(1100,1200,"rank.qizil2"),
-        (1200,1350,"rank.almaz1"),(1350,1500,"rank.almaz2"),(1500,1700,"rank.elite"),(1700,9999,"rank.master"),
+        (0,900,"rank.spark1"),(900,1000,"rank.spark2"),(1000,1100,"rank.flame1"),(1100,1200,"rank.flame2"),
+        (1200,1350,"rank.nova1"),(1350,1500,"rank.nova2"),(1500,1700,"rank.supernova"),(1700,9999,"rank.zenith"),
     ]
-    rank_key = next((k for lo,hi,k in _rank_ranges if lo<=elo<hi), "rank.master")
+    rank_key = next((k for lo,hi,k in _rank_ranges if lo<=elo<hi), "rank.zenith")
     rank_name = t(rank_key, lang)
     draw.text((tx, 150), t("profile.level_rank", lang, level=level, rank=rank_name), font=f_elolbl, fill=level_color)
 
