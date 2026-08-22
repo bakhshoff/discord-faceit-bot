@@ -892,24 +892,6 @@ def pop_4_and_balance():
     random.shuffle(players)
     team_a, team_b = players[:2], players[2:]
 
-    # Squad-queue: bu FIFO-batch-a düşən 4 nəfər arasında eyni aktiv squad-a aid bir cüt
-    # varsa (bax: get_squad_pair_within) və təsadüfi qarışdırma onları ayrı komandalara
-    # salıbsa, YALNIZ 1 NEUTRAL üzvlə yerdəyişmə edərək yenidən birləşdiririk — digər
-    # 2 nəfərin təsadüfi A/B bölgüsünə toxunulmur.
-    pair = get_squad_pair_within([p["discord_id"] for p in players])
-    if pair:
-        id1, id2 = pair
-        by_id = {p["discord_id"]: p for p in players}
-        a_has_1 = any(p["discord_id"] == id1 for p in team_a)
-        a_has_2 = any(p["discord_id"] == id2 for p in team_a)
-        if a_has_1 != a_has_2:
-            team_with_1 = team_a if a_has_1 else team_b
-            team_with_2 = team_b if a_has_1 else team_a
-            moved_out = next(p for p in team_with_1 if p["discord_id"] != id1)
-            new_team_with_1 = [by_id[id1], by_id[id2]]
-            new_team_with_2 = [p for p in team_with_2 if p["discord_id"] != id2] + [moved_out]
-            team_a, team_b = (new_team_with_1, new_team_with_2) if a_has_1 else (new_team_with_2, new_team_with_1)
-
     captain_a = max(team_a, key=lambda p: p["elo"])
     captain_b = max(team_b, key=lambda p: p["elo"])
 
@@ -4539,21 +4521,3 @@ def get_weekly_recap(discord_id, since_ts):
         "coins_earned": coins_earned
     }
 
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# FAZA 2 — SQUAD-QUEUE (birgə komandaya düşmə)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def get_squad_pair_within(discord_ids):
-    """Verilmiş discord_id siyahısı daxilində eyni AKTIV squad-a aid bir cüt varsa qaytarır."""
-    if len(discord_ids) < 2:
-        return None
-    conn = _get_conn(); cur = conn.cursor()
-    placeholders = ",".join("?" for _ in discord_ids)
-    cur.execute(
-        f"SELECT player1_id, player2_id FROM squads WHERE status='active' "
-        f"AND player1_id IN ({placeholders}) AND player2_id IN ({placeholders})",
-        list(discord_ids) + list(discord_ids)
-    )
-    row = cur.fetchone(); conn.close()
-    return (row[0], row[1]) if row else None

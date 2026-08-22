@@ -19,7 +19,7 @@ Cəmiyyət haqqında:
 - Zenith's Academy — Azərbaycanlı Standoff 2 oyunçularının toplumu
 - ELO sistemi, 1v1 və 5v5 turnir matçları keçirilir
 - Oyunçular coin qazanır, market vasitəsilə bannerlər, çərçivələr, skinlər ala bilər
-- 250 coin = 0.5 AZN olaraq çevrilə bilər
+- 2500 coin = 0.5 AZN olaraq çevrilə bilər
 
 Davranış qaydaları:
 - Azərbaycan dilində cavab ver (kimsə başqa dildə yazsа o dildə cavab ver)

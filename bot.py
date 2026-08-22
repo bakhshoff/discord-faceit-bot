@@ -78,7 +78,7 @@ from database import (
     create_auction, get_auction, place_bid, get_due_auctions, mark_auction_finished, get_open_auction_ids,
     get_activity_heatmap, WEEKDAY_NAMES_AZ,
     archive_bp_season, get_bp_season_archives,
-    get_weekly_recap, get_squad_pair_within,
+    get_weekly_recap,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_match_coach_tip, generate_daily_news, generate_intel_briefing, generate_personal_coach_report
@@ -204,16 +204,13 @@ REPORTS_CHANNEL_ID = None
 AUDIT_LOG_CHANNEL_ID = None
 
 # ── Coin ↔ AZN çevrilməsi (ai_chat.py-dakı elan olunmuş məzənnə ilə eynidir) ────
-COIN_TO_AZN_RATE = 250  # 250 coin = 0.5 AZN
+COIN_TO_AZN_RATE = 2500  # 2500 coin = 0.5 AZN
 COIN_TO_AZN_VALUE = 0.5
 
 # ── Flash Sale ───────────────────────────────────────────────────────────────
 FLASH_SALE_CHECK_CHANCE = 0.08
 FLASH_SALE_DISCOUNT_PCT = 30
 FLASH_SALE_DURATION_HOURS = 6
-
-# ── Rank-lock (Pro) Sıra ─────────────────────────────────────────────────────
-RANK_LOCK_ELO_BAND = 150
 
 # ── Xəritə Veto ──────────────────────────────────────────────────────────────
 MAP_VETO_MAX_REROLLS_PER_CAPTAIN = 1
@@ -2320,7 +2317,7 @@ class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    async def _do_join_queue(self, interaction: discord.Interaction, pro_mode: bool):
+    async def _do_join_queue(self, interaction: discord.Interaction):
         if not is_queue_open():
             await interaction.response.send_message(
                 f"🌙 Matchmaking yalnız gecə saatlarında aktivdir.\n🇦🇿 Azərbaycan vaxtı: **20:00 - 02:00**",
@@ -2352,18 +2349,6 @@ class MatchmakingView(discord.ui.View):
 
         discord_id, nick, so2_id, elo, wins, losses = player[:6]
 
-        if pro_mode:
-            current_queue = get_queue_list()
-            if current_queue:
-                avg_elo = sum(p["elo"] for p in current_queue) / len(current_queue)
-                if abs(elo - avg_elo) > RANK_LOCK_ELO_BAND:
-                    await interaction.response.send_message(
-                        f"❌ **Pro Sıra** rank-lock rejimidir — ELO-nuz ({elo}) sıradakıların orta ELO-sundan "
-                        f"({round(avg_elo)}) {RANK_LOCK_ELO_BAND}-dan çox fərqlənir. Adi \"2v2\" düyməsindən qoşula bilərsiniz.",
-                        ephemeral=True
-                    )
-                    return
-
         comeback_bonus = check_and_grant_comeback_bonus(discord_id)
 
         added = add_to_queue(discord_id, nick, elo)
@@ -2374,10 +2359,9 @@ class MatchmakingView(discord.ui.View):
         size = queue_size()
         active_count = count_active_matches()
         comeback_line = f"\n🎉 **Geri dönüş bonusu: +{comeback_bonus} coin!** Yenidən görməyə şadıq!" if comeback_bonus else ""
-        mode_line = " (🎯 Pro Sıra)" if pro_mode else ""
         if active_count >= MAX_PARALLEL_MATCHES:
             await interaction.response.send_message(
-                f"✅ {nick} sıraya qoşuldu{mode_line}! ({size}/4)\n"
+                f"✅ {nick} sıraya qoşuldu! ({size}/4)\n"
                 f"⏳ Hazırda {active_count}/{MAX_PARALLEL_MATCHES} matç paralel davam edir — "
                 f"yer boşalan kimi növbəti matç avtomatik başlayacaq.{comeback_line}",
                 ephemeral=True
@@ -2385,17 +2369,13 @@ class MatchmakingView(discord.ui.View):
             await update_queue_status_message()
             return
 
-        await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu{mode_line}! ({size}/4){comeback_line}", ephemeral=True)
+        await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/4){comeback_line}", ephemeral=True)
         await update_queue_status_message()
         await _start_match_if_ready(interaction.channel, interaction.guild)
 
     @discord.ui.button(label="2v2", style=discord.ButtonStyle.danger, emoji="🔥", custom_id="mm_join")
     async def join_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._do_join_queue(interaction, pro_mode=False)
-
-    @discord.ui.button(label="Pro Sıra (Rank-lock)", style=discord.ButtonStyle.primary, emoji="🎯", custom_id="mm_join_pro")
-    async def join_queue_pro(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._do_join_queue(interaction, pro_mode=True)
+        await self._do_join_queue(interaction)
 
     @discord.ui.button(label="Sıradan çıx", style=discord.ButtonStyle.secondary, emoji="🚪", custom_id="mm_leave")
     async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2736,7 +2716,7 @@ class ProfileHubView(discord.ui.View):
                 f"Məzənnə: **{COIN_TO_AZN_RATE} coin = {COIN_TO_AZN_VALUE} AZN**\n"
                 f"Balansınız: **{balance} coin**\n\n"
                 + (f"Maksimum çevirə bilərsiniz: **{max_blocks * COIN_TO_AZN_RATE} coin → {max_blocks * COIN_TO_AZN_VALUE:.2f} AZN**"
-                   if max_blocks > 0 else "Çevirmək üçün ən azı 250 coin lazımdır.")
+                   if max_blocks > 0 else f"Çevirmək üçün ən azı {COIN_TO_AZN_RATE} coin lazımdır.")
             ),
             color=discord.Color.from_rgb(80, 200, 160)
         )
@@ -5118,11 +5098,9 @@ PANEL_CATEGORIES = {
              "həmin mesajda hər 5 dəqiqədən bir avtomatik yenilənir (yeni mesaj yox)"),
             ("🔥 Flash Sale", "Təsadüfi olaraq marketdə bir əşyaya müvəqqəti endirim elan oluna bilər"),
             ("🛤️ Sezonlar", "Hər ayın 1-də ELO sezonu bağlanır, Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
-            ("🎯 Pro Sıra (Rank-lock)", "Matchmaking-də yaxın ELO-lu oyunçularla qoşulmaq üçün ayrı düymə"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
-            ("🤝 Squad-Queue", "Aktiv squad-ınız eyni sıra-batch-a düşərsə avtomatik eyni komandaya salınır"),
             ("🎁 Hədiyyə et", "`/hədiyyə_et` ilə coin-lərinizi başqa oyunçuya göndərə bilərsiniz (20% komissiya)"),
-            ("💱 Coin → AZN", "Profil → Çevir düyməsi ilə 250 coin = 0.5 AZN məzənnəsi ilə çevirmə"),
+            ("💱 Coin → AZN", "Profil → Çevir düyməsi ilə 2500 coin = 0.5 AZN məzənnəsi ilə çevirmə"),
             ("📦 Paketlər", "Market → Paketlər bölməsində bir neçə əşya birlikdə endirimli qiymətə satılır"),
             ("🔨 Hərraclar", "Admin nadir əşyaları coin ilə hərraca çıxara bilər"),
             ("🎉 Bayram Matçları", "Milli bayram günlərində bütün matçlarda avtomatik 2x coin/ELO bonusu aktivdir"),
