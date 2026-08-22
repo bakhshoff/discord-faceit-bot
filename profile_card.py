@@ -92,6 +92,31 @@ def _gradient(width, height, top, bottom):
     return img
 
 
+BANNER_HEADER_H = 540  # banner-in öz ölçüsü ilə eyni — heç bir əlavə kəsilmə olmadan tam göstərilir
+
+
+def _load_banner_image(banner_path):
+    """Banner faylını açır (GIF-in orta frame-i), açıla bilmirsə None qaytarır."""
+    if not (banner_path and os.path.exists(banner_path)):
+        return None
+    try:
+        raw = Image.open(banner_path)
+        if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
+            n = getattr(raw, "n_frames", 1)
+            raw.seek(n // 2)
+        return raw.convert("RGB")
+    except Exception:
+        return None
+
+
+def _make_banner_header(banner_img, width, height):
+    """Kartın YUXARI hissəsi — banner burada TAM (panellə örtülmədən) göstərilir.
+    Statistika bölməsi bundan tamam ayrıdır, ona görə banner heç vaxt gizlənmir."""
+    if banner_img is None:
+        return _gradient(width, height, BG_TOP, BG_BOTTOM)
+    return ImageOps.fit(banner_img, (width, height), Image.LANCZOS)
+
+
 def _section(draw, x, y, w, h, title, title_color=GOLD):
     draw.rectangle([x, y, x+w, y+h], fill=PANEL, outline=BORDER, width=1)
     draw.rectangle([x, y, x+w, y+22], fill=PANEL2)
@@ -116,21 +141,11 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           theme_colors=None, show_season=False, title=None, lang="az"):
 
     # ── Arxa plan ────────────────────────────────────────────────────────────
-    if banner_path and os.path.exists(banner_path):
-        try:
-            raw = Image.open(banner_path)
-            # GIF animasiya: orta frame-i götür
-            if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
-                n = getattr(raw, "n_frames", 1)
-                raw.seek(n // 2)
-            bi  = raw.convert("RGB")
-            bi  = ImageOps.fit(bi, (WIDTH, HEIGHT), Image.LANCZOS)
-            ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
-            img = Image.blend(bi, ov, 0.40)
-        except Exception:
-            img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
-    else:
-        img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+    # Banner artıq bu bölmənin arxa planına qarışdırılmır (statistika panelləri onu
+    # gizlədirdi) — bunun əvəzinə kartın YUXARI hissəsində ayrıca, tam görünən banner
+    # bölməsi var (bax: _make_banner_header, aşağıda əsas kartla birləşdirilir).
+    banner_img = _load_banner_image(banner_path)
+    img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
 
     img  = img.convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -306,6 +321,17 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
 
     draw = ImageDraw.Draw(img)  # refresh after alpha ops
     img  = img.convert("RGB")
+
+    # ── Kart ikiqatdır: yuxarıda tam banner, aşağıda statistika ─────────────────
+    # Banner statistika bölməsinin arxa planına qarışmır — öz ayrıca bölməsində
+    # heç bir panellə örtülmədən tam göstərilir.
+    if banner_img is not None:
+        header = _make_banner_header(banner_img, WIDTH, BANNER_HEADER_H)
+        combined = Image.new("RGB", (WIDTH, BANNER_HEADER_H + HEIGHT), BG_TOP)
+        combined.paste(header, (0, 0))
+        combined.paste(img, (0, BANNER_HEADER_H))
+        img = combined
+
     _finalize(img).save(output_path)
     return output_path
 
