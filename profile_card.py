@@ -92,31 +92,6 @@ def _gradient(width, height, top, bottom):
     return img
 
 
-BANNER_HEADER_H = 540  # banner-in öz ölçüsü ilə eyni — heç bir əlavə kəsilmə olmadan tam göstərilir
-
-
-def _load_banner_image(banner_path):
-    """Banner faylını açır (GIF-in orta frame-i), açıla bilmirsə None qaytarır."""
-    if not (banner_path and os.path.exists(banner_path)):
-        return None
-    try:
-        raw = Image.open(banner_path)
-        if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
-            n = getattr(raw, "n_frames", 1)
-            raw.seek(n // 2)
-        return raw.convert("RGB")
-    except Exception:
-        return None
-
-
-def _make_banner_header(banner_img, width, height):
-    """Kartın YUXARI hissəsi — banner burada TAM (panellə örtülmədən) göstərilir.
-    Statistika bölməsi bundan tamam ayrıdır, ona görə banner heç vaxt gizlənmir."""
-    if banner_img is None:
-        return _gradient(width, height, BG_TOP, BG_BOTTOM)
-    return ImageOps.fit(banner_img, (width, height), Image.LANCZOS)
-
-
 def _section(draw, x, y, w, h, title, title_color=GOLD):
     draw.rectangle([x, y, x+w, y+h], fill=PANEL, outline=BORDER, width=1)
     draw.rectangle([x, y, x+w, y+22], fill=PANEL2)
@@ -141,11 +116,26 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           theme_colors=None, show_season=False, title=None, lang="az"):
 
     # ── Arxa plan ────────────────────────────────────────────────────────────
-    # Banner artıq bu bölmənin arxa planına qarışdırılmır (statistika panelləri onu
-    # gizlədirdi) — bunun əvəzinə kartın YUXARI hissəsində ayrıca, tam görünən banner
-    # bölməsi var (bax: _make_banner_header, aşağıda əsas kartla birləşdirilir).
-    banner_img = _load_banner_image(banner_path)
-    img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+    # Banner kartın tam arxa planıdır. Ümumi statistika (ÜMUMİ paneli + Kill/Asist/
+    # Ölüm/K-D qutuları) artıq BURADA çəkilmir — bu, əvvəllər bannerin orta-aşağı
+    # hissəsini tamamilə örtürdü. Həmin məlumat "Stats" düyməsinin öz kartında
+    # (generate_stats_card) onsuz da tam göstərilir, ona görə itki yoxdur — burada
+    # sadəcə yuxarıdakı yığcam profil məlumatı qalır, banner isə demək olar tam açıqdır.
+    if banner_path and os.path.exists(banner_path):
+        try:
+            raw = Image.open(banner_path)
+            # GIF animasiya: orta frame-i götür
+            if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
+                n = getattr(raw, "n_frames", 1)
+                raw.seek(n // 2)
+            bi  = raw.convert("RGB")
+            bi  = ImageOps.fit(bi, (WIDTH, HEIGHT), Image.LANCZOS)
+            ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
+            img = Image.blend(bi, ov, 0.40)
+        except Exception:
+            img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+    else:
+        img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
 
     img  = img.convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -272,66 +262,18 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
 
     # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
-    sep1 = 232
-    draw.line([(18, sep1), (WIDTH-18, sep1)], fill=t_border, width=1)
-
-    # ── Ümumi statistikası (+ Sezon, yalnız show_season=True olanda) ──────────
-    if show_season:
-        col_w = (WIDTH - 36) // 2
-        draw.rectangle([18, sep1+4, 18+col_w, sep1+78], fill=t_panel, outline=t_border, width=1)
-        draw.text((26, sep1+7), t("profile.total", lang), font=_load_font(10, bold=True), fill=t_accent)
-        draw.text((26, sep1+22), t("profile.match_line", lang, matches=matches, wins=wins, losses=losses),
-                  font=_load_font(13), fill=WHITE)
-        draw.text((26, sep1+42), t("profile.winrate", lang, wr=wr), font=_load_font(13, bold=True), fill=GREEN)
-
-        draw.rectangle([18+col_w+6, sep1+4, WIDTH-18, sep1+78], fill=PANEL, outline=BORDER, width=1)
-        draw.text((26+col_w+6, sep1+7), t("profile.season", lang), font=_load_font(10, bold=True), fill=CYAN)
-        draw.text((26+col_w+6, sep1+22), t("profile.match_line", lang, matches=s_matches, wins=season_wins, losses=season_losses),
-                  font=_load_font(13), fill=WHITE)
-        draw.text((26+col_w+6, sep1+42), t("profile.winrate", lang, wr=s_wr), font=_load_font(13, bold=True), fill=CYAN)
-    else:
-        draw.rectangle([18, sep1+4, WIDTH-18, sep1+78], fill=t_panel, outline=t_border, width=1)
-        draw.text((26, sep1+7), t("profile.total", lang), font=_load_font(10, bold=True), fill=t_accent)
-        draw.text((26, sep1+22), t("profile.match_line", lang, matches=matches, wins=wins, losses=losses),
-                  font=_load_font(13), fill=WHITE)
-        draw.text((26, sep1+42), t("profile.winrate", lang, wr=wr), font=_load_font(13, bold=True), fill=GREEN)
-
-    # ── Ayırıcı 2 ─────────────────────────────────────────────────────────────
-    sep2 = sep1 + 86
-    draw.line([(18, sep2), (WIDTH-18, sep2)], fill=BORDER, width=1)
-
-    # ── Döyüş statistikaları ─────────────────────────────────────────────────
-    box_y = sep2 + 6
-    box_h = 90
-    labels_vals = [
-        (t("profile.kill", lang),  kills,  GREEN),
-        (t("profile.assist", lang), assists, BLUE),
-        (t("profile.death", lang),  deaths, RED),
-        (t("profile.kd", lang),   kd,     GOLD),
-    ]
-    if show_season:
-        labels_vals.append((t("profile.season_kd", lang), season_kd, CYAN))
-    bw = (WIDTH - 36) // len(labels_vals)
-    for i, (lbl, val, col) in enumerate(labels_vals):
-        bx2 = 18 + i * bw
-        _stat_box(draw, bx2+2, box_y, bw-4, box_h, lbl, val, val_color=col)
+    # Ümumi statistika (ÜMUMİ paneli + Kill/Asist/Ölüm/K-D qutuları) qəsdən BURADA
+    # çəkilmir — bu, bannerin orta-aşağı hissəsini tamamilə örtürdü. Həmin məlumat
+    # "Stats" düyməsinin öz kartında (generate_stats_card, visual_cards.py) onsuz da
+    # tam göstərilir. Burada yalnız yuxarıdakı yığcam profil zolağı qalır, qalan
+    # bütün kart (aşağı ~2/3) banner üçün tam açıqdır.
 
     # ── Footer ────────────────────────────────────────────────────────────────
     draw.text((28, HEIGHT-26), "Zenith's Academy", font=_load_font(11), fill=GRAY)
+    draw.text((WIDTH-28, HEIGHT-26), "/stats → ətraflı statistika", font=_load_font(11), fill=t_text2, anchor="ra")
 
     draw = ImageDraw.Draw(img)  # refresh after alpha ops
     img  = img.convert("RGB")
-
-    # ── Kart ikiqatdır: yuxarıda tam banner, aşağıda statistika ─────────────────
-    # Banner statistika bölməsinin arxa planına qarışmır — öz ayrıca bölməsində
-    # heç bir panellə örtülmədən tam göstərilir.
-    if banner_img is not None:
-        header = _make_banner_header(banner_img, WIDTH, BANNER_HEADER_H)
-        combined = Image.new("RGB", (WIDTH, BANNER_HEADER_H + HEIGHT), BG_TOP)
-        combined.paste(header, (0, 0))
-        combined.paste(img, (0, BANNER_HEADER_H))
-        img = combined
-
     _finalize(img).save(output_path)
     return output_path
 
