@@ -17,7 +17,8 @@ MARKET_ITEMS = [
     {"id": "frame_genesis", "name": "Genesis Çərçivəsi",
      "type": "avatar_frame", "price": 0, "file": "frame_genesis.png", "exclusive": True},
 
-{"id": "banner_gold", "name": "Qızılı Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
+{"id": "banner_venom", "name": "Venom Banner", "type": "banner", "price_azn": 2, "file": "banner_venom.png"},
+    {"id": "banner_gold", "name": "Qızılı Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
     {"id": "banner_red", "name": "Qırmızı Alov Banner", "type": "banner", "price": 200, "file": "banner_red.png"},
     {"id": "banner_purple", "name": "Bənövşəyi Elite Banner", "type": "banner", "price": 350, "file": "banner_purple.png"},
     {"id": "banner_cyber_blue", "name": "Cyber Blue Banner", "type": "banner", "price": 400, "file": "banner_cyber_blue.png"},

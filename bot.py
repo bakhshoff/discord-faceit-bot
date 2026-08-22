@@ -2560,7 +2560,12 @@ class MarketItemView(discord.ui.View):
         options = []
         for item in _market_items_by_type(item_type):
             owned = owns_item(discord_id, item["id"])
-            desc = "Artıq sahibsiniz" if owned else f"{item['price']} coin"
+            if owned:
+                desc = "Artıq sahibsiniz"
+            elif item.get("price_azn") is not None:
+                desc = f"{item['price_azn']} AZN"
+            else:
+                desc = f"{item['price']} coin"
             options.append(discord.SelectOption(label=item["name"][:100], value=item["id"], description=desc[:100]))
         if options:
             sel = discord.ui.Select(placeholder="Əşya seçin...", options=options[:25])
@@ -2635,6 +2640,25 @@ class MarketItemView(discord.ui.View):
         if owns_item(self.discord_id, item["id"]):
             await interaction.response.send_message(f"⚠️ **{item['name']}** əşyasına artıq sahibsiniz.", ephemeral=True)
             return
+
+        if item.get("price_azn") is not None:
+            azn_balance = get_zm_balance(self.discord_id)
+            if azn_balance < item["price_azn"]:
+                await interaction.response.send_message(
+                    f"❌ AZN balansınız kifayət etmir. **{item['name']}** — {item['price_azn']} AZN, "
+                    f"sizdə **{azn_balance:.2f}** AZN var.",
+                    ephemeral=True
+                )
+                return
+            spend_zm(self.discord_id, item["price_azn"])
+            add_to_inventory(self.discord_id, item["id"])
+            await interaction.response.send_message(
+                f"✅ **{item['name']}** alındı! Qalan balans: **{get_zm_balance(self.discord_id):.2f}** AZN.\n"
+                "Profil → İnventar düyməsindən aktiv edə bilərsiniz.",
+                ephemeral=True
+            )
+            return
+
         balance = get_coins(self.discord_id)
         if balance < item["price"]:
             await interaction.response.send_message(
@@ -2740,7 +2764,12 @@ class MarketCategoryView(discord.ui.View):
         )
         for item in items:
             owned = owns_item(self.discord_id, item["id"])
-            value = "✅ Sahibsiniz" if owned else f"**{item['price']} coin**"
+            if owned:
+                value = "✅ Sahibsiniz"
+            elif item.get("price_azn") is not None:
+                value = f"**{item['price_azn']} AZN**"
+            else:
+                value = f"**{item['price']} coin**"
             embed.add_field(name=item["name"], value=value, inline=True)
         view = MarketItemView(self.discord_id, item_type)
         await interaction.response.edit_message(embed=embed, attachments=[], view=view)
