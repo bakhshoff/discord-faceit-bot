@@ -18,6 +18,7 @@ MARKET_ITEMS = [
      "type": "avatar_frame", "price": 0, "file": "frame_genesis.png", "exclusive": True},
 
 {"id": "banner_venom", "name": "Venom Banner", "type": "banner", "price_azn": 2, "file": "banner_venom.png"},
+    {"id": "banner_ragnar", "name": "Ragnar Banner", "type": "banner", "price_azn": 2, "file": "banner_ragnar.png"},
     {"id": "banner_gold", "name": "Qızılı Banner", "type": "banner", "price": 200, "file": "banner_gold.png"},
     {"id": "banner_red", "name": "Qırmızı Alov Banner", "type": "banner", "price": 200, "file": "banner_red.png"},
     {"id": "banner_purple", "name": "Bənövşəyi Elite Banner", "type": "banner", "price": 350, "file": "banner_purple.png"},
