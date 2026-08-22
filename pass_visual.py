@@ -87,6 +87,8 @@ def _reward_color(reward):
         return (110, 220, 140)
     if rtype == "skin":
         return (255, 220, 0)
+    if rtype == "mystery":
+        return (255, 210, 60)
     return WHITE2
 
 
@@ -339,6 +341,29 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         draw.text((cx2, cy2), "₼", font=_f(int(R*1.1), True), fill=green, anchor="mm")
         draw.text((w//2, body_h - 6), f"{amount:g} AZN", font=_f(10, True), fill=green, anchor="mm")
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=green, anchor="mm")
+        return img
+
+    # ── SİRLİ MÜKAFAT (mystery) — real növü yalnız tələb edilən anda üzə çıxır ──
+    if rtype == "mystery":
+        gold = (255, 210, 60)
+        draw.rounded_rectangle([(4,4),(w-4,body_h)], radius=8,
+                               fill=(40, 26, 8), outline=gold, width=2)
+        cx3, cy3 = w//2, body_h//2 - 2
+        # Parıldayan halqalar (təşviq/sürpriz hissi)
+        for rr, alpha in [(min(w,body_h)//2-2, 40), (min(w,body_h)//2-8, 90)]:
+            ring = Image.new("RGBA", img.size, (0,0,0,0))
+            rd = ImageDraw.Draw(ring)
+            rd.ellipse([(cx3-rr,cy3-rr),(cx3+rr,cy3+rr)], outline=(*gold, alpha), width=2)
+            img = Image.alpha_composite(img, ring)
+        draw = ImageDraw.Draw(img)
+        # Hədiyyə qutusu
+        R = min(w, body_h) // 4
+        draw.rounded_rectangle([(cx3-R, cy3-R*0.6),(cx3+R, cy3+R*1.1)], radius=4,
+                               fill=(60, 40, 12), outline=gold, width=2)
+        draw.rectangle([(cx3-3, cy3-R*0.6),(cx3+3, cy3+R*1.1)], fill=gold)
+        draw.rectangle([(cx3-R, cy3-R*0.15),(cx3+R, cy3+R*0.15)], fill=gold)
+        draw.text((cx3, cy3-R*1.15), "?", font=_f(int(R*0.9), True), fill=gold, anchor="mm")
+        draw.text((w//2, h-8), lbl, font=_f(9, True), fill=gold, anchor="mm")
         return img
 
     # ── Fallback ──────────────────────────────────────────────────────────────

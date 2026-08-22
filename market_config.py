@@ -86,3 +86,36 @@ def get_elo_card_pack(pack_id):
         if pack["id"] == pack_id:
             return pack
     return None
+
+
+# ── Paketlər (Bundles) — bir neçə əşyanı birlikdə endirimli qiymətə satır ───────
+# items: MARKET_ITEMS-dəki id-lərin siyahısı (bundle alınanda hamısı inventara düşür).
+# price: bundle-in ÜMUMİ qiyməti (tək-tək alsaydı cəm qiymətindən aşağı olmalıdır).
+MARKET_BUNDLES = [
+    {"id": "bundle_neon_frames", "name": "Neon Çərçivə Paketi",
+     "description": "Neon Mavi + Neon Çəhrayı + Neon Yaşıl çərçivələr",
+     "items": ["frame_cyan", "frame_pink", "frame_green"], "price": 750},
+    {"id": "bundle_ateshli_baslangic", "name": "Atəşli Başlanğıc Paketi",
+     "description": "Qızılı Banner + Qırmızı Alov Banner + Qızıl Tema",
+     "items": ["banner_gold", "banner_red", "theme_gold"], "price": 650},
+    {"id": "bundle_elite_kolleksiya", "name": "Elite Kolleksiya",
+     "description": "Bənövşəyi Elite Banner + Neon Bənövşəyi Çərçivə + Bənövşəyi Tema",
+     "items": ["banner_purple", "frame_purple", "theme_purple"], "price": 1000},
+]
+
+
+def get_bundle_by_id(bundle_id):
+    for b in MARKET_BUNDLES:
+        if b["id"] == bundle_id:
+            return b
+    return None
+
+
+def bundle_full_price(bundle):
+    """Bundle-dəki əşyaları tək-tək alsaydı ödəniləcək cəm qiymət (yalnız coin-qiymətli əşyalar üçün)."""
+    total = 0
+    for item_id in bundle["items"]:
+        item = get_item_by_id(item_id)
+        if item and item.get("price") is not None:
+            total += item["price"]
+    return total

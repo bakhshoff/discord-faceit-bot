@@ -1169,6 +1169,77 @@ def generate_elo_cards_market_card(balance_azn, card_counts, packs, output_path)
     return output_path
 
 
+# ── HƏFTƏLİK MVP KARTI ───────────────────────────────────────────────────────
+
+def generate_weekly_mvp_card(mvp_data, output_path):
+    """
+    mvp_data: {"nick","elo","wins","losses","matches","winrate"} — bax: db.get_weekly_mvp()
+    """
+    W, H = WIDTH, 420
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (W - 1, H - 1)], outline=GOLD, width=2)
+    draw.rectangle([(0, 0), (W, 5)], fill=GOLD)
+
+    draw.text((W // 2, 22), "ZENITH'S ACADEMY", font=_font(13, True), fill=GOLD, anchor="mm")
+    draw.text((W // 2, 52), "HƏFTƏNİN MVP-Sİ", font=_font(30, True), fill=WHITE, anchor="mm")
+
+    # Taxt/tac dekorasiyası
+    cx, cy = W // 2, 130
+    R = 46
+    import math as _m
+    star_pts = []
+    for i in range(10):
+        r = R if i % 2 == 0 else R * 0.45
+        ang = _m.radians(i * 36 - 90)
+        star_pts.append((cx + r * _m.cos(ang), cy + r * _m.sin(ang)))
+    glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.polygon(star_pts, fill=(*GOLD, 60))
+    img = Image.alpha_composite(img.convert("RGBA"), glow).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    draw.polygon(star_pts, fill=(40, 30, 10), outline=GOLD, width=2)
+    # Tac (crown) - PIL-in default fontunda emoji glyph-i yoxdur, ona görə çəkilir
+    cw, ch = 34, 22
+    base_y = cy + ch // 2
+    crown_pts = [
+        (cx - cw // 2, base_y), (cx - cw // 2, base_y - ch * 0.35),
+        (cx - cw // 3, base_y - ch * 0.75), (cx - cw // 6, base_y - ch * 0.4),
+        (cx, base_y - ch), (cx + cw // 6, base_y - ch * 0.4),
+        (cx + cw // 3, base_y - ch * 0.75), (cx + cw // 2, base_y - ch * 0.35),
+        (cx + cw // 2, base_y),
+    ]
+    draw.polygon(crown_pts, fill=GOLD, outline=(90, 60, 10), width=1)
+    draw.rectangle([(cx - cw // 2, base_y), (cx + cw // 2, base_y + 5)], fill=GOLD)
+
+    nick = mvp_data.get("nick", "?")
+    draw.text((W // 2, 210), nick[:22], font=_font(34, True), fill=WHITE, anchor="mm")
+    draw.text((W // 2, 244), f"ELO {mvp_data.get('elo', 1000)}", font=_font(15, True), fill=GOLD, anchor="mm")
+
+    # Statistika sırası
+    stats = [
+        ("QƏLƏBƏ", str(mvp_data.get("wins", 0)), GREEN),
+        ("MƏĞLUBİYYƏT", str(mvp_data.get("losses", 0)), RED),
+        ("MATÇ", str(mvp_data.get("matches", 0)), WHITE),
+        ("WIN RATE", f"{mvp_data.get('winrate', 0)}%", GOLD),
+    ]
+    box_y, box_h = 280, 90
+    bw = (W - 2 * 28) // len(stats)
+    for i, (lbl, val, col) in enumerate(stats):
+        bx = 28 + i * bw
+        draw.rounded_rectangle([(bx + 4, box_y), (bx + bw - 4, box_y + box_h)],
+                               radius=8, fill=PANEL, outline=BORDER, width=1)
+        draw.text((bx + bw // 2, box_y + box_h // 2 - 12), val, font=_font(22, True), fill=col, anchor="mm")
+        draw.text((bx + bw // 2, box_y + box_h - 16), lbl, font=_font(9, True), fill=GRAY, anchor="mm")
+
+    draw.text((28, H - 26), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((W - 28, H - 26), "Hər həftə ən azı 3 matç oynayan ən uğurlu oyunçu seçilir",
+              font=_font(9), fill=GRAY, anchor="ra")
+
+    _finalize(img).save(output_path)
+    return output_path
+
+
 # ── AYIN ELO ÇEMPİONU MÜKAFAT KARTI ──────────────────────────────────────────
 
 def generate_monthly_reward_card(knife_image_path, top_players, output_path):

@@ -207,6 +207,42 @@ performansına əsasən, 1-2 cümləlik qısa "kəşfiyyat" qeydi ver. Azərbayc
 yaz. Emoji istifadə etmə. Konkret və taktiki ol, ümumi sözlər yazma."""
 
 
+PERSONAL_COACH_SYSTEM_PROMPT = """Sen Zenith's Academy-nin Standoff 2 şəxsi analitik köməkçisisən.
+Oyunçunun son matçlar üzrə ÜMUMİ statistikasına əsaslanaraq 3-4 cümləlik konkret analiz və
+inkişaf tövsiyəsi ver. Azərbaycan dilində yaz. Emoji istifadə etmə. Ümumi klişe məsləhətlər
+yox — verilən rəqəmlərə (K/D, qələbə faizi, ELO trendi) əsaslanan konkret müşahidə et."""
+
+
+def generate_personal_coach_report(nick, recent_matches: int, kills, assists, deaths, wins, losses, elo_trend: int) -> str:
+    """Tələb üzrə (button ilə) çağırılan daha geniş AI Coach analizi — tək matçdan sonrakı
+    qısa mesajdan fərqli olaraq, son matçların CƏMİ statistikasına əsaslanır. Xəta/açar
+    yoxdursa None."""
+    if not client:
+        return None
+    matches = max(wins + losses, 1)
+    kd = round(kills / max(deaths, 1), 2)
+    wr = round(wins / matches * 100, 1)
+    prompt = (
+        f"Oyunçu: {nick}\n"
+        f"Son {recent_matches} matç: {wins}Q/{losses}M (WR {wr}%)\n"
+        f"Cəmi K/A/D: {kills}/{assists}/{deaths} (K/D {kd})\n"
+        f"ELO trendi: {'+' if elo_trend >= 0 else ''}{elo_trend} (son {recent_matches} matçda)"
+    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": PERSONAL_COACH_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=220,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None
+
+
 def generate_intel_briefing(nick, opponent_map_stats: dict, selected_map: str) -> str:
     """Rəqib komandanın xəritə statistikasına əsaslanan qısa taktiki DM mətni. Xəta/açar yoxdursa None."""
     if not client:

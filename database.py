@@ -70,6 +70,10 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN boost100_cards INTEGER DEFAULT 0")
     if "protect_cards" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN protect_cards INTEGER DEFAULT 0")
+    if "dm_notifications" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN dm_notifications INTEGER DEFAULT 1")
+    if "last_comeback_bonus_at" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN last_comeback_bonus_at INTEGER DEFAULT 0")
 
     # ── Daily Login ───────────────────────────────────────────────────────────
     cursor.execute("""
@@ -307,9 +311,20 @@ def init_db():
             is_golden      INTEGER DEFAULT 0,
             is_lightning   INTEGER DEFAULT 0,
             voice_a_id     TEXT,
-            voice_b_id     TEXT
+            voice_b_id     TEXT,
+            map_vetoed     TEXT DEFAULT '[]',
+            veto_a_used    INTEGER DEFAULT 0,
+            veto_b_used    INTEGER DEFAULT 0
         )
     """)
+    cursor.execute("PRAGMA table_info(active_match)")
+    _am_cols = [r[1] for r in cursor.fetchall()]
+    if "map_vetoed" not in _am_cols:
+        cursor.execute("ALTER TABLE active_match ADD COLUMN map_vetoed TEXT DEFAULT '[]'")
+    if "veto_a_used" not in _am_cols:
+        cursor.execute("ALTER TABLE active_match ADD COLUMN veto_a_used INTEGER DEFAULT 0")
+    if "veto_b_used" not in _am_cols:
+        cursor.execute("ALTER TABLE active_match ADD COLUMN veto_b_used INTEGER DEFAULT 0")
 
     # ── Scan results ──────────────────────────────────────────────────────────
     cursor.execute("""
@@ -467,6 +482,45 @@ def init_db():
             boost_type TEXT NOT NULL,
             multiplier REAL NOT NULL,
             expires_at INTEGER NOT NULL
+        )
+    """)
+
+    # ── Şikayətlər (Report sistemi) ──────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            reporter_id INTEGER NOT NULL,
+            target_id INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            status TEXT DEFAULT 'open'
+        )
+    """)
+
+    # ── Hərraclar (Auction House) ────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS auctions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_name TEXT NOT NULL,
+            description TEXT,
+            starting_bid INTEGER NOT NULL,
+            current_bid INTEGER NOT NULL,
+            current_bidder_id INTEGER,
+            end_unix INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
+            message_id INTEGER NOT NULL,
+            admin_id INTEGER NOT NULL,
+            finished INTEGER DEFAULT 0
+        )
+    """)
+
+    # ── Battle Pass Sezon Arxivi ──────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bp_season_archive (
+            season_name TEXT PRIMARY KEY,
+            archived_at INTEGER NOT NULL,
+            top_players TEXT NOT NULL,
+            total_participants INTEGER NOT NULL
         )
     """)
 
@@ -837,6 +891,24 @@ def pop_4_and_balance():
     # qarışdırma bu təkrarlanan naxışı kökündən aradan qaldırır.
     random.shuffle(players)
     team_a, team_b = players[:2], players[2:]
+
+    # Squad-queue: bu FIFO-batch-a düşən 4 nəfər arasında eyni aktiv squad-a aid bir cüt
+    # varsa (bax: get_squad_pair_within) və təsadüfi qarışdırma onları ayrı komandalara
+    # salıbsa, YALNIZ 1 NEUTRAL üzvlə yerdəyişmə edərək yenidən birləşdiririk — digər
+    # 2 nəfərin təsadüfi A/B bölgüsünə toxunulmur.
+    pair = get_squad_pair_within([p["discord_id"] for p in players])
+    if pair:
+        id1, id2 = pair
+        by_id = {p["discord_id"]: p for p in players}
+        a_has_1 = any(p["discord_id"] == id1 for p in team_a)
+        a_has_2 = any(p["discord_id"] == id2 for p in team_a)
+        if a_has_1 != a_has_2:
+            team_with_1 = team_a if a_has_1 else team_b
+            team_with_2 = team_b if a_has_1 else team_a
+            moved_out = next(p for p in team_with_1 if p["discord_id"] != id1)
+            new_team_with_1 = [by_id[id1], by_id[id2]]
+            new_team_with_2 = [p for p in team_with_2 if p["discord_id"] != id2] + [moved_out]
+            team_a, team_b = (new_team_with_1, new_team_with_2) if a_has_1 else (new_team_with_2, new_team_with_1)
 
     captain_a = max(team_a, key=lambda p: p["elo"])
     captain_b = max(team_b, key=lambda p: p["elo"])
@@ -1315,6 +1387,49 @@ def get_recent_matches(limit=15):
 
     conn.close()
     return results
+
+
+def get_weekly_mvp(min_matches=3):
+    """Son 7 gündə ən uğurlu oyunçunu tapır (əvvəlcə qələbə sayı, sonra winrate ilə tie-break).
+    match_history-də fərdi K/A/D saxlanmadığı üçün (yalnız win/loss tərəf siyahıları) meyar
+    məhz bunlara əsaslanır. min_matches minimumu təsadüfi 1-qələbəli hesabın #1 olmasının
+    qarşısını alır. Uyğun namizəd yoxdursa None qaytarır."""
+    import time, json as _json
+    conn = _get_conn()
+    cursor = conn.cursor()
+    week_ago = int(time.time()) - 7 * 86400
+    cursor.execute("SELECT winner_ids, loser_ids FROM match_history WHERE played_at >= ?", (week_ago,))
+    rows = cursor.fetchall()
+
+    tally = {}
+    for winner_json, loser_json in rows:
+        for did in _json.loads(winner_json or "[]"):
+            tally.setdefault(did, {"wins": 0, "losses": 0})["wins"] += 1
+        for did in _json.loads(loser_json or "[]"):
+            tally.setdefault(did, {"wins": 0, "losses": 0})["losses"] += 1
+
+    candidates = []
+    for did, rec in tally.items():
+        matches = rec["wins"] + rec["losses"]
+        if matches < min_matches:
+            continue
+        candidates.append((did, rec["wins"], rec["losses"], matches, rec["wins"] / matches))
+
+    if not candidates:
+        conn.close()
+        return None
+
+    candidates.sort(key=lambda c: (c[1], c[4]), reverse=True)
+    did, wins, losses, matches, wr = candidates[0]
+    cursor.execute("SELECT so2_nick, elo FROM players WHERE discord_id=?", (did,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "discord_id": did, "nick": row[0], "elo": row[1],
+        "wins": wins, "losses": losses, "matches": matches, "winrate": round(wr * 100, 1),
+    }
 
 
 def get_match_by_number(match_number):
@@ -1862,7 +1977,7 @@ def close_season(season_id):
 _ACTIVE_MATCH_COLS = (
     "match_number, team_a, team_b, log_message_id, log_channel_id, thread_id, "
     "selected_map, created_at, captain_a_id, captain_b_id, team_a_ready, team_b_ready, "
-    "is_golden, is_lightning, voice_a_id, voice_b_id"
+    "is_golden, is_lightning, voice_a_id, voice_b_id, map_vetoed, veto_a_used, veto_b_used"
 )
 
 
@@ -1887,7 +2002,32 @@ def _row_to_active_match(row):
         "is_lightning": bool(row[13]),
         "voice_a_id": int(row[14]) if row[14] else None,
         "voice_b_id": int(row[15]) if row[15] else None,
+        "map_vetoed": _json.loads(row[16]) if len(row) > 16 and row[16] else [],
+        "veto_a_used": bool(row[17]) if len(row) > 17 else False,
+        "veto_b_used": bool(row[18]) if len(row) > 18 else False,
     }
+
+
+def veto_map(match_number, is_team_a, new_map):
+    """Kapitanın xəritə veto/reroll haqqını istifadə edir — o komandanın veto haqqını
+    işarələyir, köhnə xəritəni vetolanmışlar siyahısına əlavə edir, yeni xəritəni təyin edir."""
+    import json as _json
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT selected_map, map_vetoed FROM active_match WHERE match_number=?", (match_number,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close(); return None
+    old_map, vetoed_json = row
+    vetoed = _json.loads(vetoed_json) if vetoed_json else []
+    if old_map and old_map not in vetoed:
+        vetoed.append(old_map)
+    col = "veto_a_used" if is_team_a else "veto_b_used"
+    cursor.execute(
+        f"UPDATE active_match SET selected_map=?, map_vetoed=?, {col}=1 WHERE match_number=?",
+        (new_map, _json.dumps(vetoed), match_number)
+    )
+    conn.commit(); conn.close()
+    return new_map
 
 
 def set_active_match(match_number, team_a_json=None, team_b_json=None,
@@ -3414,11 +3554,22 @@ BP_LEVEL_REWARDS = {
          "label": "20x ELO Qoruma Kartı"},
     31: {"type": "coins",  "value": 250,  "label": "250 coin"},
     32: {"type": "coins",  "value": 250,  "label": "250 coin"},
-    33: {"type": "coins",  "value": 250,  "label": "250 coin"},
+    33: {"type": "mystery", "label": "🎁 Sirli Mükafat"},
     34: {"type": "coins",  "value": 250,  "label": "250 coin"},
     35: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 30},
          "label": "30x 50% Boost Kartı — Sezon Finalı"},
 }
+
+# Level 33-ün "sirli mükafat"ı tələb edilən anda bu hovuzdan TƏSADÜFİ seçilir
+# (level çatanda yox, "Mükafatları tələb et" düyməsinə basılan anda həll olunur).
+MYSTERY_REWARD_POOL = [
+    {"type": "coins", "value": 300, "label": "300 coin"},
+    {"type": "coins", "value": 500, "label": "500 coin"},
+    {"type": "elo_card", "value": {"card_type": "boost100", "qty": 3}, "label": "3x 100% Boost Kartı"},
+    {"type": "elo_card", "value": {"card_type": "protect", "qty": 5}, "label": "5x ELO Qoruma Kartı"},
+    {"type": "azn", "value": 0.5, "label": "0.5 AZN"},
+    {"type": "xp_boost", "value": {"multiplier": 2.0, "duration_seconds": 7200}, "label": "2 saatlıq 2x Battle Pass XP"},
+]
 
 # VIP (Genesis Pass) track — Premium Pass sahiblərinə FREE-yə ƏLAVƏ OLARAQ verilir.
 # 3 xüsusi əşya (çərçivə@15, banner@20, skin@35) + digər levellərdə AZN/coin/ELO kart
@@ -3636,6 +3787,8 @@ def _grant_bp_item_reward(discord_id, reward):
         add_boost_cards(discord_id, v["card_type"], v["qty"])
     elif rtype == "azn":
         add_zm(discord_id, reward["value"])
+    elif rtype == "xp_boost":
+        add_boost(discord_id, "bp_xp", reward["value"]["multiplier"], reward["value"]["duration_seconds"])
     elif rtype == "skin":
         img = os.path.join("assets", "awm_boom.png") if "AWM" in reward.get("label", "") else None
         add_skin_to_inventory(discord_id, 0, reward.get("label") or str(reward["value"]), 0, image_url=img)
@@ -3694,7 +3847,7 @@ def claim_bp_rewards(discord_id: int) -> list:
     claimed_levels-ə əlavə edir. Beləliklə VIP-i levellər keçildikdən SONRA alan oyunçu,
     claim etdikdə əvvəlki levellərin PREMIUM mükafatını da alır (FREE-nin artıq alınmış
     olması PREMIUM-u əngəlləmir). Verilən mükafatların siyahısını qaytarır."""
-    import json
+    import json, random
     ensure_free_pass(discord_id)
     conn   = _get_conn()
     cursor = conn.cursor()
@@ -3714,6 +3867,9 @@ def claim_bp_rewards(discord_id: int) -> list:
         if free_key not in claimed:
             free_reward = BP_LEVEL_REWARDS.get(lv)
             if free_reward:
+                if free_reward["type"] == "mystery":
+                    free_reward = dict(random.choice(MYSTERY_REWARD_POOL))
+                    free_reward["mystery"] = True
                 granted.append({"level": lv, "track": "free", **free_reward})
                 if free_reward["type"] == "coins":
                     cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?",
@@ -3726,6 +3882,9 @@ def claim_bp_rewards(discord_id: int) -> list:
             if prem_key not in claimed:
                 prem_reward = BP_PREMIUM_REWARDS.get(lv)
                 if prem_reward:
+                    if prem_reward["type"] == "mystery":
+                        prem_reward = dict(random.choice(MYSTERY_REWARD_POOL))
+                        prem_reward["mystery"] = True
                     granted.append({"level": lv, "track": "premium", **prem_reward})
                     if prem_reward["type"] == "coins":
                         cursor.execute("UPDATE players SET coins=coins+? WHERE discord_id=?",
@@ -4069,3 +4228,332 @@ def get_referral_list(inviter_id: int) -> list:
     return [{"invitee_id":r[0],"nick":r[1] or "?","matches":r[2] or 0,
              "registered":bool(r[3]),"r3":bool(r[4]),"r10":bool(r[5]),"joined_at":r[6]}
             for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — BİLDİRİŞ TERCİHLƏRİ (Push DM / Həftəlik Xülasə)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_dm_notifications(discord_id):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT dm_notifications FROM players WHERE discord_id=?", (discord_id,))
+    row = cur.fetchone(); conn.close()
+    return bool(row[0]) if row else True
+
+
+def set_dm_notifications(discord_id, enabled):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE players SET dm_notifications=? WHERE discord_id=?", (1 if enabled else 0, discord_id))
+    conn.commit(); conn.close()
+
+
+def get_players_with_dm_enabled(discord_ids):
+    if not discord_ids:
+        return []
+    conn = _get_conn(); cur = conn.cursor()
+    placeholders = ",".join("?" for _ in discord_ids)
+    cur.execute(f"SELECT discord_id FROM players WHERE dm_notifications=1 AND discord_id IN ({placeholders})", discord_ids)
+    rows = cur.fetchall(); conn.close()
+    return [r[0] for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — GERİ DÖNÜŞ BONUSU (Comeback)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+COMEBACK_INACTIVE_DAYS = 14
+COMEBACK_BONUS_COINS = 100
+
+
+def check_and_grant_comeback_bonus(discord_id):
+    """Oyunçu 14+ gündür oynamayıbsa VƏ bu geri-dönüşdə hələ bonus almayıbsa, bir dəfəlik
+    bonus verir. Matç başlamazdan ƏVVƏL (queue-a qoşulanda) çağırılır ki son_match_at
+    yenilənməmiş halda hesablansın."""
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT last_match_at, last_comeback_bonus_at FROM players WHERE discord_id=?", (discord_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close(); return 0
+    last_match_at, last_bonus_at = row
+    now = int(time.time())
+    if not last_match_at or (now - last_match_at) < COMEBACK_INACTIVE_DAYS * 86400:
+        conn.close(); return 0
+    if last_bonus_at and last_bonus_at >= last_match_at:
+        conn.close(); return 0  # bu ayrılma dövrü üçün artıq verilib
+    cur.execute("UPDATE players SET last_comeback_bonus_at=? WHERE discord_id=?", (now, discord_id))
+    conn.commit(); conn.close()
+    new_bal = add_coins(discord_id, COMEBACK_BONUS_COINS)
+    add_coin_log(discord_id, COMEBACK_BONUS_COINS, "Geri dönüş bonusu", "earn", new_bal)
+    return COMEBACK_BONUS_COINS
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — ŞİKAYƏT SİSTEMİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_report(reporter_id, target_id, reason):
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO reports (reporter_id, target_id, reason, created_at, status) VALUES (?,?,?,?,'open')",
+        (reporter_id, target_id, reason, int(time.time()))
+    )
+    conn.commit(); rid = cur.lastrowid; conn.close()
+    return rid
+
+
+def get_recent_reports_for(target_id, limit=10):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT reporter_id, reason, created_at, status FROM reports WHERE target_id=? ORDER BY created_at DESC LIMIT ?",
+        (target_id, limit)
+    )
+    rows = cur.fetchall(); conn.close()
+    return [{"reporter_id": r[0], "reason": r[1], "created_at": r[2], "status": r[3]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — TOPLU ADMİN ƏMƏLİYYATI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def bulk_add_coins(discord_ids, amount, reason):
+    """Bir neçə oyunçuya eyni anda coin verir/çıxarır. Qaytarır: (uğurlu_id-lər, tapılmayan_id-lər)."""
+    ok, missing = [], []
+    for did in discord_ids:
+        if not get_player(did):
+            missing.append(did)
+            continue
+        new_bal = add_coins(did, amount)
+        add_coin_log(did, amount, reason, "earn" if amount >= 0 else "spend", new_bal)
+        ok.append(did)
+    return ok, missing
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — ŞÜBHƏLİ FƏALİYYƏT AŞKARLANMASI
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SUSPICIOUS_COIN_GAIN_THRESHOLD = 400   # tək bir log yazısında bu qədər (və ya çox) coin qazancı
+SUSPICIOUS_WINDOW_SECONDS = 3600       # bu vaxt aralığında
+SUSPICIOUS_WINDOW_GAIN_THRESHOLD = 800 # cəmi bu qədər (və ya çox) coin qazanılırsa
+
+
+def check_suspicious_activity(since_ts):
+    """since_ts-dən bəri şübhəli coin qazanc naxışlarını aşkarlayır (admin bildirişi üçün).
+    Qaytarır: [{"discord_id", "nick", "total_gain", "log_count"}]"""
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT discord_id, SUM(change), COUNT(*), MAX(change) FROM coin_logs "
+        "WHERE created_at >= ? AND change > 0 GROUP BY discord_id",
+        (since_ts,)
+    )
+    rows = cur.fetchall()
+    flagged = []
+    for discord_id, total_gain, log_count, max_single in rows:
+        if max_single >= SUSPICIOUS_COIN_GAIN_THRESHOLD or total_gain >= SUSPICIOUS_WINDOW_GAIN_THRESHOLD:
+            cur.execute("SELECT so2_nick FROM players WHERE discord_id=?", (discord_id,))
+            nrow = cur.fetchone()
+            flagged.append({
+                "discord_id": discord_id, "nick": nrow[0] if nrow else "?",
+                "total_gain": total_gain, "log_count": log_count, "max_single": max_single
+            })
+    conn.close()
+    return flagged
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — HƏRRACLAR (Auction House)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def create_auction(item_name, description, starting_bid, duration_seconds, channel_id, message_id, admin_id):
+    import time
+    conn = _get_conn(); cur = conn.cursor()
+    now = int(time.time())
+    cur.execute(
+        "INSERT INTO auctions (item_name, description, starting_bid, current_bid, current_bidder_id, "
+        "end_unix, channel_id, message_id, admin_id, finished) VALUES (?,?,?,?,NULL,?,?,?,?,0)",
+        (item_name, description, starting_bid, starting_bid, now + duration_seconds, channel_id, message_id, admin_id)
+    )
+    conn.commit(); aid = cur.lastrowid; conn.close()
+    return aid
+
+
+def get_auction(auction_id):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT id, item_name, description, starting_bid, current_bid, current_bidder_id, "
+        "end_unix, channel_id, message_id, admin_id, finished FROM auctions WHERE id=?",
+        (auction_id,)
+    )
+    row = cur.fetchone(); conn.close()
+    if not row:
+        return None
+    keys = ["id", "item_name", "description", "starting_bid", "current_bid", "current_bidder_id",
+            "end_unix", "channel_id", "message_id", "admin_id", "finished"]
+    return dict(zip(keys, row))
+
+
+def place_bid(auction_id, bidder_id, amount):
+    """Təklif cari ən yüksək təklifdən böyükdürsə və oyunçunun kifayət qədər coin-i varsa
+    qəbul edilir (coin YALNIZ hərrac bitəndə tutulur, təklif zamanı deyil)."""
+    auction = get_auction(auction_id)
+    if not auction or auction["finished"]:
+        return False, "Bu hərrac artıq bitib."
+    if amount <= auction["current_bid"]:
+        return False, f"Təklifiniz cari ən yüksək təklifdən ({auction['current_bid']} coin) çox olmalıdır."
+    if get_coins(bidder_id) < amount:
+        return False, "Kifayət qədər coin-iniz yoxdur."
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE auctions SET current_bid=?, current_bidder_id=? WHERE id=?", (amount, bidder_id, auction_id))
+    conn.commit(); conn.close()
+    return True, "OK"
+
+
+def get_due_auctions(now_unix):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT id, item_name, current_bid, current_bidder_id, channel_id, message_id FROM auctions "
+        "WHERE finished=0 AND end_unix <= ?", (now_unix,)
+    )
+    rows = cur.fetchall(); conn.close()
+    return rows
+
+
+def get_open_auction_ids():
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT id FROM auctions WHERE finished=0")
+    rows = cur.fetchall(); conn.close()
+    return [r[0] for r in rows]
+
+
+def mark_auction_finished(auction_id):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE auctions SET finished=1 WHERE id=?", (auction_id,))
+    conn.commit(); conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — FƏALİYYƏT İSTİLİK XƏRİTƏSİ (Heatmap)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+WEEKDAY_NAMES_AZ = ["Bazar ertəsi", "Çərşənbə axşamı", "Çərşənbə", "Cümə axşamı", "Cümə", "Şənbə", "Bazar"]
+
+
+def get_activity_heatmap(discord_id, days=90):
+    """Son `days` gündə oyunçunun matçlarının həftənin günlərinə görə paylanması.
+    Qaytarır: 7-elementli siyahı (0=Bazar ertəsi ... 6=Bazar), hər biri matç sayı."""
+    import time, datetime as _dt
+    since = int(time.time()) - days * 86400
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT played_at FROM match_history WHERE played_at >= ? AND "
+        "(winner_ids LIKE ? OR loser_ids LIKE ?)",
+        (since, f"%{discord_id}%", f"%{discord_id}%")
+    )
+    rows = cur.fetchall()
+    conn.close()
+    counts = [0] * 7
+    for (played_at,) in rows:
+        wd = _dt.datetime.utcfromtimestamp(played_at).weekday()
+        counts[wd] += 1
+    return counts
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — BATTLE PASS SEZON ARXİVİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def archive_bp_season(season_name):
+    """Cari Battle Pass sıralamasının anlıq görüntüsünü arxivləşdirir (tərəqqi SIFIRLANMIR —
+    yalnız tarixi rekord üçün "dondurulmuş" sıralama saxlanılır)."""
+    import time, json as _json
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("""
+        SELECT p.so2_nick, bp.level, bp.is_premium
+        FROM battle_pass bp JOIN players p ON p.discord_id = bp.discord_id
+        ORDER BY bp.level DESC LIMIT 10
+    """)
+    top = [{"nick": r[0], "level": r[1], "premium": bool(r[2])} for r in cur.fetchall()]
+    cur.execute("SELECT COUNT(*) FROM battle_pass WHERE level > 0")
+    total = cur.fetchone()[0]
+    cur.execute(
+        "INSERT OR REPLACE INTO bp_season_archive (season_name, archived_at, top_players, total_participants) "
+        "VALUES (?,?,?,?)",
+        (season_name, int(time.time()), _json.dumps(top), total)
+    )
+    conn.commit(); conn.close()
+    return {"season_name": season_name, "top_players": top, "total_participants": total}
+
+
+def get_bp_season_archives():
+    import json as _json
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT season_name, archived_at, top_players, total_participants FROM bp_season_archive ORDER BY archived_at DESC")
+    rows = cur.fetchall(); conn.close()
+    return [{"season_name": r[0], "archived_at": r[1], "top_players": _json.loads(r[2]), "total_participants": r[3]} for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — HƏFTƏLİK ŞƏXSİ XÜLASƏ (DM)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_weekly_recap(discord_id, since_ts):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT winner_ids, loser_ids, winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after "
+        "FROM match_history WHERE played_at >= ? AND (winner_ids LIKE ? OR loser_ids LIKE ?)",
+        (since_ts, f"%{discord_id}%", f"%{discord_id}%")
+    )
+    rows = cur.fetchall()
+    wins = losses = 0
+    elo_before = elo_after = None
+    import json as _json
+    for winner_ids, loser_ids, web, wea, leb, lea in rows:
+        w_ids = _json.loads(winner_ids or "[]")
+        l_ids = _json.loads(loser_ids or "[]")
+        if discord_id in w_ids:
+            wins += 1
+            idx = w_ids.index(discord_id)
+            before_list, after_list = _json.loads(web or "[]"), _json.loads(wea or "[]")
+        elif discord_id in l_ids:
+            losses += 1
+            idx = l_ids.index(discord_id)
+            before_list, after_list = _json.loads(leb or "[]"), _json.loads(lea or "[]")
+        else:
+            continue
+        if elo_before is None and idx < len(before_list):
+            elo_before = before_list[idx]
+        if idx < len(after_list):
+            elo_after = after_list[idx]
+    cur.execute(
+        "SELECT COALESCE(SUM(change),0) FROM coin_logs WHERE discord_id=? AND created_at >= ? AND change > 0",
+        (discord_id, since_ts)
+    )
+    coins_earned = cur.fetchone()[0]
+    conn.close()
+    return {
+        "wins": wins, "losses": losses, "matches": wins + losses,
+        "elo_before": elo_before, "elo_after": elo_after,
+        "elo_change": (elo_after - elo_before) if (elo_before is not None and elo_after is not None) else 0,
+        "coins_earned": coins_earned
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 2 — SQUAD-QUEUE (birgə komandaya düşmə)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_squad_pair_within(discord_ids):
+    """Verilmiş discord_id siyahısı daxilində eyni AKTIV squad-a aid bir cüt varsa qaytarır."""
+    if len(discord_ids) < 2:
+        return None
+    conn = _get_conn(); cur = conn.cursor()
+    placeholders = ",".join("?" for _ in discord_ids)
+    cur.execute(
+        f"SELECT player1_id, player2_id FROM squads WHERE status='active' "
+        f"AND player1_id IN ({placeholders}) AND player2_id IN ({placeholders})",
+        list(discord_ids) + list(discord_ids)
+    )
+    row = cur.fetchone(); conn.close()
+    return (row[0], row[1]) if row else None
