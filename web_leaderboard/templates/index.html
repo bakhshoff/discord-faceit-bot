@@ -285,6 +285,33 @@
     50% { opacity: 0.3; }
   }
 
+  .rank-move {
+    font-size: 11px;
+    margin-left: 6px;
+    font-family: var(--font-mono);
+  }
+  .rank-move.up { color: var(--green); }
+  .rank-move.down { color: var(--red); }
+
+  @keyframes rowFlash {
+    0% { background: var(--gold-soft); }
+    100% { background: transparent; }
+  }
+  tr.flash { animation: rowFlash 1.6s ease-out; }
+
+  .skeleton-row td { padding: 14px 16px; }
+  .skeleton-block {
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #1a171e 25%, #221e28 37%, #1a171e 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
   @media (max-width: 600px) {
     .id-cell { display: none; }
     h1 { font-size: 36px; }
@@ -328,7 +355,21 @@
         <th>WR%</th>
       </tr>
     </thead>
-    <tbody id="tableBody"></tbody>
+    <tbody id="tableBody">
+      <!-- Skeleton loading: ilk data gələnə qədər göstərilir -->
+      {% for _ in range(8) %}
+      <tr class="skeleton-row">
+        <td><div class="skeleton-block" style="width:20px;"></div></td>
+        <td><div class="skeleton-block" style="width:120px;"></div></td>
+        <td><div class="skeleton-block" style="width:70px;"></div></td>
+        <td><div class="skeleton-block" style="width:50px;"></div></td>
+        <td><div class="skeleton-block" style="width:24px;"></div></td>
+        <td><div class="skeleton-block" style="width:24px;"></div></td>
+        <td><div class="skeleton-block" style="width:24px;"></div></td>
+        <td><div class="skeleton-block" style="width:44px;"></div></td>
+      </tr>
+      {% endfor %}
+    </tbody>
   </table>
 
   <div id="emptyState" class="empty-state" style="display:none;">
@@ -345,6 +386,8 @@ let allPlayers = [];
 let totalMatchesFromServer = 0;
 let currentSort = 'elo';
 let currentSearch = '';
+let previousRanks = {};
+let firstRenderDone = false;
 
 async function fetchData() {
   try {
@@ -352,13 +395,15 @@ async function fetchData() {
     const data = await res.json();
     allPlayers = data.players;
     totalMatchesFromServer = data.total_matches;
-    render();
+    render(true);
   } catch (e) {
     console.error('Leaderboard fetch failed', e);
   }
 }
 
-function render() {
+function render(trackRankChanges = false) {
+  // Sıra dəyişmə oxları YALNIZ əsl data yeniləməsində (fetchData) müqayisə olunur —
+  // axtarış/sıralama dropdown-u ilə görünüş dəyişəndə saxta "sıra dəyişimi" göstərilməsin.
   let filtered = allPlayers.filter(p =>
     p.nick.toLowerCase().includes(currentSearch.toLowerCase()) ||
     String(p.so2_id).includes(currentSearch)
@@ -378,12 +423,29 @@ function render() {
   table.style.display = 'table';
   emptyState.style.display = 'none';
 
-  tbody.innerHTML = filtered.map((p, idx) => {
+  const newRanks = {};
+  const rowsHtml = filtered.map((p, idx) => {
     const rank = idx + 1;
     const rankClass = rank <= 3 ? `rank-${rank}` : '';
+    newRanks[p.so2_id] = rank;
+
+    let moveHtml = '';
+    let flashClass = '';
+    if (trackRankChanges) {
+      const prevRank = previousRanks[p.so2_id];
+      if (firstRenderDone && prevRank !== undefined && prevRank !== rank) {
+        if (rank < prevRank) {
+          moveHtml = `<span class="rank-move up">▲${prevRank - rank}</span>`;
+        } else {
+          moveHtml = `<span class="rank-move down">▼${rank - prevRank}</span>`;
+        }
+        flashClass = ' flash';
+      }
+    }
+
     return `
-      <tr class="${rankClass}">
-        <td class="rank-cell">#${rank}</td>
+      <tr class="${rankClass}${flashClass}">
+        <td class="rank-cell">#${rank}${moveHtml}</td>
         <td class="player-cell">${escapeHtml(p.nick)}</td>
         <td class="id-cell">${escapeHtml(String(p.so2_id))}</td>
         <td class="elo-cell">${p.elo}</td>
@@ -394,6 +456,12 @@ function render() {
       </tr>
     `;
   }).join('');
+
+  tbody.innerHTML = rowsHtml;
+  if (trackRankChanges) {
+    previousRanks = newRanks;
+    firstRenderDone = true;
+  }
 
   renderStats(filtered);
 }

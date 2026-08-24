@@ -63,25 +63,45 @@ def api_leaderboard():
     })
 
 
-@app.route("/u/<int:discord_id>")
-def public_profile(discord_id):
+def _profile_dict(discord_id):
     player = database.get_player(discord_id)
     if not player:
-        abort(404)
-
+        return None
     _, nick, so2_id, elo, wins, losses = player[:6]
     stats = database.get_player_stats_dict(discord_id) or {}
     matches = wins + losses
     win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
     rank_name, rank_color, rank_emoji = get_rank(elo)
+    return {
+        "discord_id": discord_id, "nick": nick, "so2_id": so2_id, "elo": elo,
+        "wins": wins, "losses": losses, "matches": matches, "win_rate": win_rate,
+        "kills": stats.get("kills", 0), "assists": stats.get("assists", 0), "deaths": stats.get("deaths", 0),
+        "rank_name": rank_name, "rank_color": list(rank_color), "rank_emoji": rank_emoji,
+    }
 
-    return render_template(
-        "profile_public.html",
-        nick=nick, so2_id=so2_id, elo=elo, wins=wins, losses=losses,
-        matches=matches, win_rate=win_rate,
-        kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
-        rank_name=rank_name, rank_color=rank_color, rank_emoji=rank_emoji
-    )
+
+@app.route("/u/<int:discord_id>")
+def public_profile(discord_id):
+    profile = _profile_dict(discord_id)
+    if not profile:
+        abort(404)
+    return render_template("profile_public.html", **profile)
+
+
+@app.route("/api/profile/<int:discord_id>")
+def api_profile(discord_id):
+    profile = _profile_dict(discord_id)
+    if not profile:
+        abort(404)
+    return jsonify(profile)
+
+
+@app.route("/api/profile/<int:discord_id>/history")
+def api_profile_history(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    history = list(reversed(database.get_player_match_history(discord_id, limit=30)))
+    return jsonify([{"match_number": h["match_number"], "elo_after": h["elo_after"]} for h in history])
 
 
 @app.route("/admin")
