@@ -104,6 +104,7 @@ from visual_cards import (
     generate_map_stats_card, generate_personal_record_card, generate_squad_card,
     generate_activity_card, generate_elo_chart_card, generate_quest_card, generate_synergy_card,
     generate_elo_cards_market_card, generate_monthly_reward_card, generate_weekly_mvp_card,
+    generate_boss_event_card, generate_map_masters_card,
     RANKS, get_rank
 )
 from referral_visual import generate_item_preview_card
@@ -366,39 +367,16 @@ async def _get_hall_of_fame_channel():
         return None
 
 
-def _boss_progress_bar(current_hp, max_hp, length=20):
-    filled = round((current_hp / max_hp) * length) if max_hp else 0
-    return "🟥" * filled + "⬛" * (length - filled)
-
-
-def _boss_embed(boss, leaderboard):
-    if boss["defeated"]:
-        desc = f"✅ **Boss məğlub edildi!** Növbəti boss Bazar ertəsi yenidən görünəcək."
-        color = discord.Color.green()
-    else:
-        pct = round(boss["current_hp"] / boss["max_hp"] * 100)
-        desc = (
-            f"{_boss_progress_bar(boss['current_hp'], boss['max_hp'])}\n"
-            f"❤️ **{boss['current_hp']} / {boss['max_hp']} HP** ({pct}%)\n\n"
-            "Hər matçdakı kill-lər boss-a zərbə vurur — icma birlikdə onu məğlub etsə, "
-            f"HAMI (töhfə verən hər kəs) **{boss['reward_coins']} coin** qazanır, "
-            f"ən çox zərbə vuran isə əlavə **{BOSS_TOP_DAMAGE_BONUS} coin** bonus alır!"
-        )
-        color = discord.Color.from_rgb(230, 60, 55)
-    embed = discord.Embed(title="👹 Həftəlik Boss Event", description=desc, color=color)
-    if leaderboard:
-        embed.add_field(
-            name="🗡️ Ən çox zərbə vuranlar",
-            value="\n".join(f"{i+1}. {p['nick']} — {p['damage']} zərbə" for i, p in enumerate(leaderboard)),
-            inline=False
-        )
-    embed.set_footer(text="Zenith's Academy — hər həftə Bazar ertəsi yeni boss görünür")
-    return embed
+async def _render_boss_card(boss, leaderboard):
+    card_path = os.path.join(DATA_DIR or ".", "boss_event_card.png")
+    await asyncio.to_thread(generate_boss_event_card, boss, leaderboard, card_path)
+    return discord.File(card_path, filename="boss_event.png")
 
 
 async def _post_boss_event(channel):
     boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
-    message = await channel.send(embed=_boss_embed(boss, []))
+    file = await _render_boss_card(boss, [])
+    message = await channel.send(file=file)
     try:
         pins = await channel.pins()
         for old in pins:
@@ -434,7 +412,8 @@ async def _update_boss_progress(contributions: dict):
     boss["defeated"] = just_defeated
     try:
         message = await channel.fetch_message(int(boss["message_id"]))
-        await message.edit(embed=_boss_embed(boss, leaderboard))
+        file = await _render_boss_card(boss, leaderboard)
+        await message.edit(attachments=[file])
     except (discord.NotFound, discord.HTTPException, TypeError, ValueError):
         pass
     if just_defeated:
@@ -477,16 +456,9 @@ async def _post_map_masters(channel):
     masters = get_map_masters(min_matches=3, top_n=3)
     if not masters:
         return
-    embed = discord.Embed(
-        title="🗺️ Xəritə Ustaları",
-        description="Hər xəritənin ən yüksək win-rate-li (min. 3 matç) top-3 oyunçusu:",
-        color=discord.Color.from_rgb(80, 160, 255)
-    )
-    for map_name, top in masters.items():
-        lines = [f"{i+1}. **{p['nick']}** — {p['winrate']}% ({p['wins']}Q/{p['losses']}M)" for i, p in enumerate(top)]
-        embed.add_field(name=f"🗺️ {map_name}", value="\n".join(lines), inline=True)
-    embed.set_footer(text="Zenith's Academy — hər Bazar ertəsi yenilənir")
-    await channel.send(embed=embed)
+    card_path = os.path.join(DATA_DIR or ".", "map_masters_card.png")
+    await asyncio.to_thread(generate_map_masters_card, masters, card_path)
+    await channel.send(file=discord.File(card_path, filename="map_masters.png"))
 
 
 async def _post_weekly_mvp(channel):
@@ -2837,6 +2809,7 @@ class ProfileHubView(discord.ui.View):
             ("btn.notifications", "🔔", self.notifications_btn),
             ("btn.social", "🎙️", self.social_btn),
             ("btn.lang", "🌐", self.lang_btn),
+            ("btn.more", "⚙️", self.more_btn),
         ]
         for key, emoji, callback in button_defs:
             btn = discord.ui.Button(label=t(key, lang), style=discord.ButtonStyle.secondary, emoji=emoji)
@@ -3093,6 +3066,16 @@ class ProfileHubView(discord.ui.View):
             color=discord.Color.from_rgb(80, 200, 160)
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def more_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        embed = discord.Embed(
+            title="⚙️ Digər Əməliyyatlar",
+            description="🎁 Bir oyunçuya coin hədiyyə edin\n🚩 Bir oyunçunu admin komandasına şikayət edin",
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        await interaction.response.send_message(embed=embed, view=MoreOptionsView(self.discord_id), ephemeral=True)
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -3653,28 +3636,144 @@ async def admin_herrac_baslat_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-@bot.tree.command(name="report", description="Bir oyunçunu davranışına görə admin komandasına şikayət et")
-@app_commands.describe(oyunçu="Şikayət olunan oyunçu", sebeb="Şikayətin səbəbi")
-async def report_cmd(interaction: discord.Interaction, oyunçu: discord.Member, sebeb: str):
-    if oyunçu.id == interaction.user.id:
-        await interaction.response.send_message("❌ Özünüzü şikayət edə bilməzsiniz.", ephemeral=True)
-        return
-    create_report(interaction.user.id, oyunçu.id, sebeb)
-    await interaction.response.send_message("✅ Şikayətiniz admin komandasına göndərildi. Təşəkkürlər!", ephemeral=True)
+async def _submit_report(interaction: discord.Interaction, reporter_id, target_id, target_mention, reason):
+    create_report(reporter_id, target_id, reason)
     channel = await _get_reports_channel()
     if channel:
-        embed = discord.Embed(
-            title="🚩 Yeni Şikayət",
-            color=discord.Color.red()
-        )
-        embed.add_field(name="Şikayətçi", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Hədəf", value=oyunçu.mention, inline=True)
-        embed.add_field(name="Səbəb", value=sebeb, inline=False)
-        prior = get_recent_reports_for(oyunçu.id, limit=5)
+        embed = discord.Embed(title="🚩 Yeni Şikayət", color=discord.Color.red())
+        embed.add_field(name="Şikayətçi", value=f"<@{reporter_id}>", inline=True)
+        embed.add_field(name="Hədəf", value=target_mention, inline=True)
+        embed.add_field(name="Səbəb", value=reason, inline=False)
+        prior = get_recent_reports_for(target_id, limit=5)
         if len(prior) > 1:
             embed.add_field(name="⚠️ Əvvəlki şikayətlər", value=f"Bu oyunçu üçün cəmi **{len(prior)}** şikayət qeydə alınıb.", inline=False)
         embed.timestamp = datetime.datetime.utcnow()
         await channel.send(embed=embed)
+
+
+class ReportReasonModal(discord.ui.Modal, title="Şikayət səbəbi"):
+    sebeb = discord.ui.TextInput(label="Şikayətin səbəbi", style=discord.TextStyle.paragraph, max_length=500)
+
+    def __init__(self, reporter_id, target_id, target_mention):
+        super().__init__()
+        self.reporter_id = reporter_id
+        self.target_id = target_id
+        self.target_mention = target_mention
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await _submit_report(interaction, self.reporter_id, self.target_id, self.target_mention, self.sebeb.value)
+        await interaction.response.send_message("✅ Şikayətiniz admin komandasına göndərildi. Təşəkkürlər!", ephemeral=True)
+
+
+class ReportUserSelectView(discord.ui.View):
+    def __init__(self, reporter_id):
+        super().__init__(timeout=120)
+        self.reporter_id = reporter_id
+        self.select = discord.ui.UserSelect(placeholder="Şikayət olunan oyunçunu seçin...")
+        self.select.callback = self._on_select
+        self.add_item(self.select)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.reporter_id:
+            await interaction.response.send_message("❌ Bu yalnız sizin üçündür.", ephemeral=True)
+            return
+        target = self.select.values[0]
+        if target.id == self.reporter_id:
+            await interaction.response.send_message("❌ Özünüzü şikayət edə bilməzsiniz.", ephemeral=True)
+            return
+        await interaction.response.send_modal(ReportReasonModal(self.reporter_id, target.id, target.mention))
+
+
+class GiftAmountModal(discord.ui.Modal, title="Hədiyyə miqdarı"):
+    meqdar = discord.ui.TextInput(label="Neçə coin göndərmək istəyirsiniz?", placeholder="məs: 100", max_length=10)
+
+    def __init__(self, sender_id, target_id, target_name, target_mention):
+        super().__init__()
+        self.sender_id = sender_id
+        self.target_id = target_id
+        self.target_name = target_name
+        self.target_mention = target_mention
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            amount = int(self.meqdar.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Rəqəm daxil edin.", ephemeral=True)
+            return
+        if amount <= 0:
+            await interaction.response.send_message("❌ Miqdar müsbət olmalıdır.", ephemeral=True)
+            return
+        if not get_player(self.target_id):
+            await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+            return
+        ok, msg, commission, receiver_amt = transfer_coins(self.sender_id, self.target_id, amount)
+        if not ok:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            return
+        add_coin_log(self.sender_id, -amount, f"Hədiyyə → {self.target_name}", "spend", get_coins(self.sender_id))
+        add_coin_log(self.target_id, receiver_amt, "Hədiyyə alındı", "earn", get_coins(self.target_id))
+        await interaction.response.send_message(
+            f"🎁 **{amount} coin**-dən {self.target_mention} **{receiver_amt} coin** aldı "
+            f"(20% komissiya: {commission} coin). Qalan balansınız: **{get_coins(self.sender_id)}** coin.",
+            ephemeral=True
+        )
+        try:
+            if interaction.guild:
+                target_member = interaction.guild.get_member(self.target_id)
+                if target_member:
+                    await target_member.send(f"🎁 Sizə **{receiver_amt} coin** hədiyyə edildi!")
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+
+class GiftUserSelectView(discord.ui.View):
+    def __init__(self, sender_id):
+        super().__init__(timeout=120)
+        self.sender_id = sender_id
+        self.select = discord.ui.UserSelect(placeholder="Hədiyyə göndəriləcək oyunçunu seçin...")
+        self.select.callback = self._on_select
+        self.add_item(self.select)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.sender_id:
+            await interaction.response.send_message("❌ Bu yalnız sizin üçündür.", ephemeral=True)
+            return
+        target = self.select.values[0]
+        if target.id == self.sender_id:
+            await interaction.response.send_message("❌ Özünüzə hədiyyə edə bilməzsiniz.", ephemeral=True)
+            return
+        if target.bot:
+            await interaction.response.send_message("❌ Bota hədiyyə edə bilməzsiniz.", ephemeral=True)
+            return
+        await interaction.response.send_modal(GiftAmountModal(self.sender_id, target.id, target.display_name, target.mention))
+
+
+class MoreOptionsView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu yalnız sizin üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Hədiyyə et", style=discord.ButtonStyle.success, emoji="🎁")
+    async def gift_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message(
+            "🎁 Hədiyyə göndəriləcək oyunçunu seçin:", view=GiftUserSelectView(self.discord_id), ephemeral=True
+        )
+
+    @discord.ui.button(label="Şikayət et", style=discord.ButtonStyle.danger, emoji="🚩")
+    async def report_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message(
+            "🚩 Şikayət olunan oyunçunu seçin:", view=ReportUserSelectView(self.discord_id), ephemeral=True
+        )
 
 
 @bot.tree.command(name="admin_toplu_coin", description="[Admin] Bir neçə oyunçuya eyni anda coin verir/çıxarır")
@@ -3706,38 +3805,6 @@ async def admin_toplu_coin(interaction: discord.Interaction, discord_idler: str,
 async def admin_toplu_coin_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
-
-
-@bot.tree.command(name="hədiyyə_et", description="Coin-lərinizdən bir hissəsini başqa oyunçuya hədiyyə edin")
-@app_commands.describe(oyunçu="Hədiyyə göndəriləcək oyunçu", meqdar="Göndəriləcək coin miqdarı")
-async def hediyye_et(interaction: discord.Interaction, oyunçu: discord.Member, meqdar: int):
-    if oyunçu.id == interaction.user.id:
-        await interaction.response.send_message("❌ Özünüzə hədiyyə edə bilməzsiniz.", ephemeral=True)
-        return
-    if oyunçu.bot:
-        await interaction.response.send_message("❌ Bota hədiyyə edə bilməzsiniz.", ephemeral=True)
-        return
-    if meqdar <= 0:
-        await interaction.response.send_message("❌ Miqdar müsbət olmalıdır.", ephemeral=True)
-        return
-    if not get_player(oyunçu.id):
-        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
-        return
-    ok, msg, commission, receiver_amt = transfer_coins(interaction.user.id, oyunçu.id, meqdar)
-    if not ok:
-        await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-        return
-    add_coin_log(interaction.user.id, -meqdar, f"Hədiyyə → {oyunçu.display_name}", "spend", get_coins(interaction.user.id))
-    add_coin_log(oyunçu.id, receiver_amt, f"Hədiyyə ← {interaction.user.display_name}", "earn", get_coins(oyunçu.id))
-    await interaction.response.send_message(
-        f"🎁 **{meqdar} coin**-dən {oyunçu.mention} **{receiver_amt} coin** aldı "
-        f"(20% komissiya: {commission} coin). Qalan balansınız: **{get_coins(interaction.user.id)}** coin.",
-        ephemeral=True
-    )
-    try:
-        await oyunçu.send(f"🎁 {interaction.user.display_name} sizə **{receiver_amt} coin** hədiyyə etdi!")
-    except (discord.Forbidden, discord.HTTPException):
-        pass
 
 
 @bot.tree.command(name="admin_pass_sezon_bitir", description="[Admin] Cari Battle Pass sıralamasını tarixə arxivləşdirir")
@@ -5421,12 +5488,12 @@ PANEL_CATEGORIES = {
             ("🔥 Flash Sale", "Təsadüfi olaraq marketdə bir əşyaya müvəqqəti endirim elan oluna bilər"),
             ("🛤️ Sezonlar", "Hər ayın 1-də ELO sezonu bağlanır, Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
-            ("🎁 Hədiyyə et", "`/hədiyyə_et` ilə coin-lərinizi başqa oyunçuya göndərə bilərsiniz (20% komissiya)"),
+            ("🎁 Hədiyyə et", "Profil → Digər → Hədiyyə et düyməsi ilə coin-lərinizi başqa oyunçuya göndərə bilərsiniz (20% komissiya)"),
             ("💱 Coin → AZN", "Profil → Çevir düyməsi ilə 2500 coin = 0.5 AZN məzənnəsi ilə çevirmə"),
             ("📦 Paketlər", "Market → Paketlər bölməsində bir neçə əşya birlikdə endirimli qiymətə satılır"),
             ("🔨 Hərraclar", "Admin nadir əşyaları coin ilə hərraca çıxara bilər"),
             ("🎉 Bayram Matçları", "Milli bayram günlərində bütün matçlarda avtomatik 2x coin/ELO bonusu aktivdir"),
-            ("🚩 Report sistemi", "`/report` ilə admin komandasına şikayət göndərə bilərsiniz"),
+            ("🚩 Report sistemi", "Profil → Digər → Şikayət et düyməsi ilə admin komandasına şikayət göndərə bilərsiniz"),
             ("👹 Həftəlik Boss Event", "İcma birlikdə matçlardakı kill-lərlə boss-u vurur, məğlub edəndə hamı coin qazanır"),
             ("🏅 Nailiyyət Divarı", "Nadir nailiyyət/ləqəb qazananlar dərhal ayrıca kanalda elan olunur"),
             ("🎙️ Ən Sosial Reytinq", "Profil → Sosial düyməsində səs kanallarında ən çox vaxt keçirənlərin reytinqi"),
@@ -5463,7 +5530,7 @@ PANEL_CATEGORIES = {
             ("/admin_toplu_coin", "Bir neçə oyunçuya eyni anda coin verir/çıxarır"),
             ("/admin_pass_sezon_bitir", "Cari Battle Pass sıralamasını tarixə arxivləşdirir"),
             ("🛡️ Audit Log kanalı", "Bütün admin əməliyyatları (ELO düzəlişi, matç silmə/dəyişmə və s.) canlı qeydə alınır"),
-            ("🚩 Reports kanalı", "`/report` ilə göndərilən şikayətlər buraya düşür"),
+            ("🚩 Reports kanalı", "Profil → Digər → Şikayət et ilə göndərilən şikayətlər buraya düşür"),
             ("⚠️ Şübhəli fəaliyyət xəbərdarlığı", "Qeyri-adi sürətli coin qazancı avtomatik audit-log kanalına bildirilir"),
         ],
     },
