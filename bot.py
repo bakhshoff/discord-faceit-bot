@@ -86,6 +86,7 @@ from database import (
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_match_coach_tip, generate_daily_news, generate_intel_briefing, generate_personal_coach_report
+import standoff2_news
 from leaderboard_image import generate_leaderboard_image
 from web_server import run_web_server
 from profile_card import generate_profile_card
@@ -210,6 +211,7 @@ AUDIT_LOG_CHANNEL_ID = None
 ACHIEVEMENT_WALL_CHANNEL_ID = None
 BOSS_EVENT_CHANNEL_ID = None
 MAP_MASTERS_CHANNEL_ID = None
+STANDOFF2_NEWS_CHANNEL_ID = None
 RARE_ACHIEVEMENT_THRESHOLD_PCT = 15
 BOSS_MAX_HP = 500
 BOSS_REWARD_COINS = 40
@@ -578,6 +580,18 @@ async def _get_map_masters_channel():
         return None
 
 
+async def _get_standoff2_news_channel():
+    if not STANDOFF2_NEWS_CHANNEL_ID:
+        return None
+    channel = bot.get_channel(STANDOFF2_NEWS_CHANNEL_ID)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(STANDOFF2_NEWS_CHANNEL_ID)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return None
+
+
 async def _post_audit_log(action, target_id, field, old_val, new_val, reason, admin_id):
     """log_admin_action ilə EYNİ anda çağırılır — DB-yə yazılan admin əməliyyatını canlı
     olaraq audit-log kanalına da göndərir. Kanal qurulmayıbsa sakitcə heç nə etmir."""
@@ -681,6 +695,71 @@ async def flash_sale_loop():
             color=discord.Color.from_rgb(255, 120, 40)
         )
         await log_channel.send(embed=embed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STANDOFF 2 RƏSMİ YENİLİK XƏBƏRLƏRİ (help.standoff2.com izləmə)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+STANDOFF2_NEWS_SEEN_META_KEY = "standoff2_seen_article_ids"
+
+
+@tasks.loop(hours=6)
+async def standoff2_news_loop():
+    """help.standoff2.com/en-dəki 'Updates Description' bölməsini yoxlayır, yeni
+    yenilik məqaləsi görünəndə tam mətnini çəkib AI ilə Azərbaycan dilinə çevirir və
+    kanala göndərir. Sayt strukturu dəyişsə/əlçatan olmasa belə sakitcə keçib növbəti
+    dövrdə yenidən cəhd edir — bot funksionallığına təsir etmir."""
+    channel = await _get_standoff2_news_channel()
+    if not channel:
+        return
+    try:
+        articles = await asyncio.to_thread(standoff2_news.get_latest_update_articles, 5)
+    except Exception as e:
+        print(f"[STANDOFF2_NEWS] Kolleksiya səhifəsi çəkilə bilmədi: {e}", flush=True)
+        return
+    if not articles:
+        return
+
+    seen_raw = get_meta(STANDOFF2_NEWS_SEEN_META_KEY)
+    if seen_raw is None:
+        # İlk dəfə işə düşür — mövcud məqalələri "görülmüş" kimi işarələ, KEÇMİŞ elanları
+        # göndərmə (yalnız BUNDAN SONRA çıxan yeniliklər elan olunacaq).
+        set_meta(STANDOFF2_NEWS_SEEN_META_KEY, json.dumps([a["id"] for a in articles]))
+        return
+
+    try:
+        seen_ids = set(json.loads(seen_raw))
+    except (TypeError, ValueError):
+        seen_ids = set()
+
+    new_articles = [a for a in articles if a["id"] not in seen_ids]
+    if not new_articles:
+        return
+
+    for article in reversed(new_articles):  # köhnədən yeniyə doğru elan et
+        try:
+            title, text = await asyncio.to_thread(standoff2_news.fetch_article_text, article["url"])
+            summary = await asyncio.to_thread(standoff2_news.summarize_article_az, title, text)
+        except Exception as e:
+            print(f"[STANDOFF2_NEWS] Məqalə çəkilə bilmədi ({article['url']}): {e}", flush=True)
+            continue
+        if not summary:
+            continue
+        embed = discord.Embed(
+            title=f"🎮 {title}",
+            description=summary,
+            color=discord.Color.from_rgb(138, 92, 230),
+            url=article["url"]
+        )
+        embed.set_footer(text="Mənbə: help.standoff2.com — Zenith's Academy avtomatik tərcümə")
+        try:
+            await channel.send(embed=embed)
+        except discord.HTTPException as e:
+            print(f"[STANDOFF2_NEWS] Kanala göndərilə bilmədi: {e}", flush=True)
+        seen_ids.add(article["id"])
+
+    set_meta(STANDOFF2_NEWS_SEEN_META_KEY, json.dumps(list(seen_ids)))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2603,7 +2682,7 @@ class MatchmakingView(discord.ui.View):
 @bot.event
 async def on_ready():
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
-    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID
+    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
     init_db()
 
     saved_log = get_meta("log_channel_id")
@@ -2630,10 +2709,14 @@ async def on_ready():
     saved_masters = get_meta("map_masters_channel_id")
     if saved_masters:
         MAP_MASTERS_CHANNEL_ID = int(saved_masters)
+    saved_news = get_meta("standoff2_news_channel_id")
+    if saved_news:
+        STANDOFF2_NEWS_CHANNEL_ID = int(saved_news)
     print(f"[CONFIG] LOG_CHANNEL_ID={LOG_CHANNEL_ID} REWARD_CHANNEL_ID={REWARD_CHANNEL_ID} "
           f"HALL_OF_FAME_CHANNEL_ID={HALL_OF_FAME_CHANNEL_ID} REPORTS_CHANNEL_ID={REPORTS_CHANNEL_ID} "
           f"AUDIT_LOG_CHANNEL_ID={AUDIT_LOG_CHANNEL_ID} ACHIEVEMENT_WALL_CHANNEL_ID={ACHIEVEMENT_WALL_CHANNEL_ID} "
-          f"BOSS_EVENT_CHANNEL_ID={BOSS_EVENT_CHANNEL_ID} MAP_MASTERS_CHANNEL_ID={MAP_MASTERS_CHANNEL_ID}", flush=True)
+          f"BOSS_EVENT_CHANNEL_ID={BOSS_EVENT_CHANNEL_ID} MAP_MASTERS_CHANNEL_ID={MAP_MASTERS_CHANNEL_ID} "
+          f"STANDOFF2_NEWS_CHANNEL_ID={STANDOFF2_NEWS_CHANNEL_ID}", flush=True)
 
     if os.environ.get("RESET_SQUADS_ON_BOOT") == "1":
         n = wipe_squads()
@@ -2675,6 +2758,8 @@ async def on_ready():
         weekly_summary_dm_loop.start()
     if not check_auctions.is_running():
         check_auctions.start()
+    if not standoff2_news_loop.is_running():
+        standoff2_news_loop.start()
     if REWARD_CHANNEL_ID and not refresh_reward_card.is_running():
         refresh_reward_card.start()
     for guild in bot.guilds:
@@ -3426,7 +3511,7 @@ async def setup_error(interaction: discord.Interaction, error):
 @staff_check()
 async def full_setup(interaction: discord.Interaction):
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
-    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID
+    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
 
     if not interaction.guild:
         await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
@@ -3470,6 +3555,7 @@ async def full_setup(interaction: discord.Interaction):
     ch_wall = await _recreate_text("nailiyyet-divari", announce_overwrites)
     ch_boss = await _recreate_text("boss-event", announce_overwrites)
     ch_masters = await _recreate_text("xerite-ustalari", announce_overwrites)
+    ch_news = await _recreate_text("standoff2-yenilikleri", announce_overwrites)
 
     # Köhnə statik "Komanda A/B" səs kanalları artıq lazım deyil — hər matç
     # üçün səs kanalları indi avtomatik, dinamik yaradılır/silinir (bax:
@@ -3499,6 +3585,8 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("boss_event_channel_id", ch_boss.id)
     MAP_MASTERS_CHANNEL_ID = ch_masters.id
     set_meta("map_masters_channel_id", ch_masters.id)
+    STANDOFF2_NEWS_CHANNEL_ID = ch_news.id
+    set_meta("standoff2_news_channel_id", ch_news.id)
 
     await _post_register(ch_register)
     await _post_matchmaking(ch_matchmaking)
@@ -3517,6 +3605,11 @@ async def full_setup(interaction: discord.Interaction):
     await ch_masters.send(
         "🗺️ **Xəritə Ustaları** — hər xəritənin ən yüksək win-rate-li top-3 oyunçusu bu siyahıda hər həftə yenilənəcək."
     )
+    await ch_news.send(
+        "🎮 **Standoff 2 Rəsmi Yenilikləri** — help.standoff2.com saytındakı yeni yenilik (patch notes) "
+        "məqalələri aşkarlanan kimi bura Azərbaycan dilinə tərcümə edilib avtomatik göndəriləcək "
+        "(hər 6 saatdan bir yoxlanılır)."
+    )
 
     await interaction.followup.send(
         "✅ Server yenidən quruldu! Köhnə FACEIT kanalları silinib, yenilənmiş formada təzədən yaradıldı.\n\n"
@@ -3533,6 +3626,7 @@ async def full_setup(interaction: discord.Interaction):
         f"🏅 Nailiyyət Divarı: {ch_wall.mention} (nadir nailiyyət/ləqəb qazananlar canlı elan olunur)\n"
         f"👹 Boss Event: {ch_boss.mention} (həftəlik icma boss-u, canlı yenilənən HP paneli)\n"
         f"🗺️ Xəritə Ustaları: {ch_masters.mention} (hər xəritənin top-3 oyunçusu, hər Bazar ertəsi yenilənir)\n"
+        f"🎮 Standoff 2 Yenilikləri: {ch_news.mention} (rəsmi patch notes, avtomatik AZ tərcümə, hər 6 saatda yoxlanılır)\n"
         f"🔊 Səs kanalları: hər matç üçün avtomatik yaradılır/silinir (statik kanal lazım deyil)\n\n"
         "Elan kanallarında adi üzvlər yazı yaza bilmir, yalnız düymələrlə əməliyyat edə bilirlər.\n"
         "⚠️ Diqqət: bu komanda hər işə düşdükdə mövcud FACEIT kanallarını silib təzədən qurur "
@@ -5611,6 +5705,7 @@ PANEL_CATEGORIES = {
             ("☕ Tilt Xəbərdarlığı", "3 ardıcıl məğlubiyyətdən sonra həvəsləndirici DM göndərilir"),
             ("✏️ Ad Dəyişmə", "Profil → Ayarlar → Ad Dəyiş düyməsi ilə hər hesab BİR DƏFƏ pulsuz nickini dəyişə bilər"),
             ("📂 Profil Menyusu", "/profile 5 kateqoriyaya bölünüb: Statistika, İnventar, Mükafatlar, Sosial, Ayarlar — hər biri ayrıca alt-menyu açır"),
+            ("🎮 Standoff 2 Yenilikləri", "help.standoff2.com saytındakı rəsmi yenilik məqalələri avtomatik aşkarlanıb Azərbaycan dilinə tərcümə edilərək kanala göndərilir (hər 6 saatda yoxlanılır)"),
         ],
     },
     "admin": {
