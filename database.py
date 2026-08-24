@@ -2040,6 +2040,17 @@ def close_season(season_id):
     conn.close()
 
 
+def get_completed_seasons():
+    """Bağlanmış (keçmiş) sezonların siyahısını qaytarır — "zaman kapsulu" veb funksiyası üçün."""
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, season_number, start_date, end_date FROM seasons "
+        "WHERE status='completed' ORDER BY season_number DESC"
+    )
+    rows = cursor.fetchall(); conn.close()
+    return [{"id": r[0], "season_number": r[1], "start_date": r[2], "end_date": r[3]} for r in rows]
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # AKTİV MATÇ KİLİDİ
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4539,6 +4550,26 @@ def get_activity_heatmap(discord_id, days=90):
         wd = _dt.datetime.utcfromtimestamp(played_at).weekday()
         counts[wd] += 1
     return counts
+
+
+def get_activity_heatmap_grid(discord_id, days=90):
+    """Son `days` gündə oyunçunun matçlarının həftənin günü × saat üzrə paylanması (AZ vaxtı).
+    Qaytarır: 7x24 grid (sətir=weekday 0..6, sütun=saat 0..23), hər hüceyrə matç sayı."""
+    import time, datetime as _dt
+    since = int(time.time()) - days * 86400
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute(
+        "SELECT played_at FROM match_history WHERE played_at >= ? AND "
+        "(winner_ids LIKE ? OR loser_ids LIKE ?)",
+        (since, f"%{discord_id}%", f"%{discord_id}%")
+    )
+    rows = cur.fetchall()
+    conn.close()
+    grid = [[0] * 24 for _ in range(7)]
+    for (played_at,) in rows:
+        az_dt = _dt.datetime.utcfromtimestamp(played_at) + _dt.timedelta(hours=4)
+        grid[az_dt.weekday()][az_dt.hour] += 1
+    return grid
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

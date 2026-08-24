@@ -1,6 +1,8 @@
 from flask import Flask, jsonify, render_template, request, abort
 import sqlite3
 import os
+import time
+import uuid
 import database
 from visual_cards import get_rank
 
@@ -10,6 +12,13 @@ TEMPLATE_DIR = os.path.join(BASE_DIR, "web_leaderboard", "templates")
 ADMIN_DASHBOARD_TOKEN = os.environ.get("ADMIN_DASHBOARD_TOKEN", "")
 
 app = Flask(__name__, template_folder=TEMPLATE_DIR)
+
+# ── Canlı baxanlar sayğacı ────────────────────────────────────────────────────
+# Sadə heartbeat-əsaslı izləmə: hər səhifə ~12 saniyədə bir /api/heartbeat çağırır,
+# server son 30 saniyədə "səs vermiş" unikal session-ları sayır. DB-siz, yaddaşda —
+# bot restart olsa sıfırlanır (canlı göstərici üçün məqbul, tarixi məlumat deyil).
+_VIEWER_TIMEOUT_SECONDS = 30
+_active_viewers = {}
 
 
 def get_players():
@@ -102,6 +111,54 @@ def api_profile_history(discord_id):
         abort(404)
     history = list(reversed(database.get_player_match_history(discord_id, limit=30)))
     return jsonify([{"match_number": h["match_number"], "elo_after": h["elo_after"]} for h in history])
+
+
+@app.route("/api/profile/<int:discord_id>/maps")
+def api_profile_maps(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    stats = database.get_map_stats(discord_id)
+    result = []
+    for map_name, s in stats.items():
+        matches = s["wins"] + s["losses"]
+        win_rate = round((s["wins"] / matches) * 100, 1) if matches else 0.0
+        result.append({"map": map_name, "wins": s["wins"], "losses": s["losses"], "matches": matches, "win_rate": win_rate})
+    return jsonify(result)
+
+
+@app.route("/api/profile/<int:discord_id>/heatmap")
+def api_profile_heatmap(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    return jsonify(database.get_activity_heatmap_grid(discord_id))
+
+
+@app.route("/api/seasons")
+def api_seasons():
+    return jsonify(database.get_completed_seasons())
+
+
+@app.route("/api/season/<int:season_id>")
+def api_season_leaderboard(season_id):
+    rows = database.get_season_leaderboard(season_id, limit=10)
+    return jsonify([
+        {"nick": r[0], "so2_id": r[1], "elo_gained": r[2], "kills": r[3], "assists": r[4],
+         "deaths": r[5], "wins": r[6], "losses": r[7], "discord_id": r[8]}
+        for r in rows
+    ])
+
+
+@app.route("/api/heartbeat", methods=["POST"])
+def api_heartbeat():
+    session_id = request.json.get("session_id") if request.is_json else None
+    if not session_id:
+        session_id = str(uuid.uuid4())
+    now = time.time()
+    _active_viewers[session_id] = now
+    stale = [sid for sid, ts in _active_viewers.items() if now - ts > _VIEWER_TIMEOUT_SECONDS]
+    for sid in stale:
+        del _active_viewers[sid]
+    return jsonify({"session_id": session_id, "viewers": len(_active_viewers)})
 
 
 @app.route("/admin")

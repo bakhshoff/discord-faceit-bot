@@ -316,9 +316,77 @@
     .id-cell { display: none; }
     h1 { font-size: 36px; }
   }
+
+  #viewerBadge {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 5;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #viewerBadge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+
+  tr.you-are-here {
+    outline: 2px solid var(--gold);
+    outline-offset: -2px;
+    animation: youHereFlash 2s ease-in-out 2;
+  }
+  @keyframes youHereFlash {
+    0%, 100% { background: transparent; }
+    50% { background: var(--gold-soft); }
+  }
+
+  .capsule-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .capsule-panel h2 {
+    font-family: var(--font-display);
+    font-size: 20px;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    color: var(--text-dim);
+  }
+  .capsule-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .capsule-item {
+    background: #1a171e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    transition: border-color 0.2s;
+  }
+  .capsule-item:hover, .capsule-item.active { border-color: var(--gold); color: var(--gold); }
+  .capsule-detail-row {
+    display: flex; justify-content: space-between; font-size: 13px;
+    padding: 8px 4px; border-bottom: 1px solid var(--border);
+  }
+  .capsule-detail-row:last-child { border-bottom: none; }
+  .capsule-empty { font-size: 12px; color: var(--text-dim); }
+  .capsule-toggle {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; margin-bottom: 16px;
+  }
+  .capsule-toggle:hover { border-color: var(--gold); color: var(--gold); }
 </style>
 </head>
 <body>
+
+<div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 
 <header>
   <div class="eyebrow">Standoff 2 · Competitive</div>
@@ -327,6 +395,13 @@
 </header>
 
 <div class="container">
+
+  <button class="capsule-toggle" id="capsuleToggleBtn" type="button">🕰️ Zaman Kapsulu — Keçmiş Sezonlara Bax</button>
+  <div class="capsule-panel" id="capsulePanel" style="display:none;">
+    <h2>🕰️ Zaman Kapsulu</h2>
+    <div class="capsule-list" id="capsuleList"><span class="capsule-empty">Yüklənir...</span></div>
+    <div id="capsuleDetail"></div>
+  </div>
 
   <div class="stats-bar" id="statsBar"></div>
 
@@ -464,6 +539,26 @@ function render(trackRankChanges = false) {
   }
 
   renderStats(filtered);
+  maybeScrollToMe(filtered);
+}
+
+// ── "Sən buradasan" scroll — ?me=<so2_id> URL parametri ilə ────────────────
+let scrolledToMe = false;
+function maybeScrollToMe(filtered) {
+  if (scrolledToMe) return;
+  const params = new URLSearchParams(window.location.search);
+  const meId = params.get('me');
+  if (!meId) return;
+  const idx = filtered.findIndex(p => String(p.so2_id) === meId);
+  if (idx === -1) return;
+  const rows = document.querySelectorAll('#tableBody tr');
+  const row = rows[idx];
+  if (!row) return;
+  scrolledToMe = true;
+  setTimeout(() => {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('you-are-here');
+  }, 150);
 }
 
 function renderStats(players) {
@@ -495,6 +590,85 @@ document.getElementById('sortSelect').addEventListener('change', (e) => {
   currentSort = e.target.value;
   render();
 });
+
+// ── Klaviatura qısayolları ─────────────────────────────────────────────────
+const searchInputEl = document.getElementById('searchInput');
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement !== searchInputEl) {
+    e.preventDefault();
+    searchInputEl.focus();
+  } else if (e.key === 'Escape' && document.activeElement === searchInputEl) {
+    searchInputEl.value = '';
+    currentSearch = '';
+    searchInputEl.blur();
+    render();
+  }
+});
+
+// ── Canlı baxanlar sayğacı (heartbeat) ────────────────────────────────────
+let viewerSessionId = null;
+async function sendHeartbeat() {
+  try {
+    const r = await fetch('/api/heartbeat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: viewerSessionId})
+    });
+    const data = await r.json();
+    viewerSessionId = data.session_id;
+    document.getElementById('viewerCount').textContent = data.viewers;
+  } catch (e) { /* sakitcə keç */ }
+}
+sendHeartbeat();
+setInterval(sendHeartbeat, 12000);
+
+// ── Zaman Kapsulu (keçmiş sezonlar) ────────────────────────────────────────
+const capsuleToggleBtn = document.getElementById('capsuleToggleBtn');
+const capsulePanel = document.getElementById('capsulePanel');
+let capsuleLoaded = false;
+capsuleToggleBtn.addEventListener('click', async () => {
+  const showing = capsulePanel.style.display !== 'none';
+  capsulePanel.style.display = showing ? 'none' : 'block';
+  if (!showing && !capsuleLoaded) {
+    capsuleLoaded = true;
+    try {
+      const r = await fetch('/api/seasons');
+      const seasons = await r.json();
+      const listEl = document.getElementById('capsuleList');
+      if (!seasons.length) {
+        listEl.innerHTML = '<span class="capsule-empty">Hələ bağlanmış sezon yoxdur.</span>';
+        return;
+      }
+      listEl.innerHTML = seasons.map(s =>
+        `<div class="capsule-item" data-id="${s.id}">Sezon #${s.season_number} (${s.start_date})</div>`
+      ).join('');
+      listEl.querySelectorAll('.capsule-item').forEach(el => {
+        el.addEventListener('click', () => loadCapsuleDetail(el, seasons));
+      });
+    } catch (e) {
+      document.getElementById('capsuleList').innerHTML = '<span class="capsule-empty">Yüklənə bilmədi.</span>';
+    }
+  }
+});
+
+async function loadCapsuleDetail(el) {
+  document.querySelectorAll('.capsule-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  const detailEl = document.getElementById('capsuleDetail');
+  detailEl.innerHTML = '<span class="capsule-empty">Yüklənir...</span>';
+  try {
+    const r = await fetch(`/api/season/${el.dataset.id}`);
+    const rows = await r.json();
+    if (!rows.length) {
+      detailEl.innerHTML = '<span class="capsule-empty">Bu sezonda məlumat yoxdur.</span>';
+      return;
+    }
+    detailEl.innerHTML = rows.map((p, i) =>
+      `<div class="capsule-detail-row"><span>#${i + 1} ${escapeHtml(p.nick)}</span><span>${p.elo_gained >= 0 ? '+' : ''}${p.elo_gained} ELO — ${p.wins}Q/${p.losses}M</span></div>`
+    ).join('');
+  } catch (e) {
+    detailEl.innerHTML = '<span class="capsule-empty">Yüklənə bilmədi.</span>';
+  }
+}
 
 fetchData();
 setInterval(fetchData, 30000);

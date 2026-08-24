@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ nick }} — Zenith's Academy</title>
+<meta property="og:title" content="{{ nick }} — Zenith's Academy">
+<meta property="og:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ wins }}Q/{{ losses }}M ({{ win_rate }}% qazanma) — Standoff 2 FACEIT 2v2 profili.">
+<meta property="og:type" content="profile">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ nick }} — Zenith's Academy">
+<meta name="twitter:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ win_rate }}% qazanma">
 <style>
   :root {
     --bg: #0b0a0d;
@@ -20,6 +26,13 @@
     --font-display: 'Bebas Neue', 'Oswald', Impact, sans-serif;
     --font-body: 'Inter', -apple-system, sans-serif;
     --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
+  [data-theme="light"] {
+    --bg: #f3f1ec;
+    --bg-panel: #ffffff;
+    --border: #ddd7ca;
+    --text: #1c1a17;
+    --text-dim: #726b5e;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { overflow-x: hidden; }
@@ -272,17 +285,122 @@
   .compare-error { font-size: 12px; color: var(--red); margin-top: 4px; }
 
   footer { margin-top: 22px; font-size: 11px; color: var(--text-dim); position: relative; z-index: 1; }
+
+  #themeToggle {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 5;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s;
+  }
+  #themeToggle:hover { border-color: var(--rank); }
+
+  #viewerBadge {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 5;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #viewerBadge .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .badge-svg { width: 42px; height: 42px; display: block; }
+  .badge-svg .spin { transform-origin: 21px 21px; animation: spin 6s linear infinite; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .rank-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 24px; }
+
+  .extra-panel {
+    width: 100%;
+    max-width: 420px;
+    margin-top: 20px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 22px;
+    position: relative;
+    z-index: 1;
+  }
+  .extra-panel h2 {
+    font-family: var(--font-display);
+    font-size: 18px;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    color: var(--text-dim);
+  }
+  .extra-empty { font-size: 12px; color: var(--text-dim); text-align: center; padding: 12px 0; }
+
+  #radarChart { width: 100%; height: 220px; }
+  #radarChart .radar-label { font-size: 9px; fill: var(--text-dim); font-family: var(--font-mono); }
+  #radarChart .radar-grid { fill: none; stroke: var(--border); stroke-width: 1; }
+  #radarChart .radar-shape { fill: var(--rank-soft); stroke: var(--rank); stroke-width: 2; }
+
+  .heatmap-grid { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; }
+  .heatmap-row-lbl { font-size: 9px; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 2px; display: flex; align-items: center; }
+  .heatmap-cell {
+    aspect-ratio: 1;
+    border-radius: 2px;
+    background: #1a171e;
+    position: relative;
+    cursor: default;
+  }
+  .heatmap-cell:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 120%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #000;
+    color: #fff;
+    font-size: 9px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 20;
+  }
+  .heatmap-hours { display: flex; font-size: 8px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 4px; justify-content: space-between; }
 </style>
 </head>
 <body>
   <canvas id="particleCanvas"></canvas>
+  <button id="themeToggle" type="button" title="Tema dəyiş">🌙</button>
+  <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 
   <div class="scene">
     <div class="flip-container" id="flipContainer">
       <div class="card front">
         <div class="eyebrow">Zenith's Academy — Oyunçu Profili</div>
         <h1>{{ nick }}</h1>
-        <div class="rank">{{ rank_emoji }} {{ rank_name }}</div>
+        <div class="rank-row">
+          <svg class="badge-svg" viewBox="0 0 42 42">
+            <polygon class="spin" points="21,2 35,10 35,26 21,34 7,26 7,10" fill="none" stroke="var(--rank)" stroke-width="1.5" opacity="0.6"/>
+            <circle cx="21" cy="21" r="13" fill="var(--rank-soft)" stroke="var(--rank)" stroke-width="1.5"/>
+          </svg>
+          <div class="rank">{{ rank_emoji }} {{ rank_name }}</div>
+        </div>
 
         <div class="elo" data-target="{{ elo }}">0</div>
         <div class="elo-lbl">ELO</div>
@@ -354,6 +472,17 @@
     </div>
   </div>
 
+  <div class="extra-panel" id="radarPanel" style="display:none;">
+    <h2>🗺️ Xəritə Performansı</h2>
+    <svg id="radarChart" viewBox="0 0 220 220"></svg>
+  </div>
+
+  <div class="extra-panel" id="heatmapPanel" style="display:none;">
+    <h2>🔥 Fəallıq Xəritəsi</h2>
+    <div id="heatmapGrid"></div>
+    <div class="heatmap-hours"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
+  </div>
+
   <div id="toast"></div>
 
   <footer>zenith's academy · faceit 2v2</footer>
@@ -362,6 +491,41 @@
 const MY_ID = {{ discord_id }};
 const MY_ELO = {{ elo }};
 const PROFILE_URL = window.location.href;
+
+// ── Dark/Light tema keçidi ────────────────────────────────────────────────
+const themeToggle = document.getElementById('themeToggle');
+function applyTheme(theme) {
+  if (theme === 'light') {
+    document.documentElement.setAttribute('data-theme', 'light');
+    themeToggle.textContent = '☀️';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    themeToggle.textContent = '🌙';
+  }
+}
+applyTheme(localStorage.getItem('zenith-theme') || 'dark');
+themeToggle.addEventListener('click', () => {
+  const current = localStorage.getItem('zenith-theme') || 'dark';
+  const next = current === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('zenith-theme', next);
+  applyTheme(next);
+});
+
+// ── Canlı baxanlar sayğacı (heartbeat) ────────────────────────────────────
+let viewerSessionId = null;
+async function sendHeartbeat() {
+  try {
+    const r = await fetch('/api/heartbeat', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: viewerSessionId})
+    });
+    const data = await r.json();
+    viewerSessionId = data.session_id;
+    document.getElementById('viewerCount').textContent = data.viewers;
+  } catch (e) { /* sakitcə keç */ }
+}
+sendHeartbeat();
+setInterval(sendHeartbeat, 12000);
 
 // ── Say-yuxarı animasiyası ────────────────────────────────────────────────
 function animateCount(el, duration = 1100) {
@@ -472,21 +636,25 @@ document.getElementById('rivalBtn').addEventListener('click', async () => {
   }
 });
 
-// ── Zərrəcik fonu (yalnız win rate yüksəkdirsə) ──────────────────────────
+// ── Zərrəcik fonu (kosmik toz) — bütün profillərdə incə baza, yüksək
+// win rate-də (>=70%) daha sıx/parlaq "reward" effekti ─────────────────────
 const WIN_RATE = {{ win_rate }};
-if (WIN_RATE >= 70) {
+(function () {
   const canvas = document.getElementById('particleCanvas');
   const ctx = canvas.getContext('2d');
+  const boosted = WIN_RATE >= 70;
+  const count = boosted ? 40 : 16;
   let particles = [];
   function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
   window.addEventListener('resize', resize);
   resize();
   const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim();
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < count; i++) {
     particles.push({
       x: Math.random() * canvas.width, y: Math.random() * canvas.height,
-      r: Math.random() * 2 + 0.6, vy: Math.random() * 0.3 + 0.08,
-      alpha: Math.random() * 0.5 + 0.15
+      r: Math.random() * (boosted ? 2 : 1.3) + 0.5,
+      vy: Math.random() * (boosted ? 0.3 : 0.12) + 0.05,
+      alpha: Math.random() * (boosted ? 0.5 : 0.28) + (boosted ? 0.15 : 0.06)
     });
   }
   function loop() {
@@ -502,9 +670,59 @@ if (WIN_RATE >= 70) {
     requestAnimationFrame(loop);
   }
   loop();
-} else {
-  document.getElementById('particleCanvas').style.display = 'none';
-}
+})();
+
+// ── Xəritə radar-qrafiki ──────────────────────────────────────────────────
+fetch(`/api/profile/${MY_ID}/maps`).then(r => r.json()).then(maps => {
+  if (!maps || maps.length < 3) return;
+  const panel = document.getElementById('radarPanel');
+  panel.style.display = 'block';
+  const svg = document.getElementById('radarChart');
+  const cx = 110, cy = 110, maxR = 85;
+  const n = maps.length;
+  const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim();
+  let svgParts = '';
+  for (let ring = 1; ring <= 3; ring++) {
+    const r = (maxR / 3) * ring;
+    let pts = [];
+    for (let i = 0; i < n; i++) {
+      const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+      pts.push(`${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`);
+    }
+    svgParts += `<polygon class="radar-grid" points="${pts.join(' ')}"/>`;
+  }
+  let shapePts = [];
+  let labels = '';
+  maps.forEach((m, i) => {
+    const angle = (Math.PI * 2 * i) / n - Math.PI / 2;
+    const r = (m.win_rate / 100) * maxR;
+    shapePts.push(`${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`);
+    const lx = cx + (maxR + 18) * Math.cos(angle);
+    const ly = cy + (maxR + 18) * Math.sin(angle);
+    labels += `<text class="radar-label" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle">${m.map}</text>`;
+  });
+  svgParts += `<polygon class="radar-shape" points="${shapePts.join(' ')}"/>${labels}`;
+  svg.innerHTML = svgParts;
+}).catch(() => {});
+
+// ── Fəallıq İstilik Xəritəsi (interaktiv, saat×gün) ──────────────────────
+fetch(`/api/profile/${MY_ID}/heatmap`).then(r => r.json()).then(grid => {
+  const totalMatches = grid.reduce((s, row) => s + row.reduce((a, b) => a + b, 0), 0);
+  if (totalMatches === 0) return;
+  document.getElementById('heatmapPanel').style.display = 'block';
+  const dayNames = ['B.e', 'Ç.a', 'Çər', 'C.a', 'Cümə', 'Şən', 'Baz'];
+  const maxVal = Math.max(...grid.flat(), 1);
+  const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim();
+  const container = document.getElementById('heatmapGrid');
+  container.innerHTML = grid.map((row, d) => {
+    const cells = row.map((v, h) => {
+      const alpha = v === 0 ? 0 : 0.15 + (v / maxVal) * 0.85;
+      const bg = v === 0 ? '#1a171e' : (rankColor.startsWith('rgb') ? rankColor.replace(')', `,${alpha.toFixed(2)})`).replace('rgb', 'rgba') : `rgba(240,180,41,${alpha})`);
+      return `<div class="heatmap-cell" style="background:${bg}" data-tip="${dayNames[d]} ${h}:00 — ${v} matç"></div>`;
+    }).join('');
+    return `<div style="display:flex; align-items:center; gap:4px; margin-bottom:2px;"><div class="heatmap-row-lbl" style="width:28px;">${dayNames[d]}</div><div class="heatmap-grid" style="flex:1;">${cells}</div></div>`;
+  }).join('');
+}).catch(() => {});
 </script>
 </body>
 </html>
