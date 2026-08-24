@@ -4763,3 +4763,132 @@ def get_voice_leaderboard(limit=10):
     rows = cursor.fetchall(); conn.close()
     return [{"discord_id": r[0], "nick": r[1], "total_seconds": r[2]} for r in rows]
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 4 — VEB: KOMANDA YOLDAŞI ŞƏBƏKƏSİ, MILESTONE, RISING STAR, RÜTBƏ BÖLGÜSÜ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_teammate_network(discord_id, limit=8):
+    """Oyunçunun ən çox EYNİ KOMANDADA birlikdə oynadığı digər oyunçuları qaytarır:
+    [{"discord_id", "nick", "games_together", "wins_together"}, ...] (ən çoxdan azına)."""
+    import json as _json
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT winner_ids, loser_ids FROM match_history")
+    rows = cursor.fetchall()
+    tally = {}
+    for winner_json, loser_json in rows:
+        for side_json, won in ((winner_json, True), (loser_json, False)):
+            ids = _json.loads(side_json or "[]")
+            if discord_id not in ids:
+                continue
+            for mate_id in ids:
+                if mate_id == discord_id:
+                    continue
+                entry = tally.setdefault(mate_id, {"games": 0, "wins": 0})
+                entry["games"] += 1
+                if won:
+                    entry["wins"] += 1
+    candidates = []
+    for mate_id, rec in tally.items():
+        cursor.execute("SELECT so2_nick FROM players WHERE discord_id=?", (mate_id,))
+        nrow = cursor.fetchone()
+        candidates.append({
+            "discord_id": mate_id, "nick": nrow[0] if nrow else "?",
+            "games_together": rec["games"], "wins_together": rec["wins"]
+        })
+    conn.close()
+    candidates.sort(key=lambda c: c["games_together"], reverse=True)
+    return candidates[:limit]
+
+
+def get_player_milestones(discord_id):
+    """Etibarlı, artıq izlənilən sahələrdən (created_at/peak_elo/max_streak) və
+    match_history-dən dərəcə (milestone) siyahısı qurur — ayrıca tarixi cədvələ
+    ehtiyac yoxdur."""
+    import json as _json
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT created_at, peak_elo, max_streak FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    created_at, peak_elo, max_streak = row
+
+    cursor.execute(
+        "SELECT played_at, winner_ids, loser_ids FROM match_history WHERE "
+        "winner_ids LIKE ? OR loser_ids LIKE ? ORDER BY played_at ASC",
+        (f"%{discord_id}%", f"%{discord_id}%")
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    first_match_at = None
+    first_win_at = None
+    for played_at, winner_json, loser_json in rows:
+        winner_ids = _json.loads(winner_json or "[]")
+        loser_ids = _json.loads(loser_json or "[]")
+        if discord_id not in winner_ids and discord_id not in loser_ids:
+            continue
+        if first_match_at is None:
+            first_match_at = played_at
+        if discord_id in winner_ids and first_win_at is None:
+            first_win_at = played_at
+        if first_match_at is not None and first_win_at is not None:
+            break
+
+    return {
+        "created_at": created_at, "first_match_at": first_match_at, "first_win_at": first_win_at,
+        "peak_elo": peak_elo, "max_streak": max_streak,
+    }
+
+
+def get_rising_star(days=1):
+    """Son `days` gündə ən çox NET ELO qazanan oyunçunu qaytarır (match_history-dəki
+    hər matçın before/after ELO-suna əsasən) — {"discord_id","nick","elo_gain"} və ya None."""
+    import time, json as _json
+    since = int(time.time()) - days * 86400
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute(
+        "SELECT winner_ids, loser_ids, winner_elo_before, winner_elo_after, "
+        "loser_elo_before, loser_elo_after FROM match_history WHERE played_at >= ?",
+        (since,)
+    )
+    rows = cursor.fetchall()
+    gains = {}
+    for winner_json, loser_json, w_before, w_after, l_before, l_after in rows:
+        for ids_json, before_json, after_json in (
+            (winner_json, w_before, w_after), (loser_json, l_before, l_after)
+        ):
+            ids = _json.loads(ids_json or "[]")
+            before_list = _json.loads(before_json or "[]")
+            after_list = _json.loads(after_json or "[]")
+            for i, did in enumerate(ids):
+                if i < len(before_list) and i < len(after_list):
+                    gains[did] = gains.get(did, 0) + (after_list[i] - before_list[i])
+    if not gains:
+        conn.close()
+        return None
+    top_id, top_gain = max(gains.items(), key=lambda kv: kv[1])
+    cursor.execute("SELECT so2_nick FROM players WHERE discord_id=?", (top_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or top_gain <= 0:
+        return None
+    return {"discord_id": top_id, "nick": row[0], "elo_gain": top_gain}
+
+
+def get_rank_distribution():
+    """Bütün qeydiyyatlı oyunçuların rütbə üzrə paylanmasını qaytarır: [{"name","color","count"}, ...]."""
+    from visual_cards import RANKS
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT elo FROM players")
+    elos = [r[0] for r in cursor.fetchall()]
+    conn.close()
+    counts = {r[2]: 0 for r in RANKS}
+    for elo in elos:
+        for lo, hi, name, color, emoji in RANKS:
+            if lo <= elo < hi:
+                counts[name] += 1
+                break
+    return [{"name": r[2], "color": list(r[3]), "count": counts[r[2]]} for r in RANKS]
+

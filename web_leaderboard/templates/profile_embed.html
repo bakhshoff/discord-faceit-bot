@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ nick }} — Zenith's Academy</title>
+<style>
+  :root {
+    --bg-panel: #131116;
+    --border: #2a2630;
+    --text: #f4f1ea;
+    --text-dim: #8d8794;
+    --green: #5fd07a;
+    --red: #d6453d;
+    --rank: rgb({{ rank_color[0] }},{{ rank_color[1] }},{{ rank_color[2] }});
+    --rank-soft: rgba({{ rank_color[0] }},{{ rank_color[1] }},{{ rank_color[2] }},0.18);
+    --font-display: 'Bebas Neue', 'Oswald', Impact, sans-serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; }
+  body {
+    font-family: var(--font-body);
+    color: var(--text);
+    padding: 6px;
+  }
+  a.card-link { text-decoration: none; color: inherit; display: block; }
+  .card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    transition: border-color 0.2s;
+  }
+  a.card-link:hover .card { border-color: var(--rank); }
+  .badge {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--rank-soft);
+    border: 1.5px solid var(--rank);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .info { flex: 1; min-width: 0; }
+  .nick { font-family: var(--font-display); font-size: 18px; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank-name { font-size: 11px; color: var(--rank); text-transform: uppercase; letter-spacing: 1px; margin-top: 1px; }
+  .stat-line { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+  .stat-line .w { color: var(--green); font-weight: 600; }
+  .stat-line .l { color: var(--red); font-weight: 600; }
+  .elo-box { text-align: right; flex-shrink: 0; }
+  .elo-box .v { font-family: var(--font-display); font-size: 26px; color: var(--rank); line-height: 1; }
+  .elo-box .l { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  footer { text-align: center; font-size: 9px; color: var(--text-dim); margin-top: 6px; }
+</style>
+</head>
+<body>
+  <a class="card-link" href="{{ request.url_root }}u/{{ discord_id }}" target="_blank" rel="noopener">
+    <div class="card">
+      <div class="badge">{{ rank_emoji }}</div>
+      <div class="info">
+        <div class="nick">{{ nick }}</div>
+        <div class="rank-name">{{ rank_name }}</div>
+        <div class="stat-line"><span class="w">{{ wins }}Q</span> / <span class="l">{{ losses }}M</span> · {{ win_rate }}%</div>
+      </div>
+      <div class="elo-box">
+        <div class="v">{{ elo }}</div>
+        <div class="l">ELO</div>
+      </div>
+    </div>
+  </a>
+  <footer>Zenith's Academy</footer>
+</body>
+</html>

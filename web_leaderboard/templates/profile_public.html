@@ -382,11 +382,94 @@
     z-index: 20;
   }
   .heatmap-hours { display: flex; font-size: 8px; color: var(--text-dim); font-family: var(--font-mono); margin-top: 4px; justify-content: space-between; }
+
+  body { opacity: 0; transition: opacity 0.35s ease; }
+  body.ready { opacity: 1; }
+
+  #toolbar {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 5;
+    display: flex;
+    gap: 8px;
+  }
+  #themeToggle, #soundToggle, #colorPickerBtn {
+    position: static;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s;
+  }
+  #soundToggle:hover, #colorPickerBtn:hover { border-color: var(--rank); }
+  #soundToggle.muted { opacity: 0.45; }
+
+  #colorSwatches {
+    display: none;
+    position: fixed;
+    top: 62px;
+    right: 18px;
+    z-index: 5;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px;
+    gap: 6px;
+    flex-wrap: wrap;
+    width: 130px;
+  }
+  #colorSwatches.show { display: flex; }
+  .swatch {
+    width: 22px; height: 22px; border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .swatch.active { border-color: var(--text); }
+
+  .network-list { display: flex; flex-direction: column; gap: 8px; }
+  .network-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #1a171e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .network-item .nm { font-weight: 600; }
+  .network-item .stat { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
+  .network-bar-track { flex: 1; height: 4px; background: #262229; border-radius: 4px; margin: 0 10px; overflow: hidden; }
+  .network-bar-fill { height: 100%; background: var(--rank); }
+
+  .timeline { position: relative; padding-left: 22px; }
+  .timeline::before {
+    content: ""; position: absolute; left: 5px; top: 4px; bottom: 4px; width: 2px; background: var(--border);
+  }
+  .timeline-item { position: relative; padding-bottom: 18px; }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-item::before {
+    content: ""; position: absolute; left: -22px; top: 2px; width: 10px; height: 10px;
+    border-radius: 50%; background: var(--rank); border: 2px solid var(--bg-panel);
+  }
+  .timeline-item .tl-title { font-size: 13px; font-weight: 600; }
+  .timeline-item .tl-date { font-size: 11px; color: var(--text-dim); font-family: var(--font-mono); }
 </style>
 </head>
 <body>
   <canvas id="particleCanvas"></canvas>
-  <button id="themeToggle" type="button" title="Tema dəyiş">🌙</button>
+  <div id="toolbar">
+    <button id="colorPickerBtn" type="button" title="Aksent rəngi">🎨</button>
+    <button id="soundToggle" type="button" title="Səs effektləri">🔊</button>
+    <button id="themeToggle" type="button" title="Tema dəyiş">🌙</button>
+  </div>
+  <div id="colorSwatches"></div>
   <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 
   <div class="scene">
@@ -483,6 +566,16 @@
     <div class="heatmap-hours"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
   </div>
 
+  <div class="extra-panel" id="networkPanel" style="display:none;">
+    <h2>🤝 Komanda Yoldaşı Şəbəkəsi</h2>
+    <div class="network-list" id="networkList"></div>
+  </div>
+
+  <div class="extra-panel" id="milestonePanel" style="display:none;">
+    <h2>🏁 Milestone Yolu</h2>
+    <div class="timeline" id="milestoneTimeline"></div>
+  </div>
+
   <div id="toast"></div>
 
   <footer>zenith's academy · faceit 2v2</footer>
@@ -510,6 +603,131 @@ themeToggle.addEventListener('click', () => {
   localStorage.setItem('zenith-theme', next);
   applyTheme(next);
 });
+
+// ── Səhifə keçid effekti — yüklənəndə fade-in, daxili linkə keçəndə fade-out ─
+document.addEventListener('DOMContentLoaded', () => {
+  requestAnimationFrame(() => document.body.classList.add('ready'));
+});
+document.querySelectorAll('a[href]').forEach(a => {
+  if (a.target === '_blank' || a.hostname !== window.location.hostname) return;
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.body.classList.remove('ready');
+    setTimeout(() => { window.location.href = a.href; }, 300);
+  });
+});
+
+// ── Səs Effektləri (Web Audio API — heç bir fayl lazım deyil) ─────────────
+let soundOn = localStorage.getItem('zenith-sound') !== 'off';
+const soundToggle = document.getElementById('soundToggle');
+function updateSoundBtn() {
+  soundToggle.textContent = soundOn ? '🔊' : '🔇';
+  soundToggle.classList.toggle('muted', !soundOn);
+}
+updateSoundBtn();
+soundToggle.addEventListener('click', () => {
+  soundOn = !soundOn;
+  localStorage.setItem('zenith-sound', soundOn ? 'on' : 'off');
+  updateSoundBtn();
+  if (soundOn) playTone(660, 0.06);
+});
+let audioCtx = null;
+function playTone(freq, duration = 0.08, type = 'sine', vol = 0.05) {
+  if (!soundOn) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = vol;
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+  } catch (e) { /* Web Audio dəstəklənmirsə sakitcə keç */ }
+}
+document.querySelectorAll('button').forEach(btn => {
+  btn.addEventListener('click', () => playTone(520, 0.05));
+});
+
+// ── Fərdi Aksent Rəngi ─────────────────────────────────────────────────────
+const ACCENT_PRESETS = [
+  {name: 'Rütbə (default)', value: null},
+  {name: 'Bənövşəyi', value: '138,92,230'},
+  {name: 'Qırmızı', value: '214,69,61'},
+  {name: 'Yaşıl', value: '95,208,122'},
+  {name: 'Mavi', value: '80,160,220'},
+  {name: 'Qızılı', value: '240,180,41'},
+  {name: 'Çəhrayı', value: '230,90,170'},
+];
+const colorPickerBtn = document.getElementById('colorPickerBtn');
+const colorSwatches = document.getElementById('colorSwatches');
+function applyAccent(rgbStr) {
+  if (rgbStr) {
+    document.documentElement.style.setProperty('--rank', `rgb(${rgbStr})`);
+    document.documentElement.style.setProperty('--rank-soft', `rgba(${rgbStr},0.18)`);
+  } else {
+    document.documentElement.style.removeProperty('--rank');
+    document.documentElement.style.removeProperty('--rank-soft');
+  }
+}
+colorSwatches.innerHTML = ACCENT_PRESETS.map(p =>
+  `<div class="swatch" data-v="${p.value || ''}" title="${p.name}" style="background:${p.value ? 'rgb('+p.value+')' : 'var(--rank)'}"></div>`
+).join('');
+const savedAccent = localStorage.getItem('zenith-accent');
+if (savedAccent) applyAccent(savedAccent);
+colorSwatches.querySelectorAll('.swatch').forEach(sw => {
+  if (sw.dataset.v === (savedAccent || '')) sw.classList.add('active');
+  sw.addEventListener('click', () => {
+    const v = sw.dataset.v || null;
+    applyAccent(v);
+    if (v) localStorage.setItem('zenith-accent', v); else localStorage.removeItem('zenith-accent');
+    colorSwatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+  });
+});
+colorPickerBtn.addEventListener('click', () => colorSwatches.classList.toggle('show'));
+document.addEventListener('click', (e) => {
+  if (!colorSwatches.contains(e.target) && e.target !== colorPickerBtn) colorSwatches.classList.remove('show');
+});
+
+// ── Komanda Yoldaşı Şəbəkəsi ──────────────────────────────────────────────
+fetch(`/api/profile/${MY_ID}/network`).then(r => r.json()).then(mates => {
+  if (!mates || !mates.length) return;
+  document.getElementById('networkPanel').style.display = 'block';
+  const maxGames = Math.max(...mates.map(m => m.games_together));
+  document.getElementById('networkList').innerHTML = mates.map(m => {
+    const wr = m.games_together ? Math.round((m.wins_together / m.games_together) * 100) : 0;
+    const pct = Math.round((m.games_together / maxGames) * 100);
+    return `<div class="network-item">
+      <span class="nm">${escapeHtmlP(m.nick)}</span>
+      <div class="network-bar-track"><div class="network-bar-fill" style="width:${pct}%"></div></div>
+      <span class="stat">${m.games_together} matç · ${wr}% WR</span>
+    </div>`;
+  }).join('');
+}).catch(() => {});
+function escapeHtmlP(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ── Milestone Yolu (Timeline) ─────────────────────────────────────────────
+fetch(`/api/profile/${MY_ID}/milestones`).then(r => r.json()).then(m => {
+  const items = [];
+  const fmt = (ts) => ts ? new Date(ts * 1000).toLocaleDateString('az-AZ', {day: 'numeric', month: 'short', year: 'numeric'}) : null;
+  if (m.created_at) items.push({title: '🎮 Qeydiyyatdan keçdi', date: fmt(m.created_at)});
+  if (m.first_match_at) items.push({title: '⚔️ İlk matçını oynadı', date: fmt(m.first_match_at)});
+  if (m.first_win_at) items.push({title: '🏆 İlk qələbəsini qazandı', date: fmt(m.first_win_at)});
+  if (m.peak_elo) items.push({title: `⛰️ Ən yüksək ELO-ya çatdı: ${m.peak_elo}`, date: ''});
+  if (m.max_streak) items.push({title: `🔥 Ən uzun seriyası: ${m.max_streak} qələbə`, date: ''});
+  if (!items.length) return;
+  document.getElementById('milestonePanel').style.display = 'block';
+  document.getElementById('milestoneTimeline').innerHTML = items.map(it =>
+    `<div class="timeline-item"><div class="tl-title">${it.title}</div>${it.date ? `<div class="tl-date">${it.date}</div>` : ''}</div>`
+  ).join('');
+}).catch(() => {});
 
 // ── Canlı baxanlar sayğacı (heartbeat) ────────────────────────────────────
 let viewerSessionId = null;

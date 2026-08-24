@@ -97,6 +97,14 @@ def public_profile(discord_id):
     return render_template("profile_public.html", **profile)
 
 
+@app.route("/embed/<int:discord_id>")
+def embed_profile(discord_id):
+    profile = _profile_dict(discord_id)
+    if not profile:
+        abort(404)
+    return render_template("profile_embed.html", **profile)
+
+
 @app.route("/api/profile/<int:discord_id>")
 def api_profile(discord_id):
     profile = _profile_dict(discord_id)
@@ -159,6 +167,38 @@ def api_heartbeat():
     for sid in stale:
         del _active_viewers[sid]
     return jsonify({"session_id": session_id, "viewers": len(_active_viewers)})
+
+
+@app.route("/api/profile/<int:discord_id>/network")
+def api_profile_network(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    return jsonify(database.get_teammate_network(discord_id))
+
+
+@app.route("/api/profile/<int:discord_id>/milestones")
+def api_profile_milestones(discord_id):
+    milestones = database.get_player_milestones(discord_id)
+    if milestones is None:
+        abort(404)
+    return jsonify(milestones)
+
+
+@app.route("/api/recent_matches")
+def api_recent_matches():
+    return jsonify(database.get_recent_matches(limit=15))
+
+
+@app.route("/api/rising_star")
+def api_rising_star():
+    daily = database.get_rising_star(days=1)
+    weekly = database.get_rising_star(days=7)
+    return jsonify({"daily": daily, "weekly": weekly})
+
+
+@app.route("/api/rank_distribution")
+def api_rank_distribution():
+    return jsonify(database.get_rank_distribution())
 
 
 @app.route("/admin")
