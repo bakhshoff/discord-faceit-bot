@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Zenith's Academy Leaderboard</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#8a5ce6">
 <style>
   :root {
     --bg: #0b0a0d;
@@ -478,10 +480,66 @@
   .donut-legend { font-size: 11px; display: flex; flex-direction: column; gap: 4px; }
   .donut-legend .li { display: flex; align-items: center; gap: 6px; }
   .donut-legend .sw { width: 8px; height: 8px; border-radius: 2px; }
+
+  #auroraBg {
+    position: fixed;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 20% 20%, var(--gold-soft), transparent 45%),
+      radial-gradient(circle at 80% 60%, rgba(95,208,122,0.08), transparent 45%),
+      radial-gradient(circle at 40% 90%, var(--gold-soft), transparent 50%);
+    filter: blur(50px);
+    animation: auroraShift 24s ease-in-out infinite alternate;
+  }
+  @keyframes auroraShift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(3%, -2%) scale(1.08); }
+    100% { transform: translate(-3%, 2%) scale(1); }
+  }
+
+  button { position: relative; overflow: hidden; }
+  .ripple-circle {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    transform: scale(0);
+    animation: rippleAnim 0.6s ease-out;
+    pointer-events: none;
+  }
+  @keyframes rippleAnim { to { transform: scale(2.5); opacity: 0; } }
+
+  .elo-cell.pulse-up { animation: pulseUp 1.4s ease-out; }
+  .elo-cell.pulse-down { animation: pulseDown 1.4s ease-out; }
+  @keyframes pulseUp { 0% { color: var(--green); text-shadow: 0 0 8px var(--green); } 100% { color: var(--green); text-shadow: none; } }
+  @keyframes pulseDown { 0% { color: var(--red); text-shadow: 0 0 8px var(--red); } 100% { color: var(--green); text-shadow: none; } }
+
+  .subtitle .cursor { display: inline-block; width: 2px; background: var(--gold); animation: blink 0.9s steps(1) infinite; margin-left: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  #miniProfilePopup {
+    display: none;
+    position: fixed;
+    z-index: 40;
+    background: var(--bg-panel);
+    border: 1px solid var(--gold);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 12px;
+    min-width: 180px;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  #miniProfilePopup .mp-nick { font-family: var(--font-display); font-size: 16px; margin-bottom: 4px; }
+  #miniProfilePopup .mp-row { display: flex; justify-content: space-between; color: var(--text-dim); padding: 2px 0; }
+  #miniProfilePopup .mp-row b { color: var(--text); font-family: var(--font-mono); }
 </style>
 </head>
 <body>
 
+<div id="auroraBg"></div>
+<div id="miniProfilePopup"></div>
 <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 <button id="soundToggle" type="button" title="Səs effektləri">🔊</button>
 <button id="paletteBtn" type="button" title="Sürətli axtarış (Ctrl+K)">⌘</button>
@@ -498,7 +556,7 @@
 <header>
   <div class="eyebrow">Standoff 2 · Competitive</div>
   <h1>Zenith's Academy Leaderboard</h1>
-  <p class="subtitle">FACEIT-style reytinq sistemi — ELO-ya görə canlı sıralama</p>
+  <p class="subtitle" id="subtitleText"></p>
 </header>
 
 <div class="container">
@@ -583,7 +641,81 @@ let totalMatchesFromServer = 0;
 let currentSort = 'elo';
 let currentSearch = '';
 let previousRanks = {};
+let previousElos = {};
 let firstRenderDone = false;
+
+// ── PWA: service worker qeydiyyatı ─────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+// ── Düymə Basma Dalğası (Ripple) — bütün düymələr üçün ortaq ───────────────
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const circle = document.createElement('span');
+  circle.className = 'ripple-circle';
+  circle.style.width = circle.style.height = size + 'px';
+  circle.style.left = (e.clientX - rect.left - size / 2) + 'px';
+  circle.style.top = (e.clientY - rect.top - size / 2) + 'px';
+  btn.appendChild(circle);
+  setTimeout(() => circle.remove(), 650);
+});
+
+// ── Yazı-maşını Effekti (subtitle) ──────────────────────────────────────────
+(function typewriter() {
+  const text = 'FACEIT-style reytinq sistemi — ELO-ya görə canlı sıralama';
+  const el = document.getElementById('subtitleText');
+  let i = 0;
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor';
+  cursor.textContent = ' ';
+  function tick() {
+    if (i <= text.length) {
+      el.textContent = text.slice(0, i);
+      el.appendChild(cursor);
+      i++;
+      setTimeout(tick, 22);
+    } else {
+      setTimeout(() => cursor.remove(), 1500);
+    }
+  }
+  tick();
+})();
+
+// ── Hover Mini-Profil ────────────────────────────────────────────────────────
+const miniPopup = document.getElementById('miniProfilePopup');
+document.addEventListener('mouseover', (e) => {
+  const row = e.target.closest('#tableBody tr');
+  if (!row || row.classList.contains('skeleton-row')) return;
+  const nickCell = row.querySelector('.player-cell');
+  const idCell = row.querySelector('.id-cell');
+  if (!nickCell || !idCell) return;
+  const player = allPlayers.find(p => String(p.so2_id) === idCell.textContent.trim());
+  if (!player) return;
+  miniPopup.innerHTML = `
+    <div class="mp-nick">${escapeHtml(player.nick)}</div>
+    <div class="mp-row"><span>ELO</span><b>${player.elo}</b></div>
+    <div class="mp-row"><span>Matç</span><b>${player.matches}</b></div>
+    <div class="mp-row"><span>W/L</span><b>${player.wins}/${player.losses}</b></div>
+    <div class="mp-row"><span>Win Rate</span><b>${player.win_rate}%</b></div>
+  `;
+  miniPopup.style.display = 'block';
+});
+document.addEventListener('mousemove', (e) => {
+  if (miniPopup.style.display !== 'block') return;
+  const x = Math.min(e.clientX + 16, window.innerWidth - 200);
+  const y = Math.min(e.clientY + 16, window.innerHeight - 120);
+  miniPopup.style.left = x + 'px';
+  miniPopup.style.top = y + 'px';
+});
+document.addEventListener('mouseout', (e) => {
+  if (e.target.closest('#tableBody tr')) miniPopup.style.display = 'none';
+});
 
 // ── Səhifə keçid effekti ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -713,13 +845,16 @@ function render(trackRankChanges = false) {
   emptyState.style.display = 'none';
 
   const newRanks = {};
+  const newElos = {};
   const rowsHtml = filtered.map((p, idx) => {
     const rank = idx + 1;
     const rankClass = rank <= 3 ? `rank-${rank}` : '';
     newRanks[p.so2_id] = rank;
+    newElos[p.so2_id] = p.elo;
 
     let moveHtml = '';
     let flashClass = '';
+    let eloPulseClass = '';
     if (trackRankChanges) {
       const prevRank = previousRanks[p.so2_id];
       if (firstRenderDone && prevRank !== undefined && prevRank !== rank) {
@@ -730,6 +865,10 @@ function render(trackRankChanges = false) {
         }
         flashClass = ' flash';
       }
+      const prevElo = previousElos[p.so2_id];
+      if (firstRenderDone && prevElo !== undefined && prevElo !== p.elo) {
+        eloPulseClass = p.elo > prevElo ? ' pulse-up' : ' pulse-down';
+      }
     }
 
     return `
@@ -737,7 +876,7 @@ function render(trackRankChanges = false) {
         <td class="rank-cell">#${rank}${moveHtml}</td>
         <td class="player-cell">${escapeHtml(p.nick)}</td>
         <td class="id-cell">${escapeHtml(String(p.so2_id))}</td>
-        <td class="elo-cell">${p.elo}</td>
+        <td class="elo-cell${eloPulseClass}">${p.elo}</td>
         <td>${p.matches}</td>
         <td>${p.wins}</td>
         <td>${p.losses}</td>
@@ -749,6 +888,7 @@ function render(trackRankChanges = false) {
   tbody.innerHTML = rowsHtml;
   if (trackRankChanges) {
     previousRanks = newRanks;
+    previousElos = newElos;
     firstRenderDone = true;
   }
 
@@ -800,9 +940,35 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
   render();
 });
 
+// ── FLIP Sıralama Animasiyası ────────────────────────────────────────────────
+function flipRender() {
+  const tbody = document.getElementById('tableBody');
+  const oldPositions = {};
+  tbody.querySelectorAll('tr').forEach(row => {
+    const idCell = row.querySelector('.id-cell');
+    if (idCell) oldPositions[idCell.textContent.trim()] = row.getBoundingClientRect().top;
+  });
+  render();
+  tbody.querySelectorAll('tr').forEach(row => {
+    const idCell = row.querySelector('.id-cell');
+    if (!idCell) return;
+    const oldTop = oldPositions[idCell.textContent.trim()];
+    if (oldTop === undefined) return;
+    const newTop = row.getBoundingClientRect().top;
+    const delta = oldTop - newTop;
+    if (Math.abs(delta) < 1) return;
+    row.style.transition = 'none';
+    row.style.transform = `translateY(${delta}px)`;
+    requestAnimationFrame(() => {
+      row.style.transition = 'transform 0.4s ease-out';
+      row.style.transform = '';
+    });
+  });
+}
+
 document.getElementById('sortSelect').addEventListener('change', (e) => {
   currentSort = e.target.value;
-  render();
+  flipRender();
 });
 
 // ── Klaviatura qısayolları ─────────────────────────────────────────────────

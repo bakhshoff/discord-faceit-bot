@@ -4,14 +4,15 @@ import os
 import time
 import uuid
 import database
-from visual_cards import get_rank
+from visual_cards import get_rank, RANKS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(os.environ.get("DATA_DIR", BASE_DIR), "bot_database.db")
 TEMPLATE_DIR = os.path.join(BASE_DIR, "web_leaderboard", "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "web_leaderboard", "static")
 ADMIN_DASHBOARD_TOKEN = os.environ.get("ADMIN_DASHBOARD_TOKEN", "")
 
-app = Flask(__name__, template_folder=TEMPLATE_DIR)
+app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
 
 # ── Canlı baxanlar sayğacı ────────────────────────────────────────────────────
 # Sadə heartbeat-əsaslı izləmə: hər səhifə ~12 saniyədə bir /api/heartbeat çağırır,
@@ -64,6 +65,39 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/manifest.json")
+def manifest():
+    return jsonify({
+        "name": "Zenith's Academy",
+        "short_name": "Zenith",
+        "description": "Standoff 2 FACEIT 2v2 leaderboard və profil paneli",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#0b0a0d",
+        "theme_color": "#8a5ce6",
+        "icons": [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+    })
+
+
+@app.route("/sw.js")
+def service_worker():
+    js = (
+        "const CACHE = 'zenith-v1';\n"
+        "self.addEventListener('install', e => self.skipWaiting());\n"
+        "self.addEventListener('activate', e => self.clients.claim());\n"
+        "self.addEventListener('fetch', e => {\n"
+        "  if (e.request.method !== 'GET') return;\n"
+        "  e.respondWith(\n"
+        "    fetch(e.request).catch(() => caches.match(e.request))\n"
+        "  );\n"
+        "});\n"
+    )
+    return app.response_class(js, mimetype="application/javascript")
+
+
 @app.route("/api/leaderboard")
 def api_leaderboard():
     return jsonify({
@@ -81,11 +115,24 @@ def _profile_dict(discord_id):
     matches = wins + losses
     win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
     rank_name, rank_color, rank_emoji = get_rank(elo)
+
+    next_rank_name = None
+    elo_to_next = 0
+    tier_progress_pct = 100
+    for i, (lo, hi, name, color, emoji) in enumerate(RANKS):
+        if lo <= elo < hi:
+            tier_progress_pct = round(((elo - lo) / max(hi - lo, 1)) * 100, 1) if hi < 9999 else 100
+            if i + 1 < len(RANKS):
+                next_rank_name = RANKS[i + 1][2]
+                elo_to_next = hi - elo
+            break
+
     return {
         "discord_id": discord_id, "nick": nick, "so2_id": so2_id, "elo": elo,
         "wins": wins, "losses": losses, "matches": matches, "win_rate": win_rate,
         "kills": stats.get("kills", 0), "assists": stats.get("assists", 0), "deaths": stats.get("deaths", 0),
         "rank_name": rank_name, "rank_color": list(rank_color), "rank_emoji": rank_emoji,
+        "next_rank_name": next_rank_name, "elo_to_next": elo_to_next, "tier_progress_pct": tier_progress_pct,
     }
 
 

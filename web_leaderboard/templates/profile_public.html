@@ -10,6 +10,8 @@
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="{{ nick }} — Zenith's Academy">
 <meta name="twitter:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ win_rate }}% qazanma">
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#8a5ce6">
 <style>
   :root {
     --bg: #0b0a0d;
@@ -60,6 +62,46 @@
     pointer-events: none;
     z-index: 0;
   }
+
+  #auroraBg {
+    position: fixed;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 20% 30%, var(--rank-soft), transparent 45%),
+      radial-gradient(circle at 80% 70%, rgba(95,208,122,0.10), transparent 45%),
+      radial-gradient(circle at 50% 90%, var(--rank-soft), transparent 50%);
+    filter: blur(40px);
+    animation: auroraShift 22s ease-in-out infinite alternate;
+    opacity: 0.8;
+  }
+  @keyframes auroraShift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(3%, -2%) scale(1.08); }
+    100% { transform: translate(-3%, 2%) scale(1); }
+  }
+
+  .ripple-el { position: relative; overflow: hidden; }
+  .ripple-circle {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    transform: scale(0);
+    animation: rippleAnim 0.6s ease-out;
+    pointer-events: none;
+  }
+  @keyframes rippleAnim { to { transform: scale(2.5); opacity: 0; } }
+
+  .reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.5s ease, transform 0.5s ease; }
+  .reveal.in { opacity: 1; transform: translateY(0); }
+
+  .rank-progress-wrap { width: 100%; margin-bottom: 16px; }
+  .rank-progress-lbl { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-bottom: 4px; font-family: var(--font-mono); }
+  .rank-progress-track { height: 6px; background: #1a171e; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+  .rank-progress-fill { height: 100%; background: var(--rank); width: 0%; transition: width 1.2s ease-out; }
+
+  #confettiCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
 
   .scene {
     width: 100%;
@@ -463,7 +505,9 @@
 </style>
 </head>
 <body>
+  <div id="auroraBg"></div>
   <canvas id="particleCanvas"></canvas>
+  <canvas id="confettiCanvas"></canvas>
   <div id="toolbar">
     <button id="colorPickerBtn" type="button" title="Aksent rəngi">🎨</button>
     <button id="soundToggle" type="button" title="Səs effektləri">🔊</button>
@@ -488,6 +532,13 @@
         <div class="elo" data-target="{{ elo }}">0</div>
         <div class="elo-lbl">ELO</div>
 
+        {% if next_rank_name %}
+        <div class="rank-progress-wrap">
+          <div class="rank-progress-lbl"><span>{{ rank_name }}</span><span>{{ elo_to_next }} ELO → {{ next_rank_name }}</span></div>
+          <div class="rank-progress-track"><div class="rank-progress-fill" id="rankProgressFill" data-pct="{{ tier_progress_pct }}"></div></div>
+        </div>
+        {% endif %}
+
         <div id="eloChartWrap">
           <svg viewBox="0 0 300 48" preserveAspectRatio="none"><polyline id="eloPolyline" fill="none" stroke="var(--rank)" stroke-width="2"/></svg>
           <div class="chart-lbl">Son matçlar — ELO trendi</div>
@@ -510,6 +561,7 @@
         <div class="actions">
           <button id="shareBtn" type="button">🔗 Linki Kopyala</button>
           <button id="qrBtn" type="button">▦ QR Kod</button>
+          <button id="downloadBtn" type="button">⬇️ Şəkil Kimi Yüklə</button>
         </div>
         <div id="qrWrap">
           <img id="qrImg" width="120" height="120" alt="QR">
@@ -532,7 +584,7 @@
     </div>
   </div>
 
-  <div class="compare-panel">
+  <div class="compare-panel reveal">
     <h2>⚔️ Rəqib Müqayisəsi</h2>
     <div class="compare-row">
       <input type="text" id="rivalInput" placeholder="Discord ID daxil edin...">
@@ -555,23 +607,23 @@
     </div>
   </div>
 
-  <div class="extra-panel" id="radarPanel" style="display:none;">
+  <div class="extra-panel reveal" id="radarPanel" style="display:none;">
     <h2>🗺️ Xəritə Performansı</h2>
     <svg id="radarChart" viewBox="0 0 220 220"></svg>
   </div>
 
-  <div class="extra-panel" id="heatmapPanel" style="display:none;">
+  <div class="extra-panel reveal" id="heatmapPanel" style="display:none;">
     <h2>🔥 Fəallıq Xəritəsi</h2>
     <div id="heatmapGrid"></div>
     <div class="heatmap-hours"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span></div>
   </div>
 
-  <div class="extra-panel" id="networkPanel" style="display:none;">
+  <div class="extra-panel reveal" id="networkPanel" style="display:none;">
     <h2>🤝 Komanda Yoldaşı Şəbəkəsi</h2>
     <div class="network-list" id="networkList"></div>
   </div>
 
-  <div class="extra-panel" id="milestonePanel" style="display:none;">
+  <div class="extra-panel reveal" id="milestonePanel" style="display:none;">
     <h2>🏁 Milestone Yolu</h2>
     <div class="timeline" id="milestoneTimeline"></div>
   </div>
@@ -584,6 +636,134 @@
 const MY_ID = {{ discord_id }};
 const MY_ELO = {{ elo }};
 const PROFILE_URL = window.location.href;
+const SAFE_NICK = {{ nick|tojson }};  // tojson istifadəçi nickindəki backtick/${}-kimi JS-i qıra biləcək simvolları düzgün escape edir
+
+// ── PWA: service worker qeydiyyatı ─────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+// ── Düymə Basma Dalğası (Ripple) ────────────────────────────────────────────
+document.querySelectorAll('button').forEach(btn => btn.classList.add('ripple-el'));
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const rect = btn.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height);
+  const circle = document.createElement('span');
+  circle.className = 'ripple-circle';
+  circle.style.width = circle.style.height = size + 'px';
+  circle.style.left = (e.clientX - rect.left - size / 2) + 'px';
+  circle.style.top = (e.clientY - rect.top - size / 2) + 'px';
+  btn.appendChild(circle);
+  setTimeout(() => circle.remove(), 650);
+});
+
+// ── Scroll Reveal ────────────────────────────────────────────────────────────
+const revealObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('in'); });
+}, { threshold: 0.15 });
+document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+// ── Növbəti Rütbəyə Qalan Məsafə — animasiyalı dolma ────────────────────────
+const rankFill = document.getElementById('rankProgressFill');
+if (rankFill) {
+  requestAnimationFrame(() => {
+    setTimeout(() => { rankFill.style.width = rankFill.dataset.pct + '%'; }, 300);
+  });
+}
+
+// ── Konfeti Partlayışı (yüksək win rate-də bir dəfəlik) ─────────────────────
+const WIN_RATE_FOR_CONFETTI = {{ win_rate }};
+if (WIN_RATE_FOR_CONFETTI >= 85 && {{ matches }} >= 5) {
+  const confettiCanvas = document.getElementById('confettiCanvas');
+  const cctx = confettiCanvas.getContext('2d');
+  confettiCanvas.width = window.innerWidth;
+  confettiCanvas.height = window.innerHeight;
+  const colors = ['#8a5ce6', '#5fd07a', '#f0b429', '#d6453d', '#f4f1ea'];
+  let confetti = Array.from({length: 90}, () => ({
+    x: Math.random() * confettiCanvas.width,
+    y: -20 - Math.random() * confettiCanvas.height * 0.5,
+    r: Math.random() * 5 + 3,
+    vy: Math.random() * 2.5 + 2,
+    vx: (Math.random() - 0.5) * 2,
+    rot: Math.random() * 360,
+    vrot: (Math.random() - 0.5) * 10,
+    color: colors[Math.floor(Math.random() * colors.length)]
+  }));
+  let confettiStart = performance.now();
+  function confettiLoop(now) {
+    cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+    confetti.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vrot;
+      cctx.save();
+      cctx.translate(p.x, p.y);
+      cctx.rotate(p.rot * Math.PI / 180);
+      cctx.fillStyle = p.color;
+      cctx.fillRect(-p.r / 2, -p.r / 2, p.r, p.r * 1.6);
+      cctx.restore();
+    });
+    if (now - confettiStart < 3500) requestAnimationFrame(confettiLoop);
+    else cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+  }
+  requestAnimationFrame(confettiLoop);
+}
+
+// ── Profili Şəkil Kimi Yüklə ─────────────────────────────────────────────────
+document.getElementById('downloadBtn').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!window.html2canvas) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    }).catch(() => showToast('❌ Yükləmə vasitəsi əlçatan deyil'));
+  }
+  if (!window.html2canvas) return;
+  try {
+    const target = document.querySelector('.flip-container .card.front');
+    const canvas = await window.html2canvas(target, {backgroundColor: null, scale: 2});
+    const link = document.createElement('a');
+    link.download = `zenith-${SAFE_NICK.replace(/[^a-z0-9_-]/gi, '_')}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch (err) {
+    showToast('❌ Şəkil yaradıla bilmədi');
+  }
+});
+
+// ── Brauzer Bildirişləri (yeni nailiyyət/level dəyişəndə) ───────────────────
+(function setupNotifications() {
+  if (!('Notification' in window)) return;
+  const notifKey = 'zenith-notif-peak-' + MY_ID;
+  async function checkAndNotify() {
+    try {
+      const r = await fetch(`/api/profile/${MY_ID}/milestones`);
+      const m = await r.json();
+      const lastPeak = parseInt(localStorage.getItem(notifKey) || '0', 10);
+      if (m.peak_elo && m.peak_elo > lastPeak) {
+        if (lastPeak > 0 && Notification.permission === 'granted') {
+          new Notification('Zenith\'s Academy', {
+            body: `Yeni ELO rekordu: ${m.peak_elo}! 🏆`,
+            icon: '/static/icon-192.png'
+          });
+        }
+        localStorage.setItem(notifKey, String(m.peak_elo));
+      }
+    } catch (e) {}
+  }
+  if (Notification.permission === 'default') {
+    document.addEventListener('click', function askOnce() {
+      Notification.requestPermission();
+      document.removeEventListener('click', askOnce);
+    }, { once: true });
+  }
+  checkAndNotify();
+  setInterval(checkAndNotify, 60000);
+})();
 
 // ── Dark/Light tema keçidi ────────────────────────────────────────────────
 const themeToggle = document.getElementById('themeToggle');
