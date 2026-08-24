@@ -384,13 +384,17 @@ async def _post_weekly_mvp(channel):
 _last_weekly_mvp_monday = None
 
 
-@tasks.loop(hours=24)
+@tasks.loop(minutes=30)
 async def weekly_mvp_loop():
-    """tasks.loop-da həftəlik interval dəstəyi yoxdur, ona görə gündə bir dəfə yoxlanır,
-    amma yalnız Bazar ertəsi (weekday()==0) VƏ bu Bazar ertəsi üçün hələ elan edilməyibsə işə düşür —
-    beləliklə bot restart olsa belə eyni gündə təkrar elan getmir."""
+    """tasks.loop-da həftəlik interval dəstəyi yoxdur, ona görə tez-tez (30 dəq) yoxlanır,
+    amma yalnız Bazar ertəsi (AZ vaxtı ilə, weekday()==0) VƏ bu Bazar ertəsi üçün hələ elan
+    edilməyibsə işə düşür — beləliklə bot restart olsa belə eyni gündə təkrar elan getmir.
+    30 dəqiqəlik interval seçilib ki, gün AZ vaxtı ilə başlayan kimi (bot son nə vaxt
+    restart olduğundan asılı olmadan) tezliklə aşkarlanıb elan olunsun — əvvəlki 24 saatlıq
+    interval bot-un son restart vaxtına bağlı idi və gün başlayandan saatlarla sonra
+    işə düşə bilirdi."""
     global _last_weekly_mvp_monday
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
     if now.weekday() != 0:
         return
     today_key = now.strftime("%Y-%m-%d")
@@ -460,12 +464,14 @@ async def _post_audit_log(action, target_id, field, old_val, new_val, reason, ad
 _last_season_rotation_month = None
 
 
-@tasks.loop(hours=24)
+@tasks.loop(minutes=30)
 async def season_rotation_loop():
-    """Ayın 1-ində əvvəlki sezonu bağlayıb yeni sezon açır, keçən ayın top-3-nə bonus coin
-    verir və Hall of Fame kanalında elan edir."""
+    """Ayın 1-ində (AZ vaxtı ilə) əvvəlki sezonu bağlayıb yeni sezon açır, keçən ayın
+    top-3-nə bonus coin verir və Hall of Fame kanalında elan edir. 30 dəqiqəlik interval
+    (bax: weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından asılı olmadan
+    ayın 1-i başlayan kimi tezliklə aşkarlanmasını təmin edir."""
     global _last_season_rotation_month
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
     if now.day != 1:
         return
     month_key = now.strftime("%Y-%m")
@@ -561,11 +567,13 @@ async def suspicious_activity_loop():
 # HƏFTƏLİK ŞƏXSİ XÜLASƏ (DM)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-@tasks.loop(hours=24)
+@tasks.loop(minutes=30)
 async def weekly_summary_dm_loop():
-    """Hər Bazar günü, o həftə ən azı 1 matç oynamış (VƏ DM bildirişlərini bağlamamış)
-    oyunçulara şəxsi xülasə göndərir."""
-    now = datetime.datetime.utcnow()
+    """Hər Bazar günü (AZ vaxtı ilə), o həftə ən azı 1 matç oynamış (VƏ DM bildirişlərini
+    bağlamamış) oyunçulara şəxsi xülasə göndərir. 30 dəqiqəlik interval (bax:
+    weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından asılı olmadan Bazar günü
+    başlayan kimi tezliklə aşkarlanmasını təmin edir."""
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
     if now.weekday() != 6:  # Bazar
         return
     today_key = now.strftime("%Y-%m-%d")
@@ -2720,7 +2728,7 @@ class ProfileHubView(discord.ui.View):
             ),
             color=discord.Color.from_rgb(80, 200, 160)
         )
-        view = ConvertCoinsView(self.discord_id) if max_blocks > 0 else None
+        view = ConvertCoinsView(self.discord_id) if max_blocks > 0 else discord.utils.MISSING
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def career_btn(self, interaction: discord.Interaction):

@@ -11,7 +11,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 HISTORY_LIMIT = 20
-MODEL = "llama-3.3-70b-versatile"
+MODEL = "groq/compound-mini"  # "llama-3.3-70b-versatile" Groq tərəfindən silinib (404 model_not_found)
 
 SYSTEM_PROMPT = """Sen Zenith's Academy-nin Discord botusun. Standoff 2 mobile oyunu üzrə turnirləri idarə edirsən.
 
