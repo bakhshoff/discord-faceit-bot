@@ -112,6 +112,12 @@
   .hourly .hlabel span { flex: 1; font-size: 9px; color: var(--text-dim); text-align: center; }
 
   footer { text-align: center; color: var(--text-dim); font-size: 12px; margin-top: 40px; }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 6px; }
+  html { scrollbar-color: var(--gold) var(--bg); scrollbar-width: thin; }
+  ::selection { background: var(--gold); color: #0b0a0d; }
 </style>
 </head>
 <body>

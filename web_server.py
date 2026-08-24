@@ -41,23 +41,27 @@ def get_players():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT so2_nick, so2_id, elo, wins, losses FROM players ORDER BY elo DESC"
+        "SELECT discord_id, so2_nick, so2_id, elo, wins, losses FROM players ORDER BY elo DESC"
     )
     rows = cursor.fetchall()
     conn.close()
     players = []
-    for i, (nick, so2_id, elo, wins, losses) in enumerate(rows, start=1):
+    for i, (discord_id, nick, so2_id, elo, wins, losses) in enumerate(rows, start=1):
         matches = wins + losses
         win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
+        rank_name, rank_color, rank_emoji = get_rank(elo)
         players.append({
             "rank": i,
+            "discord_id": discord_id,
             "nick": nick,
             "so2_id": so2_id,
             "elo": elo,
             "matches": matches,
             "wins": wins,
             "losses": losses,
-            "win_rate": win_rate
+            "win_rate": win_rate,
+            "rank_name": rank_name,
+            "rank_color": list(rank_color),
         })
     return players
 
@@ -259,6 +263,17 @@ def api_profile_milestones(discord_id):
     if milestones is None:
         abort(404)
     return jsonify(milestones)
+
+
+@app.route("/api/profile/<int:discord_id>/achievements")
+def api_profile_achievements(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    earned = database.get_player_achievements(discord_id)
+    earned_ids = {a["id"] for a in earned}
+    all_ach = database.get_all_achievements()
+    locked = [a for a in all_ach if a["id"] not in earned_ids]
+    return jsonify({"earned": earned, "locked": locked})
 
 
 @app.route("/api/recent_matches")

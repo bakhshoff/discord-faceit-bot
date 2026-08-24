@@ -2670,6 +2670,15 @@ def get_player_achievements(discord_id):
     return [{"id": r[0], "name": r[1], "description": r[2], "icon": r[3], "earned_at": r[4]} for r in rows]
 
 
+def get_all_achievements():
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, name, description, icon FROM achievements ORDER BY id")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "name": r[1], "description": r[2], "icon": r[3]} for r in rows]
+
+
 def get_achievement_rarity():
     """Hər nailiyyəti sahib olan qeydiyyatlı oyunçuların faizini qaytarır: {achievement_id: pct}."""
     conn   = _get_conn()
