@@ -3322,9 +3322,19 @@ async def _post_leaderboard(channel):
     rows = get_leaderboard(20)
     generate_leaderboard_image(rows, LEADERBOARD_IMAGE_PATH)
 
+    link_view = discord.ui.View(timeout=None)
+    link_view.add_item(discord.ui.Button(
+        label="🌐 Tam Siyahını Gör (Vebsayt)", style=discord.ButtonStyle.link, url=PUBLIC_WEB_URL
+    ))
+
     message = await channel.send(
-        content="🏆 **Zenith's Academy FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir.",
-        file=discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")
+        content=(
+            "🏆 **Zenith's Academy FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+            "(bu şəkil Top-20-ni göstərir).\n"
+            f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}"
+        ),
+        file=discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png"),
+        view=link_view
     )
 
     leaderboard_channel_id = channel.id
