@@ -74,6 +74,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN dm_notifications INTEGER DEFAULT 1")
     if "last_comeback_bonus_at" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN last_comeback_bonus_at INTEGER DEFAULT 0")
+    if "loss_streak" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN loss_streak INTEGER DEFAULT 0")
 
     # ── Daily Login ───────────────────────────────────────────────────────────
     cursor.execute("""
@@ -521,6 +523,36 @@ def init_db():
             archived_at INTEGER NOT NULL,
             top_players TEXT NOT NULL,
             total_participants INTEGER NOT NULL
+        )
+    """)
+
+    # ── Həftəlik Boss Event ────────────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS boss_events (
+            week_key     TEXT PRIMARY KEY,
+            max_hp       INTEGER NOT NULL,
+            current_hp   INTEGER NOT NULL,
+            reward_coins INTEGER NOT NULL,
+            defeated     INTEGER DEFAULT 0,
+            message_id   TEXT,
+            channel_id   TEXT,
+            created_at   INTEGER NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS boss_damage (
+            week_key   TEXT NOT NULL,
+            discord_id INTEGER NOT NULL,
+            damage     INTEGER DEFAULT 0,
+            PRIMARY KEY (week_key, discord_id)
+        )
+    """)
+
+    # ── Səs kanalı fəallığı (Ən Sosial reytinqi) ───────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS voice_time (
+            discord_id    INTEGER PRIMARY KEY,
+            total_seconds INTEGER DEFAULT 0
         )
     """)
 
@@ -1091,6 +1123,43 @@ def get_map_stats(discord_id):
             entry["losses"] += 1
     conn.close()
     return stats
+
+
+def get_map_masters(min_matches=3, top_n=3):
+    """Hər xəritə üçün ən yüksək win-rate-ə sahib (minimum matç sayı şərti ilə) top-N
+    oyunçunu qaytarır: {map: [{discord_id, nick, wins, losses, matches, winrate}, ...]}."""
+    import json as _json
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT map, winner_ids, loser_ids FROM match_history WHERE map IS NOT NULL")
+    rows = cursor.fetchall()
+    per_map = {}
+    for map_name, winner_ids_json, loser_ids_json in rows:
+        for did in _json.loads(winner_ids_json):
+            entry = per_map.setdefault(map_name, {}).setdefault(did, {"wins": 0, "losses": 0})
+            entry["wins"] += 1
+        for did in _json.loads(loser_ids_json):
+            entry = per_map.setdefault(map_name, {}).setdefault(did, {"wins": 0, "losses": 0})
+            entry["losses"] += 1
+
+    result = {}
+    for map_name, players in per_map.items():
+        candidates = []
+        for did, rec in players.items():
+            matches = rec["wins"] + rec["losses"]
+            if matches < min_matches:
+                continue
+            cursor.execute("SELECT so2_nick FROM players WHERE discord_id=?", (did,))
+            nrow = cursor.fetchone()
+            candidates.append({
+                "discord_id": did, "nick": nrow[0] if nrow else "?",
+                "wins": rec["wins"], "losses": rec["losses"], "matches": matches,
+                "winrate": round(rec["wins"] / matches * 100, 1)
+            })
+        candidates.sort(key=lambda c: (c["winrate"], c["matches"]), reverse=True)
+        if candidates:
+            result[map_name] = candidates[:top_n]
+    conn.close()
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2365,23 +2434,34 @@ def _seed_quest_chains(cursor):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def update_streak(discord_id, won: bool):
-    """Qələbədə streak artır, məğlubiyyətdə sıfırlanır. (streak, max_streak) qaytarır."""
+    """Qələbədə streak artır, məğlubiyyətdə sıfırlanır. (streak, max_streak) qaytarır.
+    Paralel olaraq loss_streak-i də (Tilt Xəbərdarlığı üçün, bax: get_loss_streak) idarə edir —
+    geriyə uyğunluq üçün funksiyanın qaytardığı tuple dəyişməyib."""
     conn   = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT win_streak, max_streak FROM players WHERE discord_id=?", (discord_id,))
+    cursor.execute("SELECT win_streak, max_streak, loss_streak FROM players WHERE discord_id=?", (discord_id,))
     row = cursor.fetchone()
     if not row:
         conn.close(); return 0, 0
-    streak, max_s = row
+    streak, max_s, loss_streak = row
     if won:
         streak += 1
         max_s = max(max_s, streak)
+        loss_streak = 0
     else:
         streak = 0
-    cursor.execute("UPDATE players SET win_streak=?, max_streak=? WHERE discord_id=?",
-                   (streak, max_s, discord_id))
+        loss_streak += 1
+    cursor.execute("UPDATE players SET win_streak=?, max_streak=?, loss_streak=? WHERE discord_id=?",
+                   (streak, max_s, loss_streak, discord_id))
     conn.commit(); conn.close()
     return streak, max_s
+
+
+def get_loss_streak(discord_id):
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT loss_streak FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone(); conn.close()
+    return row[0] if row else 0
 
 
 def get_streak_bonus(streak: int) -> tuple:
@@ -4520,4 +4600,116 @@ def get_weekly_recap(discord_id, since_ts):
         "elo_change": (elo_after - elo_before) if (elo_before is not None and elo_after is not None) else 0,
         "coins_earned": coins_earned
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 3 — HƏFTƏLİK BOSS EVENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _current_boss_week_key():
+    import datetime as _dt
+    return (_dt.datetime.utcnow() + _dt.timedelta(hours=4)).strftime("%G-W%V")  # AZ vaxtı, ISO həftə
+
+
+def get_or_create_boss_event(max_hp=500, reward_coins=40):
+    import time
+    week_key = _current_boss_week_key()
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT week_key, max_hp, current_hp, reward_coins, defeated, message_id, channel_id "
+                   "FROM boss_events WHERE week_key=?", (week_key,))
+    row = cursor.fetchone()
+    if row:
+        conn.close()
+        return {"week_key": row[0], "max_hp": row[1], "current_hp": row[2], "reward_coins": row[3],
+                "defeated": bool(row[4]), "message_id": row[5], "channel_id": row[6], "is_new": False}
+    cursor.execute(
+        "INSERT INTO boss_events (week_key, max_hp, current_hp, reward_coins, defeated, created_at) "
+        "VALUES (?,?,?,?,0,?)",
+        (week_key, max_hp, max_hp, reward_coins, int(time.time()))
+    )
+    conn.commit(); conn.close()
+    return {"week_key": week_key, "max_hp": max_hp, "current_hp": max_hp, "reward_coins": reward_coins,
+            "defeated": False, "message_id": None, "channel_id": None, "is_new": True}
+
+
+def set_boss_message(week_key, message_id, channel_id):
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("UPDATE boss_events SET message_id=?, channel_id=? WHERE week_key=?",
+                   (str(message_id), str(channel_id), week_key))
+    conn.commit(); conn.close()
+
+
+def apply_boss_damage(week_key, contributions: dict):
+    """contributions: {discord_id: kill_count}. Boss-un HP-sini azaldır, hər oyunçunun töhfəsini
+    qeyd edir. Qaytarır: (yeni_current_hp, max_hp, just_defeated: bool)."""
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT current_hp, max_hp, defeated FROM boss_events WHERE week_key=?", (week_key,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close(); return None
+    current_hp, max_hp, already_defeated = row
+    if already_defeated:
+        conn.close(); return (0, max_hp, False)
+    total_damage = sum(contributions.values())
+    new_hp = max(0, current_hp - total_damage)
+    just_defeated = new_hp == 0
+    cursor.execute("UPDATE boss_events SET current_hp=?, defeated=? WHERE week_key=?",
+                   (new_hp, 1 if just_defeated else 0, week_key))
+    for did, dmg in contributions.items():
+        if dmg <= 0:
+            continue
+        cursor.execute(
+            "INSERT INTO boss_damage (week_key, discord_id, damage) VALUES (?,?,?) "
+            "ON CONFLICT(week_key, discord_id) DO UPDATE SET damage=damage+excluded.damage",
+            (week_key, did, dmg)
+        )
+    conn.commit(); conn.close()
+    return (new_hp, max_hp, just_defeated)
+
+
+def get_boss_leaderboard(week_key, limit=5):
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute(
+        "SELECT bd.discord_id, p.so2_nick, bd.damage FROM boss_damage bd "
+        "JOIN players p ON p.discord_id = bd.discord_id "
+        "WHERE bd.week_key=? ORDER BY bd.damage DESC LIMIT ?",
+        (week_key, limit)
+    )
+    rows = cursor.fetchall(); conn.close()
+    return [{"discord_id": r[0], "nick": r[1], "damage": r[2]} for r in rows]
+
+
+def get_all_boss_contributors(week_key):
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT discord_id FROM boss_damage WHERE week_key=? AND damage > 0", (week_key,))
+    rows = cursor.fetchall(); conn.close()
+    return [r[0] for r in rows]
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FAZA 3 — SƏS KANALI FƏALLIĞI (Ən Sosial reytinqi)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def add_voice_seconds(discord_id, seconds):
+    if seconds <= 0:
+        return
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO voice_time (discord_id, total_seconds) VALUES (?,?) "
+        "ON CONFLICT(discord_id) DO UPDATE SET total_seconds=total_seconds+excluded.total_seconds",
+        (discord_id, int(seconds))
+    )
+    conn.commit(); conn.close()
+
+
+def get_voice_leaderboard(limit=10):
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute(
+        "SELECT vt.discord_id, p.so2_nick, vt.total_seconds FROM voice_time vt "
+        "JOIN players p ON p.discord_id = vt.discord_id "
+        "ORDER BY vt.total_seconds DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall(); conn.close()
+    return [{"discord_id": r[0], "nick": r[1], "total_seconds": r[2]} for r in rows]
 

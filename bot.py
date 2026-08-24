@@ -79,6 +79,10 @@ from database import (
     get_activity_heatmap, WEEKDAY_NAMES_AZ,
     archive_bp_season, get_bp_season_archives,
     get_weekly_recap,
+    get_map_masters, get_loss_streak,
+    get_or_create_boss_event, set_boss_message, apply_boss_damage,
+    get_boss_leaderboard, get_all_boss_contributors,
+    add_voice_seconds, get_voice_leaderboard,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_match_coach_tip, generate_daily_news, generate_intel_briefing, generate_personal_coach_report
@@ -202,6 +206,14 @@ REWARD_CHANNEL_ID = None
 HALL_OF_FAME_CHANNEL_ID = None
 REPORTS_CHANNEL_ID = None
 AUDIT_LOG_CHANNEL_ID = None
+ACHIEVEMENT_WALL_CHANNEL_ID = None
+BOSS_EVENT_CHANNEL_ID = None
+MAP_MASTERS_CHANNEL_ID = None
+RARE_ACHIEVEMENT_THRESHOLD_PCT = 15
+BOSS_MAX_HP = 500
+BOSS_REWARD_COINS = 40
+BOSS_TOP_DAMAGE_BONUS = 40
+TILT_LOSS_STREAK_THRESHOLD = 3
 
 # ── Coin ↔ AZN çevrilməsi (ai_chat.py-dakı elan olunmuş məzənnə ilə eynidir) ────
 COIN_TO_AZN_RATE = 2500  # 2500 coin = 0.5 AZN
@@ -354,6 +366,129 @@ async def _get_hall_of_fame_channel():
         return None
 
 
+def _boss_progress_bar(current_hp, max_hp, length=20):
+    filled = round((current_hp / max_hp) * length) if max_hp else 0
+    return "🟥" * filled + "⬛" * (length - filled)
+
+
+def _boss_embed(boss, leaderboard):
+    if boss["defeated"]:
+        desc = f"✅ **Boss məğlub edildi!** Növbəti boss Bazar ertəsi yenidən görünəcək."
+        color = discord.Color.green()
+    else:
+        pct = round(boss["current_hp"] / boss["max_hp"] * 100)
+        desc = (
+            f"{_boss_progress_bar(boss['current_hp'], boss['max_hp'])}\n"
+            f"❤️ **{boss['current_hp']} / {boss['max_hp']} HP** ({pct}%)\n\n"
+            "Hər matçdakı kill-lər boss-a zərbə vurur — icma birlikdə onu məğlub etsə, "
+            f"HAMI (töhfə verən hər kəs) **{boss['reward_coins']} coin** qazanır, "
+            f"ən çox zərbə vuran isə əlavə **{BOSS_TOP_DAMAGE_BONUS} coin** bonus alır!"
+        )
+        color = discord.Color.from_rgb(230, 60, 55)
+    embed = discord.Embed(title="👹 Həftəlik Boss Event", description=desc, color=color)
+    if leaderboard:
+        embed.add_field(
+            name="🗡️ Ən çox zərbə vuranlar",
+            value="\n".join(f"{i+1}. {p['nick']} — {p['damage']} zərbə" for i, p in enumerate(leaderboard)),
+            inline=False
+        )
+    embed.set_footer(text="Zenith's Academy — hər həftə Bazar ertəsi yeni boss görünür")
+    return embed
+
+
+async def _post_boss_event(channel):
+    boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
+    message = await channel.send(embed=_boss_embed(boss, []))
+    try:
+        pins = await channel.pins()
+        for old in pins:
+            if old.author.id == bot.user.id:
+                await old.unpin()
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+    try:
+        await message.pin()
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+    set_boss_message(boss["week_key"], message.id, channel.id)
+    return message
+
+
+async def _update_boss_progress(contributions: dict):
+    """Matçdan sonra kill-əsaslı töhfələri boss-a tətbiq edir, canlı mesajı yeniləyir,
+    boss məğlub olubsa iştirakçılara mükafat verir."""
+    if not contributions:
+        return
+    channel = await _get_boss_event_channel()
+    if not channel:
+        return
+    boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
+    if boss["defeated"]:
+        return
+    if boss["is_new"] or not boss.get("message_id"):
+        message = await _post_boss_event(channel)
+        boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
+    new_hp, max_hp, just_defeated = apply_boss_damage(boss["week_key"], contributions)
+    leaderboard = get_boss_leaderboard(boss["week_key"])
+    boss["current_hp"] = new_hp
+    boss["defeated"] = just_defeated
+    try:
+        message = await channel.fetch_message(int(boss["message_id"]))
+        await message.edit(embed=_boss_embed(boss, leaderboard))
+    except (discord.NotFound, discord.HTTPException, TypeError, ValueError):
+        pass
+    if just_defeated:
+        contributors = get_all_boss_contributors(boss["week_key"])
+        for did in contributors:
+            new_bal = add_coins(did, BOSS_REWARD_COINS)
+            add_coin_log(did, BOSS_REWARD_COINS, "Boss Event qələbəsi", "earn", new_bal)
+        if leaderboard:
+            top_id = leaderboard[0]["discord_id"]
+            new_bal = add_coins(top_id, BOSS_TOP_DAMAGE_BONUS)
+            add_coin_log(top_id, BOSS_TOP_DAMAGE_BONUS, "Boss Event — ən çox zərbə bonusu", "earn", new_bal)
+        try:
+            await channel.send(
+                f"🎉 Boss məğlub edildi! {len(contributors)} nəfər töhfə verdi, hamısı "
+                f"**{BOSS_REWARD_COINS} coin** qazandı. Ən çox zərbə vuran: "
+                f"{'<@' + str(leaderboard[0]['discord_id']) + '>' if leaderboard else '-'} 🏅"
+            )
+        except discord.HTTPException:
+            pass
+
+
+async def _post_wall_announcement(guild, discord_id, nick, name, icon, kind):
+    """Nadir nailiyyət/ləqəb qazananda dərhal Nailiyyət Divarı kanalına elan edir."""
+    channel = await _get_achievement_wall_channel()
+    if not channel:
+        return
+    embed = discord.Embed(
+        title=f"{icon} Yeni {kind.capitalize()}!",
+        description=f"<@{discord_id}> (**{nick}**) — **{name}** {kind}ini qazandı!",
+        color=discord.Color.gold()
+    )
+    embed.set_footer(text="Zenith's Academy")
+    try:
+        await channel.send(embed=embed)
+    except discord.HTTPException:
+        pass
+
+
+async def _post_map_masters(channel):
+    masters = get_map_masters(min_matches=3, top_n=3)
+    if not masters:
+        return
+    embed = discord.Embed(
+        title="🗺️ Xəritə Ustaları",
+        description="Hər xəritənin ən yüksək win-rate-li (min. 3 matç) top-3 oyunçusu:",
+        color=discord.Color.from_rgb(80, 160, 255)
+    )
+    for map_name, top in masters.items():
+        lines = [f"{i+1}. **{p['nick']}** — {p['winrate']}% ({p['wins']}Q/{p['losses']}M)" for i, p in enumerate(top)]
+        embed.add_field(name=f"🗺️ {map_name}", value="\n".join(lines), inline=True)
+    embed.set_footer(text="Zenith's Academy — hər Bazar ertəsi yenilənir")
+    await channel.send(embed=embed)
+
+
 async def _post_weekly_mvp(channel):
     """Son 7 günün MVP-sini (ən çox qələbə, min. 3 matç) kart şəklində göndərib pinləyir,
     əvvəlki bot pinini götürür — hər həftə YENİ mesaj, canlı redaktə edilmir (mükafat kartından
@@ -406,6 +541,10 @@ async def weekly_mvp_loop():
     if channel:
         await _post_weekly_mvp(channel)
 
+    masters_channel = await _get_map_masters_channel()
+    if masters_channel:
+        await _post_map_masters(masters_channel)
+
 
 async def _get_reports_channel():
     if not REPORTS_CHANNEL_ID:
@@ -427,6 +566,42 @@ async def _get_audit_log_channel():
         return channel
     try:
         return await bot.fetch_channel(AUDIT_LOG_CHANNEL_ID)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return None
+
+
+async def _get_achievement_wall_channel():
+    if not ACHIEVEMENT_WALL_CHANNEL_ID:
+        return None
+    channel = bot.get_channel(ACHIEVEMENT_WALL_CHANNEL_ID)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(ACHIEVEMENT_WALL_CHANNEL_ID)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return None
+
+
+async def _get_boss_event_channel():
+    if not BOSS_EVENT_CHANNEL_ID:
+        return None
+    channel = bot.get_channel(BOSS_EVENT_CHANNEL_ID)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(BOSS_EVENT_CHANNEL_ID)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return None
+
+
+async def _get_map_masters_channel():
+    if not MAP_MASTERS_CHANNEL_ID:
+        return None
+    channel = bot.get_channel(MAP_MASTERS_CHANNEL_ID)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(MAP_MASTERS_CHANNEL_ID)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         return None
 
@@ -718,6 +893,39 @@ async def _send_bp_levelup_dm(guild, discord_id, nick, new_level):
             "Yeni mükafatınızı /pass panelindəki \"Mükafatları tələb et\" düyməsi ilə tələb edin!"
         ),
         color=discord.Color.from_rgb(138, 92, 230)
+    )
+    embed.set_footer(text="Bu bildirişi Profil → Bildirişlər düyməsindən bağlaya bilərsiniz.")
+    try:
+        await member.send(embed=embed)
+    except discord.Forbidden:
+        pass
+
+
+TILT_ENCOURAGEMENT_MESSAGES = [
+    "Hamının pis günü olur — bir az mola vermək, təzə başla düyməsi kimi işləyir. Su iç, dərin nəfəs al, sonra geri qayıt! 💪",
+    "Ardıcıl məğlubiyyətlər çox vaxt yorğunluqdan gəlir, bacarıqdan yox. 10-15 dəqiqə fasilə verməyi düşün.",
+    "Unutma: hər ELO düşən oyunçu bir gün geri qayıdıb daha güclü qazanıb. Sakit qal, mövqe seçiminə fokuslan.",
+    "Tilt gerçəkdir! İndi bir fasilə verib təzə gözlə qayıtmaq, davam etməkdən daha ağıllı olar.",
+]
+
+
+async def _send_tilt_warning_dm(guild, discord_id, nick, loss_streak):
+    """Ardıcıl məğlubiyyət seriyası həvəsdən salmasın deyə həvəsləndirici DM göndərir."""
+    member = guild.get_member(discord_id) if guild else None
+    if not member and guild:
+        try:
+            member = await guild.fetch_member(discord_id)
+        except (discord.NotFound, discord.HTTPException):
+            return
+    if not member:
+        return
+    embed = discord.Embed(
+        title="☕ Bir Az Mola Vermə Vaxtıdır?",
+        description=(
+            f"**{nick}**, son **{loss_streak}** matçda məğlub oldunuz.\n\n"
+            f"{random.choice(TILT_ENCOURAGEMENT_MESSAGES)}"
+        ),
+        color=discord.Color.from_rgb(90, 150, 220)
     )
     embed.set_footer(text="Bu bildirişi Profil → Bildirişlər düyməsindən bağlaya bilərsiniz.")
     try:
@@ -1685,6 +1893,10 @@ class MatchResultView(discord.ui.View):
                 add_combat_stats(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0))
                 stats_by_id[did] = s
 
+        if stats_by_id:
+            boss_contributions = {did: s.get("kills", 0) for did, s in stats_by_id.items() if s.get("kills", 0) > 0}
+            asyncio.create_task(_update_boss_progress(boss_contributions))
+
         # Sürpriz Aşkarlayıcı — məğlub komandanın ELO ortalaması qalibdən xeyli yüksəkdirsə
         winner_avg_old_elo = sum(r["old_elo"] for r in results["winners"]) / len(results["winners"])
         loser_avg_old_elo = sum(r["old_elo"] for r in results["losers"]) / len(results["losers"])
@@ -1699,6 +1911,7 @@ class MatchResultView(discord.ui.View):
         new_quests = []
         new_bp_levels = []
         challenge_claimers = []
+        achievement_rarity = get_achievement_rarity()
 
         mvp_id = None
         if stats_by_id:
@@ -1762,8 +1975,12 @@ class MatchResultView(discord.ui.View):
             _award_bp_xp(did, p["nick"], s, True)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
+                if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
             for ti in check_and_grant_titles(did):
                 new_titles.append((p["nick"], ti))
+                if interaction.guild:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ti["name"], ti["icon"], "ləqəb"))
             for q in update_quest_progress(did, "win_matches"):
                 new_quests.append((p["nick"], q))
             if is_golden:
@@ -1786,6 +2003,9 @@ class MatchResultView(discord.ui.View):
                              deaths=stats_by_id.get(did, {}).get("deaths", 0),
                              losses=1, elo_gained=r["new_elo"] - r["old_elo"], elo_start=r["old_elo"])
             update_streak(did, False)
+            loss_streak = get_loss_streak(did)
+            if loss_streak == TILT_LOSS_STREAK_THRESHOLD and get_dm_notifications(did) and interaction.guild:
+                asyncio.create_task(_send_tilt_warning_dm(interaction.guild, did, p["nick"], loss_streak))
             earned = random.randint(0, 5)
             if _is_weekend_bonus_active():
                 earned *= 2
@@ -1809,8 +2029,12 @@ class MatchResultView(discord.ui.View):
             _award_bp_xp(did, p["nick"], s, False)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
+                if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
             for ti in check_and_grant_titles(did):
                 new_titles.append((p["nick"], ti))
+                if interaction.guild:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ti["name"], ti["icon"], "ləqəb"))
             if did in stats_by_id and claim_daily_challenge(
                 did, today_key, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), False
             ):
@@ -2407,6 +2631,7 @@ class MatchmakingView(discord.ui.View):
 @bot.event
 async def on_ready():
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
+    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID
     init_db()
 
     saved_log = get_meta("log_channel_id")
@@ -2424,9 +2649,19 @@ async def on_ready():
     saved_audit = get_meta("audit_log_channel_id")
     if saved_audit:
         AUDIT_LOG_CHANNEL_ID = int(saved_audit)
+    saved_wall = get_meta("achievement_wall_channel_id")
+    if saved_wall:
+        ACHIEVEMENT_WALL_CHANNEL_ID = int(saved_wall)
+    saved_boss = get_meta("boss_event_channel_id")
+    if saved_boss:
+        BOSS_EVENT_CHANNEL_ID = int(saved_boss)
+    saved_masters = get_meta("map_masters_channel_id")
+    if saved_masters:
+        MAP_MASTERS_CHANNEL_ID = int(saved_masters)
     print(f"[CONFIG] LOG_CHANNEL_ID={LOG_CHANNEL_ID} REWARD_CHANNEL_ID={REWARD_CHANNEL_ID} "
           f"HALL_OF_FAME_CHANNEL_ID={HALL_OF_FAME_CHANNEL_ID} REPORTS_CHANNEL_ID={REPORTS_CHANNEL_ID} "
-          f"AUDIT_LOG_CHANNEL_ID={AUDIT_LOG_CHANNEL_ID}", flush=True)
+          f"AUDIT_LOG_CHANNEL_ID={AUDIT_LOG_CHANNEL_ID} ACHIEVEMENT_WALL_CHANNEL_ID={ACHIEVEMENT_WALL_CHANNEL_ID} "
+          f"BOSS_EVENT_CHANNEL_ID={BOSS_EVENT_CHANNEL_ID} MAP_MASTERS_CHANNEL_ID={MAP_MASTERS_CHANNEL_ID}", flush=True)
 
     if os.environ.get("RESET_SQUADS_ON_BOOT") == "1":
         n = wipe_squads()
@@ -2499,6 +2734,28 @@ async def on_member_join(member: discord.Member):
         await member.send(embed=embed)
     except discord.Forbidden:
         pass
+
+
+# discord_id -> unix timestamp botların səs kanalına qoşulduğu an. Bu, YALNIZ canlı, cari
+# sessiyanın müvəqqəti vəziyyətidir (yaddaşda saxlanılır) — bot restart olsa açıq sessiyaların
+# vaxtı itir (aşağı-risk, məqbul tradeoff), amma DB-yə yazılan `total_seconds` HƏMİŞƏ
+# toplanaraq qalır (bax: add_voice_seconds).
+_voice_session_start = {}
+
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    if member.bot:
+        return
+    now = int(datetime.datetime.utcnow().timestamp())
+    was_in_voice = before.channel is not None
+    is_in_voice = after.channel is not None
+    if not was_in_voice and is_in_voice:
+        _voice_session_start[member.id] = now
+    elif was_in_voice and not is_in_voice:
+        start = _voice_session_start.pop(member.id, None)
+        if start:
+            add_voice_seconds(member.id, now - start)
 
 
 class ConvertCoinsView(discord.ui.View):
@@ -2578,6 +2835,7 @@ class ProfileHubView(discord.ui.View):
             ("btn.heatmap", "🔥", self.heatmap_btn),
             ("btn.coach", "🤖", self.coach_btn),
             ("btn.notifications", "🔔", self.notifications_btn),
+            ("btn.social", "🎙️", self.social_btn),
             ("btn.lang", "🌐", self.lang_btn),
         ]
         for key, emoji, callback in button_defs:
@@ -2814,6 +3072,27 @@ class ProfileHubView(discord.ui.View):
             "(həftəlik xülasə və digər fərdi bildirişlərə aiddir)",
             ephemeral=True
         )
+
+    async def social_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        lb = get_voice_leaderboard(limit=10)
+        if not lb:
+            await interaction.response.send_message("ℹ️ Hələ heç kim səs kanalında vaxt keçirməyib.", ephemeral=True)
+            return
+
+        def _fmt_time(seconds):
+            h, rem = divmod(seconds, 3600)
+            m, _ = divmod(rem, 60)
+            return f"{h}s {m}dəq" if h else f"{m}dəq"
+
+        lines = [f"{i+1}. **{p['nick']}** — {_fmt_time(p['total_seconds'])}" for i, p in enumerate(lb)]
+        embed = discord.Embed(
+            title="🎙️ Ən Sosial Oyunçular",
+            description="Səs kanallarında ən çox vaxt keçirən oyunçular:\n\n" + "\n".join(lines),
+            color=discord.Color.from_rgb(80, 200, 160)
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -3054,6 +3333,7 @@ async def setup_error(interaction: discord.Interaction, error):
 @staff_check()
 async def full_setup(interaction: discord.Interaction):
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
+    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID
 
     if not interaction.guild:
         await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
@@ -3094,6 +3374,9 @@ async def full_setup(interaction: discord.Interaction):
     ch_log = await _recreate_text("faceit-log")
     ch_reports = await _recreate_text("reports", staff_only_overwrites)
     ch_audit = await _recreate_text("audit-log", staff_only_overwrites)
+    ch_wall = await _recreate_text("nailiyyet-divari", announce_overwrites)
+    ch_boss = await _recreate_text("boss-event", announce_overwrites)
+    ch_masters = await _recreate_text("xerite-ustalari", announce_overwrites)
 
     # Köhnə statik "Komanda A/B" səs kanalları artıq lazım deyil — hər matç
     # üçün səs kanalları indi avtomatik, dinamik yaradılır/silinir (bax:
@@ -3117,6 +3400,12 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("reports_channel_id", ch_reports.id)
     AUDIT_LOG_CHANNEL_ID = ch_audit.id
     set_meta("audit_log_channel_id", ch_audit.id)
+    ACHIEVEMENT_WALL_CHANNEL_ID = ch_wall.id
+    set_meta("achievement_wall_channel_id", ch_wall.id)
+    BOSS_EVENT_CHANNEL_ID = ch_boss.id
+    set_meta("boss_event_channel_id", ch_boss.id)
+    MAP_MASTERS_CHANNEL_ID = ch_masters.id
+    set_meta("map_masters_channel_id", ch_masters.id)
 
     await _post_register(ch_register)
     await _post_matchmaking(ch_matchmaking)
@@ -3127,6 +3416,13 @@ async def full_setup(interaction: discord.Interaction):
     await ch_hof.send(
         "🏆 **Həftənin MVP-si** buraya elan olunacaq — hər həftə Bazar ertəsi, "
         "keçən 7 gündə ən çox qələbə qazanan oyunçu seçilib pinlənmiş kartla təbrik ediləcək."
+    )
+    await ch_wall.send(
+        "🏅 **Nailiyyət Divarı** — nadir nailiyyət/ləqəb qazanan oyunçular avtomatik burada elan olunacaq."
+    )
+    await _post_boss_event(ch_boss)
+    await ch_masters.send(
+        "🗺️ **Xəritə Ustaları** — hər xəritənin ən yüksək win-rate-li top-3 oyunçusu bu siyahıda hər həftə yenilənəcək."
     )
 
     await interaction.followup.send(
@@ -3141,6 +3437,9 @@ async def full_setup(interaction: discord.Interaction):
         f"📰 Faceit log: {ch_log.mention} (hamı görüb yaza bilər)\n"
         f"🚩 Reports: {ch_reports.mention} (yalnız adminlər — /report komandası ilə göndərilən şikayətlər)\n"
         f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər — bütün admin əməliyyatları canlı qeydə alınır)\n"
+        f"🏅 Nailiyyət Divarı: {ch_wall.mention} (nadir nailiyyət/ləqəb qazananlar canlı elan olunur)\n"
+        f"👹 Boss Event: {ch_boss.mention} (həftəlik icma boss-u, canlı yenilənən HP paneli)\n"
+        f"🗺️ Xəritə Ustaları: {ch_masters.mention} (hər xəritənin top-3 oyunçusu, hər Bazar ertəsi yenilənir)\n"
         f"🔊 Səs kanalları: hər matç üçün avtomatik yaradılır/silinir (statik kanal lazım deyil)\n\n"
         "Elan kanallarında adi üzvlər yazı yaza bilmir, yalnız düymələrlə əməliyyat edə bilirlər.\n"
         "⚠️ Diqqət: bu komanda hər işə düşdükdə mövcud FACEIT kanallarını silib təzədən qurur "
@@ -4844,6 +5143,10 @@ async def admin_matc_elave_et_cmd(
     new_quests = []
     challenge_claimers = []
     current_season = get_or_create_current_season()
+    achievement_rarity = get_achievement_rarity()
+    boss_contributions = {did: k for did, (k, a, d) in kad_by_id.items() if had_kad[did] and k > 0}
+    if boss_contributions:
+        asyncio.create_task(_update_boss_progress(boss_contributions))
     for p, r in zip(winner_team, results["winners"]):
         k, a, d = kad_by_id[p["discord_id"]]
         add_season_stat(p["discord_id"], current_season["id"], kills=k, assists=a, deaths=d,
@@ -4864,8 +5167,12 @@ async def admin_matc_elave_et_cmd(
             update_personal_record(p["discord_id"], k, a, d, match_number)
         for ach in check_and_grant_achievements(p["discord_id"]):
             new_achievements.append((p["nick"], ach))
+            if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
+                asyncio.create_task(_post_wall_announcement(interaction.guild, p["discord_id"], p["nick"], ach["name"], ach["icon"], "nailiyyət"))
         for ti in check_and_grant_titles(p["discord_id"]):
             new_titles.append((p["nick"], ti))
+            if interaction.guild:
+                asyncio.create_task(_post_wall_announcement(interaction.guild, p["discord_id"], p["nick"], ti["name"], ti["icon"], "ləqəb"))
         for q in update_quest_progress(p["discord_id"], "win_matches"):
             new_quests.append((p["nick"], q))
         if had_kad[p["discord_id"]]:
@@ -4885,6 +5192,9 @@ async def admin_matc_elave_et_cmd(
         add_season_stat(p["discord_id"], current_season["id"], kills=k, assists=a, deaths=d,
                          losses=1, elo_gained=r["new_elo"] - r["old_elo"], elo_start=r["old_elo"])
         update_streak(p["discord_id"], False)
+        loss_streak = get_loss_streak(p["discord_id"])
+        if loss_streak == TILT_LOSS_STREAK_THRESHOLD and get_dm_notifications(p["discord_id"]) and interaction.guild:
+            asyncio.create_task(_send_tilt_warning_dm(interaction.guild, p["discord_id"], p["nick"], loss_streak))
         earned = random.randint(0, 5)
         if _is_weekend_bonus_active():
             earned *= 2
@@ -4899,8 +5209,12 @@ async def admin_matc_elave_et_cmd(
             update_personal_record(p["discord_id"], k, a, d, match_number)
         for ach in check_and_grant_achievements(p["discord_id"]):
             new_achievements.append((p["nick"], ach))
+            if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
+                asyncio.create_task(_post_wall_announcement(interaction.guild, p["discord_id"], p["nick"], ach["name"], ach["icon"], "nailiyyət"))
         for ti in check_and_grant_titles(p["discord_id"]):
             new_titles.append((p["nick"], ti))
+            if interaction.guild:
+                asyncio.create_task(_post_wall_announcement(interaction.guild, p["discord_id"], p["nick"], ti["name"], ti["icon"], "ləqəb"))
         if had_kad[p["discord_id"]]:
             k, a, d = kad_by_id[p["discord_id"]]
             if claim_daily_challenge(p["discord_id"], today_key, k, a, d, False):
@@ -5113,6 +5427,11 @@ PANEL_CATEGORIES = {
             ("🔨 Hərraclar", "Admin nadir əşyaları coin ilə hərraca çıxara bilər"),
             ("🎉 Bayram Matçları", "Milli bayram günlərində bütün matçlarda avtomatik 2x coin/ELO bonusu aktivdir"),
             ("🚩 Report sistemi", "`/report` ilə admin komandasına şikayət göndərə bilərsiniz"),
+            ("👹 Həftəlik Boss Event", "İcma birlikdə matçlardakı kill-lərlə boss-u vurur, məğlub edəndə hamı coin qazanır"),
+            ("🏅 Nailiyyət Divarı", "Nadir nailiyyət/ləqəb qazananlar dərhal ayrıca kanalda elan olunur"),
+            ("🎙️ Ən Sosial Reytinq", "Profil → Sosial düyməsində səs kanallarında ən çox vaxt keçirənlərin reytinqi"),
+            ("🗺️ Xəritə Ustaları", "Hər xəritənin ən yüksək win-rate-li top-3 oyunçusu hər Bazar ertəsi elan olunur"),
+            ("☕ Tilt Xəbərdarlığı", "3 ardıcıl məğlubiyyətdən sonra həvəsləndirici DM göndərilir"),
         ],
     },
     "admin": {
