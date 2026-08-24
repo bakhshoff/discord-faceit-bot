@@ -76,6 +76,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN last_comeback_bonus_at INTEGER DEFAULT 0")
     if "loss_streak" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN loss_streak INTEGER DEFAULT 0")
+    if "nick_change_used" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN nick_change_used INTEGER DEFAULT 0")
 
     # ── Daily Login ───────────────────────────────────────────────────────────
     cursor.execute("""
@@ -631,6 +633,23 @@ def get_player(discord_id):
     row = cursor.fetchone()
     conn.close()
     return row
+
+
+def use_free_nickname_change(discord_id, new_nick):
+    """Oyunçu adını (so2_nick) DƏYİŞDİRİR — hər hesab üçün YALNIZ 1 DƏFƏ, pulsuz.
+    (uğur, mesaj) qaytarır."""
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT nick_change_used FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False, "Qeydiyyatdan keçməmisiniz."
+    if row[0]:
+        conn.close()
+        return False, "Pulsuz ad dəyişmə haqqınızı artıq istifadə etmisiniz."
+    cursor.execute("UPDATE players SET so2_nick=?, nick_change_used=1 WHERE discord_id=?", (new_nick, discord_id))
+    conn.commit(); conn.close()
+    return True, "OK"
 
 
 def get_inactive_unplayed_players(cutoff_ts):

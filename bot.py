@@ -71,7 +71,7 @@ from database import (
     add_boost, get_active_boost, get_all_active_boosts,
     get_or_create_current_season, get_season_by_number, add_season_stat,
     get_season_stat, get_season_leaderboard, close_season,
-    get_dm_notifications, set_dm_notifications,
+    get_dm_notifications, set_dm_notifications, use_free_nickname_change,
     check_and_grant_comeback_bonus, COMEBACK_BONUS_COINS,
     create_report, get_recent_reports_for,
     bulk_add_coins, check_suspicious_activity,
@@ -2778,43 +2778,14 @@ class LanguageSelectView(discord.ui.View):
         )
 
 
-class ProfileHubView(discord.ui.View):
-    def __init__(self, discord_id, lang="az"):
-        super().__init__(timeout=300)
+class _ProfileSubMenuBase(discord.ui.View):
+    """Bütün profil alt-menyularının (Statistika/İnventar/Mükafatlar/Sosial/Ayarlar) ortaq
+    bazası — hər biri öz ayrıca ephemeral mesajı kimi açılır (bax: ProfileHubView), ona görə
+    hər alt-menyunun ÖZ 25-komponent limiti var, əsas menyu ilə paylaşılmır."""
+    def __init__(self, discord_id, lang="az", timeout=300):
+        super().__init__(timeout=timeout)
         self.discord_id = discord_id
         self.lang = lang
-
-        button_defs = [
-            ("btn.stats", "📊", self.stats_btn),
-            ("btn.history", "📜", self.history_btn),
-            ("btn.inventory", "🎒", self.inventory_btn),
-            ("btn.market", "🛒", self.market_btn),
-            ("btn.coins", "💰", self.coins_btn),
-            ("btn.achievements", "🏆", self.achievements_btn),
-            ("btn.daily", "📅", self.gunluk_btn),
-            ("btn.daily_bonus", "🎁", self.daily_bonus_btn),
-            ("btn.maps", "🗺️", self.maps_btn),
-            ("btn.record", "🥇", self.record_btn),
-            ("btn.squad", "🤝", self.squad_btn),
-            ("btn.share", "🔗", self.share_btn),
-            ("btn.chart", "📈", self.elo_chart_btn),
-            ("btn.title", "🏅", self.title_btn),
-            ("btn.quests", "🧗", self.quests_btn),
-            ("btn.synergy", "🔍", self.synergy_btn),
-            ("btn.pass", "🎫", self.pass_btn),
-            ("btn.convert", "💱", self.convert_btn),
-            ("btn.career", "🛤️", self.career_btn),
-            ("btn.heatmap", "🔥", self.heatmap_btn),
-            ("btn.coach", "🤖", self.coach_btn),
-            ("btn.notifications", "🔔", self.notifications_btn),
-            ("btn.social", "🎙️", self.social_btn),
-            ("btn.lang", "🌐", self.lang_btn),
-            ("btn.more", "⚙️", self.more_btn),
-        ]
-        for key, emoji, callback in button_defs:
-            btn = discord.ui.Button(label=t(key, lang), style=discord.ButtonStyle.secondary, emoji=emoji)
-            btn.callback = callback
-            self.add_item(btn)
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.discord_id:
@@ -2826,6 +2797,27 @@ class ProfileHubView(discord.ui.View):
         member = interaction.guild.get_member(self.discord_id) if interaction.guild else None
         return member.display_name if member else str(self.discord_id)
 
+    def _add_buttons(self, defs):
+        for key, emoji, callback in defs:
+            btn = discord.ui.Button(label=t(key, self.lang), style=discord.ButtonStyle.secondary, emoji=emoji)
+            btn.callback = callback
+            self.add_item(btn)
+
+
+class StatsMenuView(_ProfileSubMenuBase):
+    def __init__(self, discord_id, lang="az"):
+        super().__init__(discord_id, lang)
+        self._add_buttons([
+            ("btn.stats", "📊", self.stats_btn),
+            ("btn.history", "📜", self.history_btn),
+            ("btn.chart", "📈", self.elo_chart_btn),
+            ("btn.record", "🥇", self.record_btn),
+            ("btn.maps", "🗺️", self.maps_btn),
+            ("btn.heatmap", "🔥", self.heatmap_btn),
+            ("btn.synergy", "🔍", self.synergy_btn),
+            ("btn.coach", "🤖", self.coach_btn),
+        ])
+
     async def stats_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
@@ -2835,6 +2827,81 @@ class ProfileHubView(discord.ui.View):
         if not await self._guard(interaction):
             return
         await _render_history(interaction, self.discord_id)
+
+    async def elo_chart_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_elo_chart(interaction, self.discord_id, self._display_name(interaction))
+
+    async def record_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_record(interaction, self.discord_id, self._display_name(interaction))
+
+    async def maps_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_maps(interaction, self.discord_id, self._display_name(interaction))
+
+    async def heatmap_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        counts = get_activity_heatmap(self.discord_id)
+        max_c = max(counts) or 1
+        lines = []
+        for name, c in zip(WEEKDAY_NAMES_AZ, counts):
+            bar = "█" * round((c / max_c) * 15) or "▏"
+            lines.append(f"{name:<16} {bar} {c}")
+        embed = discord.Embed(
+            title=f"🔥 {self._display_name(interaction)} — Fəallıq Xəritəsi (son 90 gün)",
+            description="```\n" + "\n".join(lines) + "\n```",
+            color=discord.Color.from_rgb(255, 120, 40)
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def synergy_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_synergy(interaction, self.discord_id, self._display_name(interaction))
+
+    async def coach_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        player = get_player(self.discord_id)
+        if not player:
+            await interaction.followup.send("❌ Qeydiyyatdan keçməmisiniz.", ephemeral=True)
+            return
+        history = get_player_match_history(self.discord_id, limit=10)
+        if not history:
+            await interaction.followup.send("ℹ️ Analiz üçün kifayət qədər matç tarixçəniz yoxdur.", ephemeral=True)
+            return
+        wins = sum(1 for h in history if h["won"])
+        losses = len(history) - wins
+        elo_trend = history[0]["elo_after"] - history[-1]["elo_before"]
+        combat = get_combat_stats(self.discord_id)
+        report = await asyncio.to_thread(
+            generate_personal_coach_report, self._display_name(interaction), len(history),
+            combat["kills"], combat["assists"], combat["deaths"], wins, losses, elo_trend
+        )
+        if not report:
+            await interaction.followup.send("❌ AI Coach hazırda əlçatan deyil.", ephemeral=True)
+            return
+        embed = discord.Embed(title="🤖 AI Koç Analizi", description=report, color=discord.Color.from_rgb(80, 160, 255))
+        embed.set_footer(text=f"Son {len(history)} matç əsasında")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class InventoryMenuView(_ProfileSubMenuBase):
+    def __init__(self, discord_id, lang="az"):
+        super().__init__(discord_id, lang)
+        self._add_buttons([
+            ("btn.inventory", "🎒", self.inventory_btn),
+            ("btn.market", "🛒", self.market_btn),
+            ("btn.pass", "🎫", self.pass_btn),
+            ("btn.convert", "💱", self.convert_btn),
+        ])
 
     async def inventory_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -2851,15 +2918,39 @@ class ProfileHubView(discord.ui.View):
             return
         await _render_pass(interaction, self.discord_id)
 
+    async def convert_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        balance = get_coins(self.discord_id)
+        max_blocks = balance // COIN_TO_AZN_RATE
+        embed = discord.Embed(
+            title="💱 Coin → AZN Çevirmə",
+            description=(
+                f"Məzənnə: **{COIN_TO_AZN_RATE} coin = {COIN_TO_AZN_VALUE} AZN**\n"
+                f"Balansınız: **{balance} coin**\n\n"
+                + (f"Maksimum çevirə bilərsiniz: **{max_blocks * COIN_TO_AZN_RATE} coin → {max_blocks * COIN_TO_AZN_VALUE:.2f} AZN**"
+                   if max_blocks > 0 else f"Çevirmək üçün ən azı {COIN_TO_AZN_RATE} coin lazımdır.")
+            ),
+            color=discord.Color.from_rgb(80, 200, 160)
+        )
+        view = ConvertCoinsView(self.discord_id) if max_blocks > 0 else discord.utils.MISSING
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class RewardsMenuView(_ProfileSubMenuBase):
+    def __init__(self, discord_id, lang="az"):
+        super().__init__(discord_id, lang)
+        self._add_buttons([
+            ("btn.coins", "💰", self.coins_btn),
+            ("btn.daily", "📅", self.gunluk_btn),
+            ("btn.daily_bonus", "🎁", self.daily_bonus_btn),
+            ("btn.career", "🛤️", self.career_btn),
+        ])
+
     async def coins_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
         await _render_coins(interaction, self.discord_id)
-
-    async def achievements_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_achievements(interaction, self.discord_id, self._display_name(interaction))
 
     async def gunluk_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -2894,74 +2985,6 @@ class ProfileHubView(discord.ui.View):
         embed.set_footer(text=f"Yeni balans: {new_bal} coin")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    async def maps_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_maps(interaction, self.discord_id, self._display_name(interaction))
-
-    async def record_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_record(interaction, self.discord_id, self._display_name(interaction))
-
-    async def squad_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_squad(interaction, self.discord_id, self._display_name(interaction))
-
-    async def share_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        link = f"{PUBLIC_WEB_URL}/u/{self.discord_id}"
-        await interaction.response.send_message(
-            f"🔗 İctimai profil linkiniz:\n{link}", ephemeral=True
-        )
-
-    async def elo_chart_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_elo_chart(interaction, self.discord_id, self._display_name(interaction))
-
-    async def title_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_titles(interaction, self.discord_id, self._display_name(interaction))
-
-    async def quests_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_quests(interaction, self.discord_id, self._display_name(interaction))
-
-    async def synergy_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_synergy(interaction, self.discord_id, self._display_name(interaction))
-
-    async def lang_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.send_message(
-            t("lang.select_placeholder", self.lang), view=LanguageSelectView(self.discord_id), ephemeral=True
-        )
-
-    async def convert_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        balance = get_coins(self.discord_id)
-        max_blocks = balance // COIN_TO_AZN_RATE
-        embed = discord.Embed(
-            title="💱 Coin → AZN Çevirmə",
-            description=(
-                f"Məzənnə: **{COIN_TO_AZN_RATE} coin = {COIN_TO_AZN_VALUE} AZN**\n"
-                f"Balansınız: **{balance} coin**\n\n"
-                + (f"Maksimum çevirə bilərsiniz: **{max_blocks * COIN_TO_AZN_RATE} coin → {max_blocks * COIN_TO_AZN_VALUE:.2f} AZN**"
-                   if max_blocks > 0 else f"Çevirmək üçün ən azı {COIN_TO_AZN_RATE} coin lazımdır.")
-            ),
-            color=discord.Color.from_rgb(80, 200, 160)
-        )
-        view = ConvertCoinsView(self.discord_id) if max_blocks > 0 else discord.utils.MISSING
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
     async def career_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
@@ -2990,61 +3013,38 @@ class ProfileHubView(discord.ui.View):
             embed.add_field(name="🎫 Keçmiş Battle Pass sezonları", value="\n".join(lines), inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def heatmap_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        counts = get_activity_heatmap(self.discord_id)
-        max_c = max(counts) or 1
-        lines = []
-        for name, c in zip(WEEKDAY_NAMES_AZ, counts):
-            bar = "█" * round((c / max_c) * 15) or "▏"
-            lines.append(f"{name:<16} {bar} {c}")
-        embed = discord.Embed(
-            title=f"🔥 {self._display_name(interaction)} — Fəallıq Xəritəsi (son 90 gün)",
-            description="```\n" + "\n".join(lines) + "\n```",
-            color=discord.Color.from_rgb(255, 120, 40)
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
 
-    async def coach_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        player = get_player(self.discord_id)
-        if not player:
-            await interaction.followup.send("❌ Qeydiyyatdan keçməmisiniz.", ephemeral=True)
-            return
-        history = get_player_match_history(self.discord_id, limit=10)
-        if not history:
-            await interaction.followup.send("ℹ️ Analiz üçün kifayət qədər matç tarixçəniz yoxdur.", ephemeral=True)
-            return
-        wins = sum(1 for h in history if h["won"])
-        losses = len(history) - wins
-        elo_trend = history[0]["elo_after"] - history[-1]["elo_before"]
-        combat = get_combat_stats(self.discord_id)
-        report = await asyncio.to_thread(
-            generate_personal_coach_report, self._display_name(interaction), len(history),
-            combat["kills"], combat["assists"], combat["deaths"], wins, losses, elo_trend
-        )
-        if not report:
-            await interaction.followup.send("❌ AI Coach hazırda əlçatan deyil.", ephemeral=True)
-            return
-        embed = discord.Embed(title="🤖 AI Koç Analizi", description=report, color=discord.Color.from_rgb(80, 160, 255))
-        embed.set_footer(text=f"Son {len(history)} matç əsasında")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+class SocialMenuView(_ProfileSubMenuBase):
+    def __init__(self, discord_id, lang="az"):
+        super().__init__(discord_id, lang)
+        self._add_buttons([
+            ("btn.achievements", "🏆", self.achievements_btn),
+            ("btn.title", "🏅", self.title_btn),
+            ("btn.quests", "🧗", self.quests_btn),
+            ("btn.squad", "🤝", self.squad_btn),
+            ("btn.social", "🎙️", self.social_btn),
+            ("btn.share", "🔗", self.share_btn),
+        ])
 
-    async def notifications_btn(self, interaction: discord.Interaction):
+    async def achievements_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
-        enabled = get_dm_notifications(self.discord_id)
-        set_dm_notifications(self.discord_id, not enabled)
-        new_state = "AÇIQ ✅" if not enabled else "BAĞLI ❌"
-        await interaction.response.send_message(
-            f"🔔 Şəxsi mesaj (DM) bildirişləri indi: **{new_state}**\n"
-            "(həftəlik xülasə və digər fərdi bildirişlərə aiddir)",
-            ephemeral=True
-        )
+        await _render_achievements(interaction, self.discord_id, self._display_name(interaction))
+
+    async def title_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_titles(interaction, self.discord_id, self._display_name(interaction))
+
+    async def quests_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_quests(interaction, self.discord_id, self._display_name(interaction))
+
+    async def squad_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_squad(interaction, self.discord_id, self._display_name(interaction))
 
     async def social_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -3067,6 +3067,71 @@ class ProfileHubView(discord.ui.View):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    async def share_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        link = f"{PUBLIC_WEB_URL}/u/{self.discord_id}"
+        await interaction.response.send_message(
+            f"🔗 İctimai profil linkiniz:\n{link}", ephemeral=True
+        )
+
+
+class NicknameModal(discord.ui.Modal, title="Ad Dəyiş"):
+    yeni_ad = discord.ui.TextInput(label="Yeni Standoff 2 nickiniz", placeholder="məs: ZenithPro", max_length=32, min_length=2)
+
+    def __init__(self, discord_id):
+        super().__init__()
+        self.discord_id = discord_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        new_nick = self.yeni_ad.value.strip()
+        if not new_nick:
+            await interaction.response.send_message("❌ Ad boş ola bilməz.", ephemeral=True)
+            return
+        ok, msg = use_free_nickname_change(self.discord_id, new_nick)
+        if not ok:
+            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"✅ Adınız **{new_nick}** olaraq dəyişdirildi! (pulsuz haqqınız istifadə edildi, bu bir dəfəlik idi)",
+            ephemeral=True
+        )
+
+
+class SettingsMenuView(_ProfileSubMenuBase):
+    def __init__(self, discord_id, lang="az"):
+        super().__init__(discord_id, lang)
+        self._add_buttons([
+            ("btn.notifications", "🔔", self.notifications_btn),
+            ("btn.lang", "🌐", self.lang_btn),
+            ("btn.nickname", "✏️", self.nickname_btn),
+            ("btn.more", "⚙️", self.more_btn),
+        ])
+
+    async def notifications_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        enabled = get_dm_notifications(self.discord_id)
+        set_dm_notifications(self.discord_id, not enabled)
+        new_state = "AÇIQ ✅" if not enabled else "BAĞLI ❌"
+        await interaction.response.send_message(
+            f"🔔 Şəxsi mesaj (DM) bildirişləri indi: **{new_state}**\n"
+            "(həftəlik xülasə və digər fərdi bildirişlərə aiddir)",
+            ephemeral=True
+        )
+
+    async def lang_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message(
+            t("lang.select_placeholder", self.lang), view=LanguageSelectView(self.discord_id), ephemeral=True
+        )
+
+    async def nickname_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_modal(NicknameModal(self.discord_id))
+
     async def more_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
@@ -3076,6 +3141,41 @@ class ProfileHubView(discord.ui.View):
             color=discord.Color.from_rgb(138, 92, 230)
         )
         await interaction.response.send_message(embed=embed, view=MoreOptionsView(self.discord_id), ephemeral=True)
+
+
+class ProfileHubView(discord.ui.View):
+    """Əsas profil menyusu — 5 kateqoriya düyməsi, hər biri öz alt-menyusunu ayrıca
+    ephemeral mesaj kimi açır (bax: _ProfileSubMenuBase). Bu, Discord-un tək mesajdakı
+    komponentlər üçün QOYDUĞU 25 limitini kateqoriyalar arasında bölərək gələcək
+    genişlənməyə yer saxlayır — əvvəlki tək-səviyyəli dizaynda bütün 25 slot dolu idi."""
+    def __init__(self, discord_id, lang="az"):
+        super().__init__(timeout=300)
+        self.discord_id = discord_id
+        self.lang = lang
+
+        category_defs = [
+            ("btn.menu_stats", "📊", StatsMenuView, "Stats, tarixçə, qrafik, rekord, xəritələr, fəallıq, sinergiya, AI Koç"),
+            ("btn.menu_inventory", "🎒", InventoryMenuView, "İnventar, market, Battle Pass, Coin→AZN çevirmə"),
+            ("btn.menu_rewards", "💰", RewardsMenuView, "Coin balansı, gündəlik giriş, gündəlik bonus, karyera yolu"),
+            ("btn.menu_social", "🏆", SocialMenuView, "Nailiyyətlər, ləqəblər, questlər, squad, sosial reytinq, paylaşım"),
+            ("btn.menu_settings", "⚙️", SettingsMenuView, "Bildirişlər, dil, ad dəyişmə, hədiyyə/şikayət"),
+        ]
+        for key, emoji, view_cls, desc in category_defs:
+            btn = discord.ui.Button(label=t(key, lang), style=discord.ButtonStyle.primary, emoji=emoji)
+            btn.callback = self._make_category_callback(view_cls, t(key, lang), emoji, desc)
+            self.add_item(btn)
+
+    def _make_category_callback(self, view_cls, label, emoji, desc):
+        async def _callback(interaction: discord.Interaction):
+            if interaction.user.id != self.discord_id:
+                await interaction.response.send_message("❌ Bu yalnız profil sahibi üçündür.", ephemeral=True)
+                return
+            embed = discord.Embed(
+                title=f"{emoji} {label}", description=desc,
+                color=discord.Color.from_rgb(138, 92, 230)
+            )
+            await interaction.response.send_message(embed=embed, view=view_cls(self.discord_id, self.lang), ephemeral=True)
+        return _callback
 
 
 @bot.tree.command(name="profile", description="Profilinizi göstərir")
@@ -5488,17 +5588,19 @@ PANEL_CATEGORIES = {
             ("🔥 Flash Sale", "Təsadüfi olaraq marketdə bir əşyaya müvəqqəti endirim elan oluna bilər"),
             ("🛤️ Sezonlar", "Hər ayın 1-də ELO sezonu bağlanır, Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
-            ("🎁 Hədiyyə et", "Profil → Digər → Hədiyyə et düyməsi ilə coin-lərinizi başqa oyunçuya göndərə bilərsiniz (20% komissiya)"),
-            ("💱 Coin → AZN", "Profil → Çevir düyməsi ilə 2500 coin = 0.5 AZN məzənnəsi ilə çevirmə"),
+            ("🎁 Hədiyyə et", "Profil → Ayarlar → Digər → Hədiyyə et düyməsi ilə coin-lərinizi başqa oyunçuya göndərə bilərsiniz (20% komissiya)"),
+            ("💱 Coin → AZN", "Profil → İnventar → Çevir düyməsi ilə 2500 coin = 0.5 AZN məzənnəsi ilə çevirmə"),
             ("📦 Paketlər", "Market → Paketlər bölməsində bir neçə əşya birlikdə endirimli qiymətə satılır"),
             ("🔨 Hərraclar", "Admin nadir əşyaları coin ilə hərraca çıxara bilər"),
             ("🎉 Bayram Matçları", "Milli bayram günlərində bütün matçlarda avtomatik 2x coin/ELO bonusu aktivdir"),
-            ("🚩 Report sistemi", "Profil → Digər → Şikayət et düyməsi ilə admin komandasına şikayət göndərə bilərsiniz"),
+            ("🚩 Report sistemi", "Profil → Ayarlar → Digər → Şikayət et düyməsi ilə admin komandasına şikayət göndərə bilərsiniz"),
             ("👹 Həftəlik Boss Event", "İcma birlikdə matçlardakı kill-lərlə boss-u vurur, məğlub edəndə hamı coin qazanır"),
             ("🏅 Nailiyyət Divarı", "Nadir nailiyyət/ləqəb qazananlar dərhal ayrıca kanalda elan olunur"),
-            ("🎙️ Ən Sosial Reytinq", "Profil → Sosial düyməsində səs kanallarında ən çox vaxt keçirənlərin reytinqi"),
+            ("🎙️ Ən Sosial Reytinq", "Profil → Sosial → Sosial düyməsində səs kanallarında ən çox vaxt keçirənlərin reytinqi"),
             ("🗺️ Xəritə Ustaları", "Hər xəritənin ən yüksək win-rate-li top-3 oyunçusu hər Bazar ertəsi elan olunur"),
             ("☕ Tilt Xəbərdarlığı", "3 ardıcıl məğlubiyyətdən sonra həvəsləndirici DM göndərilir"),
+            ("✏️ Ad Dəyişmə", "Profil → Ayarlar → Ad Dəyiş düyməsi ilə hər hesab BİR DƏFƏ pulsuz nickini dəyişə bilər"),
+            ("📂 Profil Menyusu", "/profile 5 kateqoriyaya bölünüb: Statistika, İnventar, Mükafatlar, Sosial, Ayarlar — hər biri ayrıca alt-menyu açır"),
         ],
     },
     "admin": {
@@ -5530,7 +5632,7 @@ PANEL_CATEGORIES = {
             ("/admin_toplu_coin", "Bir neçə oyunçuya eyni anda coin verir/çıxarır"),
             ("/admin_pass_sezon_bitir", "Cari Battle Pass sıralamasını tarixə arxivləşdirir"),
             ("🛡️ Audit Log kanalı", "Bütün admin əməliyyatları (ELO düzəlişi, matç silmə/dəyişmə və s.) canlı qeydə alınır"),
-            ("🚩 Reports kanalı", "Profil → Digər → Şikayət et ilə göndərilən şikayətlər buraya düşür"),
+            ("🚩 Reports kanalı", "Profil → Ayarlar → Digər → Şikayət et ilə göndərilən şikayətlər buraya düşür"),
             ("⚠️ Şübhəli fəaliyyət xəbərdarlığı", "Qeyri-adi sürətli coin qazancı avtomatik audit-log kanalına bildirilir"),
         ],
     },
