@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="az">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ p1.nick }} vs {{ p2.nick }} — Zenith's Academy</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#8a5ce6">
+<style>
+  :root {
+    --bg: #0b0a0d;
+    --bg-panel: #131116;
+    --border: #2a2630;
+    --gold: #f0b429;
+    --gold-soft: #f0b42933;
+    --red: #d6453d;
+    --text: #f4f1ea;
+    --text-dim: #8d8794;
+    --green: #5fd07a;
+    --p1: rgb({{ p1.rank_color[0] }},{{ p1.rank_color[1] }},{{ p1.rank_color[2] }});
+    --p2: rgb({{ p2.rank_color[0] }},{{ p2.rank_color[1] }},{{ p2.rank_color[2] }});
+    --font-display: 'Bebas Neue', 'Oswald', Impact, sans-serif;
+    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(ellipse 80% 40% at 50% -10%, rgba(138,92,230,0.15), transparent);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    padding: 32px 20px 60px;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+  }
+  body.ready { opacity: 1; }
+  .container { max-width: 760px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  .eyebrow { font-family: var(--font-mono); font-size: 11px; letter-spacing: 3px; color: var(--gold); text-transform: uppercase; margin-bottom: 8px; }
+  h1 { font-family: var(--font-display); font-size: clamp(26px, 6vw, 40px); letter-spacing: 1px; }
+  .vs-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin-bottom: 28px; }
+  .side-head { text-align: center; }
+  .side-head a { color: inherit; text-decoration: none; }
+  .side-head .nick { font-family: var(--font-display); font-size: 24px; }
+  .side-head .nick:hover { text-decoration: underline; }
+  .side-head .rank { font-size: 12px; margin-top: 4px; }
+  .vs-lbl { font-family: var(--font-display); font-size: 32px; color: var(--text-dim); }
+  .p1-color { color: var(--p1); }
+  .p2-color { color: var(--p2); }
+
+  .stat-row { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
+  .stat-row .lbl { text-align: center; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .stat-row .vals { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+  .stat-row .v1, .stat-row .v2 { font-family: var(--font-display); font-size: 22px; text-align: center; }
+  .stat-row .bar-track { height: 8px; background: #1a171e; border-radius: 4px; overflow: hidden; display: flex; }
+  .stat-row .bar1 { background: var(--p1); height: 100%; }
+  .stat-row .bar2 { background: var(--p2); height: 100%; }
+  .stat-row .mid { width: 60px; }
+
+  footer { text-align: center; margin-top: 30px; font-size: 11px; color: var(--text-dim); }
+  footer a { color: var(--gold); }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="eyebrow">Zenith's Academy — Oyunçu Müqayisəsi</div>
+    <h1>Kim Daha Güclüdür?</h1>
+  </header>
+
+  <div class="vs-header">
+    <div class="side-head">
+      <a href="/u/{{ p1.discord_id }}"><div class="nick p1-color">{{ p1.nick }}</div></a>
+      <div class="rank p1-color">{{ p1.rank_emoji }} {{ p1.rank_name }}</div>
+    </div>
+    <div class="vs-lbl">VS</div>
+    <div class="side-head">
+      <a href="/u/{{ p2.discord_id }}"><div class="nick p2-color">{{ p2.nick }}</div></a>
+      <div class="rank p2-color">{{ p2.rank_emoji }} {{ p2.rank_name }}</div>
+    </div>
+  </div>
+
+  <div id="statsContainer"></div>
+
+  <footer>
+    <a href="/">← Leaderboard-a qayıt</a> · Zenith's Academy
+  </footer>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => document.body.classList.add('ready')));
+
+const STATS = [
+  {label: 'ELO', v1: {{ p1.elo }}, v2: {{ p2.elo }}},
+  {label: 'Qələbə', v1: {{ p1.wins }}, v2: {{ p2.wins }}},
+  {label: 'Məğlubiyyət', v1: {{ p1.losses }}, v2: {{ p2.losses }}, lowerBetter: true},
+  {label: 'Win Rate %', v1: {{ p1.win_rate }}, v2: {{ p2.win_rate }}},
+  {label: 'Kill', v1: {{ p1.kills }}, v2: {{ p2.kills }}},
+  {label: 'Assist', v1: {{ p1.assists }}, v2: {{ p2.assists }}},
+  {label: 'Ölüm', v1: {{ p1.deaths }}, v2: {{ p2.deaths }}, lowerBetter: true},
+];
+
+const container = document.getElementById('statsContainer');
+container.innerHTML = STATS.map(s => {
+  const total = s.v1 + s.v2;
+  let pct1 = total > 0 ? (s.v1 / total) * 100 : 50;
+  if (s.lowerBetter) pct1 = 100 - pct1;
+  const winner1 = s.lowerBetter ? s.v1 < s.v2 : s.v1 > s.v2;
+  const winner2 = s.lowerBetter ? s.v2 < s.v1 : s.v2 > s.v1;
+  return `
+    <div class="stat-row">
+      <div class="lbl">${s.label}</div>
+      <div class="vals">
+        <div class="v1" style="${winner1 ? 'text-shadow:0 0 10px var(--p1);' : 'opacity:0.6;'}">${s.v1}</div>
+        <div class="mid"></div>
+        <div class="v2" style="${winner2 ? 'text-shadow:0 0 10px var(--p2);' : 'opacity:0.6;'}">${s.v2}</div>
+      </div>
+      <div class="bar-track">
+        <div class="bar1" style="width:${pct1}%"></div>
+        <div class="bar2" style="width:${100 - pct1}%"></div>
+      </div>
+    </div>
+  `;
+}).join('');
+</script>
+</body>
+</html>

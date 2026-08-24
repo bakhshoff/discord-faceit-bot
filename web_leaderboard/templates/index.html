@@ -534,11 +534,33 @@
   #miniProfilePopup .mp-nick { font-family: var(--font-display); font-size: 16px; margin-bottom: 4px; }
   #miniProfilePopup .mp-row { display: flex; justify-content: space-between; color: var(--text-dim); padding: 2px 0; }
   #miniProfilePopup .mp-row b { color: var(--text); font-family: var(--font-mono); }
+
+  #snowCanvas { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; display: none; }
+
+  #matchToast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 45;
+    background: var(--bg-panel);
+    border: 1px solid var(--gold);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-size: 12px;
+    max-width: 260px;
+    transform: translateX(320px);
+    transition: transform 0.35s ease;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  #matchToast.show { transform: translateX(0); }
+  #matchToast .mt-title { font-family: var(--font-display); font-size: 14px; color: var(--gold); margin-bottom: 4px; }
 </style>
 </head>
 <body>
 
 <div id="auroraBg"></div>
+<canvas id="snowCanvas"></canvas>
+<div id="matchToast"></div>
 <div id="miniProfilePopup"></div>
 <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 <button id="soundToggle" type="button" title="Səs effektləri">🔊</button>
@@ -935,9 +957,25 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+let searchTrackTimer = null;
 document.getElementById('searchInput').addEventListener('input', (e) => {
   currentSearch = e.target.value;
   render();
+
+  // ── Axtarış Sayğacı ("məni kimsə axtaranda") — yazı dayananda 800ms sonra,
+  // tam uyğun gələn oyunçular üçün nişanlanır (hər hərfdə deyil) ─────────────
+  clearTimeout(searchTrackTimer);
+  searchTrackTimer = setTimeout(() => {
+    const q = currentSearch.trim().toLowerCase();
+    if (q.length < 3) return;
+    const matched = allPlayers.filter(p => p.nick.toLowerCase().includes(q) || String(p.so2_id).includes(q));
+    if (matched.length === 1) {
+      fetch('/api/track_search', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({so2_id: matched[0].so2_id})
+      }).catch(() => {});
+    }
+  }, 800);
 });
 
 // ── FLIP Sıralama Animasiyası ────────────────────────────────────────────────
@@ -1051,6 +1089,21 @@ async function loadCapsuleDetail(el) {
 }
 
 // ── Canlı Matç Ticker ─────────────────────────────────────────────────────
+let lastSeenMatchNumber = null;
+let matchToastTimer = null;
+function showMatchToast(m) {
+  const toast = document.getElementById('matchToast');
+  toast.innerHTML = `
+    <div class="mt-title">🎮 Matç bitdi!</div>
+    <div><span style="color:var(--green);font-weight:700;">${escapeHtml(m.winner_nicks.join(', '))}</span> qalib gəldi</div>
+    <div style="color:var(--text-dim);">${escapeHtml(m.loser_nicks.join(', '))} qarşısında${m.map ? ' · ' + escapeHtml(m.map) : ''}</div>
+  `;
+  toast.classList.add('show');
+  playTone(700, 0.07);
+  clearTimeout(matchToastTimer);
+  matchToastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
+}
+
 async function loadTicker() {
   try {
     const r = await fetch('/api/recent_matches');
@@ -1060,10 +1113,46 @@ async function loadTicker() {
     track.innerHTML = matches.map(m =>
       `<span class="ticker-item">Matç #${m.match_number || '?'} · <span class="w">${escapeHtml(m.winner_nicks.join(', '))}</span> ▸ <span class="l">${escapeHtml(m.loser_nicks.join(', '))}</span>${m.map ? ' · ' + escapeHtml(m.map) : ''}</span>`
     ).join('');
+
+    const latest = matches[0];
+    if (latest && latest.match_number != null) {
+      if (lastSeenMatchNumber !== null && latest.match_number !== lastSeenMatchNumber) {
+        showMatchToast(latest);
+      }
+      lastSeenMatchNumber = latest.match_number;
+    }
   } catch (e) { document.getElementById('ticker').style.display = 'none'; }
 }
 loadTicker();
-setInterval(loadTicker, 60000);
+setInterval(loadTicker, 20000);
+
+// ── Mövsümi Tema Overlay (bayram günü qar effekti) ──────────────────────────
+fetch('/api/holiday').then(r => r.json()).then(h => {
+  if (!h.is_holiday) return;
+  const canvas = document.getElementById('snowCanvas');
+  canvas.style.display = 'block';
+  const sctx = canvas.getContext('2d');
+  function resizeSnow() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+  window.addEventListener('resize', resizeSnow);
+  resizeSnow();
+  const flakes = Array.from({length: 60}, () => ({
+    x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+    r: Math.random() * 3 + 1.5, vy: Math.random() * 1 + 0.5, vx: (Math.random() - 0.5) * 0.6
+  }));
+  function snowLoop() {
+    sctx.clearRect(0, 0, canvas.width, canvas.height);
+    sctx.fillStyle = 'rgba(255,255,255,0.85)';
+    flakes.forEach(f => {
+      f.y += f.vy; f.x += f.vx;
+      if (f.y > canvas.height) { f.y = -5; f.x = Math.random() * canvas.width; }
+      sctx.beginPath();
+      sctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      sctx.fill();
+    });
+    requestAnimationFrame(snowLoop);
+  }
+  snowLoop();
+}).catch(() => {});
 
 // ── Rising Star kartı ─────────────────────────────────────────────────────
 async function loadRisingStar() {

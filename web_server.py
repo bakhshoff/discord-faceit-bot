@@ -21,6 +21,21 @@ app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
 _VIEWER_TIMEOUT_SECONDS = 30
 _active_viewers = {}
 
+# ── Axtarış sayğacı ("məni kimsə axtaranda") ──────────────────────────────────
+# Yaddaşda, gün-üzrə sıfırlanan sadə sayğac: {(date_str, so2_id): count}. DB-siz —
+# bot restart olsa günün sayı sıfırlanır (məqbul, canlı statistika üçündür).
+_search_counts = {}
+
+# ── Bayram günləri (bot.py-dəki HOLIDAY_DATES ilə EYNİ təqvim — bot.py birbaşa
+# import oluna bilmir, çünki modul səviyyəsində bot.run() çağırır) ────────────
+HOLIDAY_DATES = {
+    (1, 1):   "Yeni İl",
+    (3, 20):  "Novruz Bayramı",
+    (3, 21):  "Novruz Bayramı",
+    (5, 28):  "Respublika Günü",
+    (10, 18): "Müstəqillik Günü",
+}
+
 
 def get_players():
     conn = sqlite3.connect(DB_PATH)
@@ -82,17 +97,28 @@ def manifest():
     })
 
 
+@app.route("/offline")
+def offline_page():
+    return render_template("offline.html")
+
+
 @app.route("/sw.js")
 def service_worker():
     js = (
-        "const CACHE = 'zenith-v1';\n"
-        "self.addEventListener('install', e => self.skipWaiting());\n"
+        "const CACHE = 'zenith-v2';\n"
+        "const OFFLINE_URL = '/offline';\n"
+        "self.addEventListener('install', e => {\n"
+        "  self.skipWaiting();\n"
+        "  e.waitUntil(caches.open(CACHE).then(c => c.add(OFFLINE_URL)));\n"
+        "});\n"
         "self.addEventListener('activate', e => self.clients.claim());\n"
         "self.addEventListener('fetch', e => {\n"
         "  if (e.request.method !== 'GET') return;\n"
-        "  e.respondWith(\n"
-        "    fetch(e.request).catch(() => caches.match(e.request))\n"
-        "  );\n"
+        "  if (e.request.mode === 'navigate') {\n"
+        "    e.respondWith(fetch(e.request).catch(() => caches.match(OFFLINE_URL)));\n"
+        "    return;\n"
+        "  }\n"
+        "  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));\n"
         "});\n"
     )
     return app.response_class(js, mimetype="application/javascript")
@@ -127,12 +153,16 @@ def _profile_dict(discord_id):
                 elo_to_next = hi - elo
             break
 
+    today_key = time.strftime("%Y-%m-%d")
+    search_count_today = _search_counts.get((today_key, str(so2_id)), 0)
+
     return {
         "discord_id": discord_id, "nick": nick, "so2_id": so2_id, "elo": elo,
         "wins": wins, "losses": losses, "matches": matches, "win_rate": win_rate,
         "kills": stats.get("kills", 0), "assists": stats.get("assists", 0), "deaths": stats.get("deaths", 0),
         "rank_name": rank_name, "rank_color": list(rank_color), "rank_emoji": rank_emoji,
         "next_rank_name": next_rank_name, "elo_to_next": elo_to_next, "tier_progress_pct": tier_progress_pct,
+        "search_count_today": search_count_today,
     }
 
 
@@ -246,6 +276,38 @@ def api_rising_star():
 @app.route("/api/rank_distribution")
 def api_rank_distribution():
     return jsonify(database.get_rank_distribution())
+
+
+@app.route("/api/holiday")
+def api_holiday():
+    import datetime as _dt
+    now = _dt.datetime.utcnow() + _dt.timedelta(hours=4)
+    name = HOLIDAY_DATES.get((now.month, now.day))
+    return jsonify({"is_holiday": name is not None, "name": name})
+
+
+@app.route("/api/track_search", methods=["POST"])
+def api_track_search():
+    so2_id = (request.json or {}).get("so2_id") if request.is_json else None
+    if not so2_id:
+        return jsonify({"ok": False}), 400
+    today_key = time.strftime("%Y-%m-%d")
+    key = (today_key, str(so2_id))
+    _search_counts[key] = _search_counts.get(key, 0) + 1
+    # köhnə günlərin qeydlərini təmizlə (yaddaş sızmasının qarşısını almaq üçün)
+    stale = [k for k in _search_counts if k[0] != today_key]
+    for k in stale:
+        del _search_counts[k]
+    return jsonify({"ok": True})
+
+
+@app.route("/compare/<int:id1>/<int:id2>")
+def compare_profiles(id1, id2):
+    p1 = _profile_dict(id1)
+    p2 = _profile_dict(id2)
+    if not p1 or not p2:
+        abort(404)
+    return render_template("compare.html", p1=p1, p2=p2)
 
 
 @app.route("/admin")

@@ -28,7 +28,29 @@
     font-family: var(--font-body);
     min-height: 100vh;
     padding: 0 0 80px;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    position: relative;
   }
+  body.ready { opacity: 1; }
+
+  #auroraBg {
+    position: fixed;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 25% 25%, var(--gold-soft), transparent 45%),
+      radial-gradient(circle at 75% 65%, rgba(95,208,122,0.08), transparent 45%);
+    filter: blur(50px);
+    animation: auroraShift 24s ease-in-out infinite alternate;
+  }
+  @keyframes auroraShift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(3%, -2%) scale(1.08); }
+    100% { transform: translate(-3%, 2%) scale(1); }
+  }
+
   header {
     padding: 40px 24px 24px;
     text-align: center;
@@ -55,9 +77,14 @@
   .stat-chip {
     background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
     padding: 16px 20px; flex: 1; min-width: 140px;
+    transition: border-color 0.2s, transform 0.2s;
   }
+  .stat-chip:hover { border-color: var(--gold); transform: translateY(-2px); }
   .stat-chip .val { font-family: var(--font-display); font-size: 32px; color: var(--gold); }
   .stat-chip .lbl { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+
+  .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.5s ease, transform 0.5s ease; }
+  .reveal.in { opacity: 1; transform: translateY(0); }
 
   .panel {
     background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
@@ -71,10 +98,15 @@
   th { text-align: left; color: var(--text-dim); font-weight: 500; padding: 8px; border-bottom: 1px solid var(--border); }
   td { padding: 8px; border-bottom: 1px solid var(--border); }
   tr:nth-child(even) td { background: var(--bg-row-alt); }
+  tbody tr { transition: background 0.15s; }
+  tbody tr:hover td { background: var(--gold-soft); }
   .win { color: var(--green); } .loss { color: var(--red); }
 
   .hourly { display: flex; align-items: flex-end; gap: 3px; height: 90px; }
-  .hourly .bar { flex: 1; background: var(--gold-soft); border-radius: 2px 2px 0 0; position: relative; }
+  .hourly .bar {
+    flex: 1; background: var(--gold-soft); border-radius: 2px 2px 0 0; position: relative;
+    height: 0; transition: height 1s cubic-bezier(.2,.8,.2,1);
+  }
   .hourly .bar.top { background: var(--gold); }
   .hourly .hlabel { display: flex; gap: 3px; margin-top: 4px; }
   .hourly .hlabel span { flex: 1; font-size: 9px; color: var(--text-dim); text-align: center; }
@@ -83,6 +115,7 @@
 </style>
 </head>
 <body>
+  <div id="auroraBg"></div>
   <header>
     <div class="eyebrow">Admin Dashboard</div>
     <h1>Zenith's Academy</h1>
@@ -90,20 +123,20 @@
 
   <div class="container">
     <div class="stats-bar">
-      <div class="stat-chip"><div class="val">{{ stats.match_count }}</div><div class="lbl">Matç (7 gün)</div></div>
-      <div class="stat-chip"><div class="val">{{ stats.player_count }}</div><div class="lbl">Qeydiyyatlı oyunçu</div></div>
-      <div class="stat-chip"><div class="val">{{ stats.total_kills }}</div><div class="lbl">Kill (7 gün)</div></div>
-      <div class="stat-chip"><div class="val">{{ total_matches }}</div><div class="lbl">Ümumi matç</div></div>
+      <div class="stat-chip"><div class="val" data-target="{{ stats.match_count }}">0</div><div class="lbl">Matç (7 gün)</div></div>
+      <div class="stat-chip"><div class="val" data-target="{{ stats.player_count }}">0</div><div class="lbl">Qeydiyyatlı oyunçu</div></div>
+      <div class="stat-chip"><div class="val" data-target="{{ stats.total_kills }}">0</div><div class="lbl">Kill (7 gün)</div></div>
+      <div class="stat-chip"><div class="val" data-target="{{ total_matches }}">0</div><div class="lbl">Ümumi matç</div></div>
     </div>
 
-    <div class="panel">
+    <div class="panel reveal">
       <h2>Saatlıq fəaliyyət (son 7 gün, AZ vaxtı)</h2>
-      <div class="hourly">
+      <div class="hourly" id="hourlyChart">
         {% set max_cnt = (hourly.values() | list | max) if hourly else 1 %}
         {% for h in range(24) %}
           {% set cnt = hourly.get(h, 0) %}
           <div class="bar {% if cnt == max_cnt and max_cnt > 0 %}top{% endif %}"
-               style="height: {{ (cnt / (max_cnt or 1) * 100) | round(0, 'floor') }}%;" title="{{ h }}:00 — {{ cnt }} matç"></div>
+               data-pct="{{ (cnt / (max_cnt or 1) * 100) | round(0, 'floor') }}" title="{{ h }}:00 — {{ cnt }} matç"></div>
         {% endfor %}
       </div>
       <div class="hlabel">
@@ -111,7 +144,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div class="panel reveal">
       <h2>Ən aktiv oyunçular (7 gün)</h2>
       <table>
         <tr><th>#</th><th>Nick</th><th>Matç sayı</th></tr>
@@ -121,7 +154,7 @@
       </table>
     </div>
 
-    <div class="panel">
+    <div class="panel reveal">
       <h2>Son matçlar</h2>
       <table>
         <tr><th>No</th><th>Tip</th><th>Xəritə</th><th>Qalib</th><th>Məğlub</th></tr>
@@ -137,7 +170,7 @@
       </table>
     </div>
 
-    <div class="panel">
+    <div class="panel reveal">
       <h2>Leaderboard</h2>
       <table>
         <tr><th>#</th><th>Nick</th><th>ELO</th><th>Q/M</th><th>Win %</th></tr>
@@ -152,5 +185,34 @@
 
     <footer>Zenith's Academy — yalnız admin görüşü üçün</footer>
   </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  requestAnimationFrame(() => document.body.classList.add('ready'));
+
+  document.querySelectorAll('.val[data-target]').forEach(el => {
+    const target = parseFloat(el.dataset.target) || 0;
+    const start = performance.now();
+    const duration = 1000;
+    function tick(now) {
+      const p = Math.min((now - start) / duration, 1);
+      el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(tick); else el.textContent = target;
+    }
+    requestAnimationFrame(tick);
+  });
+
+  setTimeout(() => {
+    document.querySelectorAll('#hourlyChart .bar').forEach(bar => {
+      bar.style.height = (bar.dataset.pct || 0) + '%';
+    });
+  }, 200);
+
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('in'); });
+  }, { threshold: 0.1 });
+  document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+});
+</script>
 </body>
 </html>
