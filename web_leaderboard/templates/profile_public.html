@@ -606,17 +606,110 @@
     .card { border: 1px solid #000; box-shadow: none; }
     .card.back { display: none; }
   }
+
+  /* ── Rəqabət Qızğınlığı İndeksi ── */
+  .card.front { transition: box-shadow 0.6s ease; }
+  .heat-badge {
+    display: none; align-items: center; gap: 4px; font-size: 10px; color: #ff8a3d;
+    font-family: var(--font-mono); margin-bottom: 6px; letter-spacing: 1px;
+  }
+  .heat-badge.show { display: flex; justify-content: center; }
+  @keyframes flameFlicker { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.15); opacity: 0.85; } }
+  .heat-badge .flame { animation: flameFlicker 1.1s ease-in-out infinite; }
+
+  /* ── What-If ELO Simulyatoru ── */
+  .whatif-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+  .whatif-row label { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; }
+  .whatif-row input[type="range"] { width: 100%; accent-color: var(--rank); }
+  .whatif-result {
+    text-align: center; font-family: var(--font-display); font-size: 26px; color: var(--rank);
+    margin-top: 8px; transition: color 0.3s ease;
+  }
+  .whatif-result .wr-lbl { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ── Emoji Reaksiya Buludu ── */
+  .reaction-bar { display: flex; gap: 8px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+  .reaction-btn {
+    background: #1a171e; border: 1px solid var(--border); border-radius: 999px; width: 38px; height: 38px;
+    font-size: 17px; cursor: pointer; transition: transform 0.15s, border-color 0.15s;
+  }
+  .reaction-btn:hover { transform: scale(1.15); border-color: var(--rank); }
+  .reaction-float {
+    position: fixed; font-size: 24px; pointer-events: none; z-index: 55;
+    animation: floatUp 2.2s ease-out forwards;
+  }
+  @keyframes floatUp {
+    0% { transform: translateY(0) scale(0.6); opacity: 0; }
+    15% { opacity: 1; transform: translateY(-10px) scale(1); }
+    100% { transform: translateY(-140px) scale(1.1); opacity: 0; }
+  }
+
+  /* ── Fərdi Progress Bar Skini ── */
+  #progressSkinBtn {
+    background: none; border: none; color: var(--text-dim); font-size: 10px; cursor: pointer;
+    text-decoration: underline; padding: 0; margin-top: 4px;
+  }
+  .rank-progress-track.skin-neon { box-shadow: 0 0 8px var(--rank), inset 0 0 4px rgba(0,0,0,0.4); }
+  .rank-progress-track.skin-neon .rank-progress-fill { box-shadow: 0 0 10px 2px var(--rank); }
+  .rank-progress-track.skin-dots .rank-progress-fill {
+    background-image: repeating-linear-gradient(90deg, var(--rank) 0 6px, transparent 6px 10px);
+    background-color: transparent;
+  }
+  .rank-progress-track.skin-wave .rank-progress-fill {
+    background-image: linear-gradient(90deg, var(--rank), #fff4, var(--rank));
+    background-size: 40px 100%;
+    animation: waveMove 1.2s linear infinite;
+  }
+  @keyframes waveMove { from { background-position: 0 0; } to { background-position: 40px 0; } }
+
+  /* ── Səs Ekvalayzer Animasiyası ── */
+  .eq-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; margin-left: 4px; vertical-align: middle; }
+  .eq-bars span { width: 2px; height: 3px; background: var(--rank); border-radius: 1px; transition: height 0.1s ease; }
+  .eq-bars.playing span:nth-child(1) { animation: eqBounce 0.4s ease-in-out infinite; }
+  .eq-bars.playing span:nth-child(2) { animation: eqBounce 0.4s ease-in-out infinite 0.1s; }
+  .eq-bars.playing span:nth-child(3) { animation: eqBounce 0.4s ease-in-out infinite 0.2s; }
+  @keyframes eqBounce { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+
+  /* ── Onboarding Checklist ── */
+  #onboardChecklist {
+    position: fixed; bottom: 24px; left: 18px; z-index: 6;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 16px; font-size: 11px; max-width: 200px; box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+  }
+  #onboardChecklist.hide { display: none; }
+  #onboardChecklist .oc-title { font-family: var(--font-display); font-size: 13px; color: var(--rank); margin-bottom: 6px; letter-spacing: 0.5px; }
+  #onboardChecklist .oc-item { display: flex; align-items: center; gap: 6px; padding: 3px 0; color: var(--text-dim); }
+  #onboardChecklist .oc-item.done { color: var(--green); text-decoration: line-through; }
+  #onboardChecklist .oc-close { position: absolute; top: 6px; right: 8px; cursor: pointer; color: var(--text-dim); font-size: 12px; background: none; border: none; }
+
+  /* ── Tam Klaviatura Naviqasiyası (a11y) ── */
+  a:focus-visible, button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--rank); outline-offset: 2px; border-radius: 4px;
+  }
+
+  /* ── 3D Kart Parçalanma Keçidi ── */
+  #shatterOverlay {
+    position: fixed; inset: 0; z-index: 80; display: grid;
+    grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(6, 1fr);
+    pointer-events: none;
+  }
+  #shatterOverlay .shard {
+    background: var(--bg); transform: scale(0); opacity: 0;
+    transition: transform 0.4s cubic-bezier(.2,.8,.2,1), opacity 0.4s ease;
+  }
+  #shatterOverlay.active .shard { transform: scale(1); opacity: 1; }
 </style>
 </head>
 <body>
   <div id="loadingBar"></div>
+  <div id="shatterOverlay"></div>
   <div id="auroraBg"></div>
   <canvas id="particleCanvas"></canvas>
   <canvas id="confettiCanvas"></canvas>
   <canvas id="snowCanvas"></canvas>
   <div id="toolbar">
     <button id="colorPickerBtn" type="button" title="Aksent rəngi">🎨</button>
-    <button id="soundToggle" type="button" title="Səs effektləri">🔊</button>
+    <button id="soundToggle" type="button" title="Səs effektləri">🔊<span class="eq-bars" id="eqBars"><span></span><span></span><span></span></span></button>
     <button id="themeToggle" type="button" title="Tema dəyiş">🌙</button>
   </div>
   <div id="colorSwatches"></div>
@@ -627,6 +720,7 @@
       <div class="card front spotlight">
         <div class="eyebrow">Zenith's Academy — Oyunçu Profili</div>
         <div class="search-badge" id="searchBadge"></div>
+        <div class="heat-badge" id="heatBadge"><span class="flame">🔥</span><span id="heatText"></span></div>
         <h1>{{ nick }}</h1>
         <div class="rank-row">
           <svg class="badge-svg" viewBox="0 0 42 42">
@@ -642,7 +736,8 @@
         {% if next_rank_name %}
         <div class="rank-progress-wrap">
           <div class="rank-progress-lbl"><span>{{ rank_name }}</span><span>{{ elo_to_next }} ELO → {{ next_rank_name }}</span></div>
-          <div class="rank-progress-track"><div class="rank-progress-fill" id="rankProgressFill" data-pct="{{ tier_progress_pct }}"></div></div>
+          <div class="rank-progress-track" id="rankProgressTrack"><div class="rank-progress-fill" id="rankProgressFill" data-pct="{{ tier_progress_pct }}"></div></div>
+          <button id="progressSkinBtn" type="button">skin dəyiş ↻</button>
         </div>
         {% endif %}
 
@@ -678,6 +773,14 @@
         <div id="qrWrap">
           <img id="qrImg" class="blur-up" width="120" height="120" alt="QR">
           <span>telefonla skan edin</span>
+        </div>
+        <div class="reaction-bar" id="reactionBar">
+          <button class="reaction-btn" type="button" data-emoji="🔥">🔥</button>
+          <button class="reaction-btn" type="button" data-emoji="👏">👏</button>
+          <button class="reaction-btn" type="button" data-emoji="😮">😮</button>
+          <button class="reaction-btn" type="button" data-emoji="💪">💪</button>
+          <button class="reaction-btn" type="button" data-emoji="🏆">🏆</button>
+          <button class="reaction-btn" type="button" data-emoji="❤️">❤️</button>
         </div>
         <button id="aimGameBtn" type="button">🎯 Mini Nişan Alma Oyunu</button>
       </div>
@@ -752,7 +855,30 @@
     <div class="ach-grid" id="achGrid"></div>
   </div>
 
+  <div class="extra-panel reveal spotlight" id="whatIfPanel" style="display:none;">
+    <h2>🔮 What-If ELO Simulyatoru</h2>
+    <div class="whatif-row">
+      <label>Növbəti neçə matç? <span id="whatIfNVal">10</span></label>
+      <input type="range" id="whatIfN" min="1" max="30" value="10">
+    </div>
+    <div class="whatif-row">
+      <label>Bunlardan neçəsini qazanacaqsan? <span id="whatIfWVal">6</span></label>
+      <input type="range" id="whatIfW" min="0" max="10" value="6">
+    </div>
+    <div class="whatif-result">
+      <div id="whatIfElo">{{ elo }}</div>
+      <div class="wr-lbl">Proqnozlaşdırılan ELO</div>
+    </div>
+  </div>
+
   <div id="toastQueue"></div>
+  <div id="onboardChecklist">
+    <button class="oc-close" id="ocCloseBtn" type="button" title="Bağla">✕</button>
+    <div class="oc-title">🧭 Başlanğıc</div>
+    <div class="oc-item" id="ocProfile">○ Profilə bax</div>
+    <div class="oc-item" id="ocRival">○ Rəqib müqayisə et</div>
+    <div class="oc-item" id="ocShare">○ Profili paylaş</div>
+  </div>
 
   <div id="aimGameModal">
     <div class="aim-box">
@@ -933,7 +1059,21 @@ function finishLoadingBar() {
   setTimeout(() => { loadingBar.classList.remove('active'); loadingBar.style.width = '0%'; }, 300);
 }
 
-// ── Səhifə keçid effekti — yüklənəndə fade-in, daxili linkə keçəndə fade-out ─
+// ── 3D Kart Parçalanma Keçidi — daxili linkə keçəndə mozaik-şüşə örtüyü ────
+const shatterOverlay = document.getElementById('shatterOverlay');
+const SHATTER_COLS = 8, SHATTER_ROWS = 6;
+for (let i = 0; i < SHATTER_COLS * SHATTER_ROWS; i++) {
+  const shard = document.createElement('div');
+  shard.className = 'shard';
+  shard.style.transitionDelay = (Math.random() * 220) + 'ms';
+  shatterOverlay.appendChild(shard);
+}
+function triggerShatter(callback) {
+  shatterOverlay.classList.add('active');
+  setTimeout(callback, 480);
+}
+
+// ── Səhifə keçid effekti — yüklənəndə fade-in, daxili linkə keçəndə parçalanma ─
 document.addEventListener('DOMContentLoaded', () => {
   requestAnimationFrame(() => document.body.classList.add('ready'));
   finishLoadingBar();
@@ -942,9 +1082,8 @@ document.querySelectorAll('a[href]').forEach(a => {
   if (a.target === '_blank' || a.hostname !== window.location.hostname) return;
   a.addEventListener('click', (e) => {
     e.preventDefault();
-    document.body.classList.remove('ready');
     startLoadingBar();
-    setTimeout(() => { window.location.href = a.href; }, 300);
+    triggerShatter(() => { window.location.href = a.href; });
   });
 });
 
@@ -976,6 +1115,12 @@ function playTone(freq, duration = 0.08, type = 'sine', vol = 0.05) {
     osc.connect(gain).connect(audioCtx.destination);
     osc.start();
     osc.stop(audioCtx.currentTime + duration);
+    const eqBars = document.getElementById('eqBars');
+    if (eqBars) {
+      eqBars.classList.add('playing');
+      clearTimeout(eqBars._t);
+      eqBars._t = setTimeout(() => eqBars.classList.remove('playing'), duration * 1000 + 200);
+    }
   } catch (e) { /* Web Audio dəstəklənmirsə sakitcə keç */ }
 }
 document.querySelectorAll('button').forEach(btn => {
@@ -1199,6 +1344,8 @@ document.getElementById('shareBtn').addEventListener('click', async (e) => {
   try {
     await navigator.clipboard.writeText(PROFILE_URL);
     showToast('✓ Link kopyalandı!');
+    localStorage.setItem('zenith-onboard-share', '1');
+    updateOnboardChecklist();
   } catch (err) {
     showToast('❌ Kopyalama uğursuz oldu');
   }
@@ -1277,6 +1424,8 @@ document.getElementById('rivalBtn').addEventListener('click', async () => {
     const pct = total > 0 ? Math.round((MY_ELO / total) * 100) : 50;
     document.getElementById('compareBar').style.width = pct + '%';
     resEl.style.display = 'block';
+    localStorage.setItem('zenith-onboard-rival', '1');
+    updateOnboardChecklist();
   } catch (e) {
     errEl.textContent = 'Xəta baş verdi, yenidən cəhd edin.';
   }
@@ -1370,6 +1519,131 @@ fetch(`/api/profile/${MY_ID}/heatmap`).then(r => r.json()).then(grid => {
   }).join('');
 }).catch(() => {});
 
+// ── Rəqabət Qızğınlığı İndeksi + What-If ELO Simulyatoru ──────────────────
+fetch(`/api/profile/${MY_ID}/momentum`).then(r => r.json()).then(m => {
+  if (m.net_change_24h > 0 && m.match_count_24h > 0) {
+    const badge = document.getElementById('heatBadge');
+    document.getElementById('heatText').textContent = `+${m.net_change_24h} ELO (son 24 saat)`;
+    badge.classList.add('show');
+    const glow = Math.max(0, Math.min(0.65, (m.heat_pct / 100) * 0.65));
+    document.querySelector('.card.front').style.boxShadow = `0 0 ${10 + m.heat_pct * 0.3}px rgba(255,138,61,${glow})`;
+  }
+
+  const panel = document.getElementById('whatIfPanel');
+  panel.style.display = 'block';
+  const nInput = document.getElementById('whatIfN');
+  const wInput = document.getElementById('whatIfW');
+  const nVal = document.getElementById('whatIfNVal');
+  const wVal = document.getElementById('whatIfWVal');
+  const resultEl = document.getElementById('whatIfElo');
+  function recompute() {
+    let n = parseInt(nInput.value, 10);
+    let w = Math.min(parseInt(wInput.value, 10), n);
+    wInput.max = n;
+    if (w !== parseInt(wInput.value, 10)) wInput.value = w;
+    nVal.textContent = n;
+    wVal.textContent = w;
+    const losses = n - w;
+    const projected = Math.round(MY_ELO + w * m.avg_win_gain + losses * m.avg_loss_amount);
+    resultEl.textContent = projected;
+    resultEl.style.color = projected >= MY_ELO ? 'var(--green)' : 'var(--red)';
+  }
+  nInput.addEventListener('input', recompute);
+  wInput.addEventListener('input', recompute);
+  recompute();
+}).catch(() => {});
+
+// ── Emoji Reaksiya Buludu ──────────────────────────────────────────────────
+(function reactionCloud() {
+  let lastSeenId = 0;
+  const shown = new Set();
+  function spawnFloatingEmoji(emoji) {
+    const el = document.createElement('div');
+    el.className = 'reaction-float';
+    el.textContent = emoji;
+    const bar = document.getElementById('reactionBar');
+    const rect = bar.getBoundingClientRect();
+    el.style.left = (rect.left + Math.random() * rect.width) + 'px';
+    el.style.top = rect.top + 'px';
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2300);
+  }
+  document.querySelectorAll('.reaction-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const emoji = btn.dataset.emoji;
+      spawnFloatingEmoji(emoji);
+      try {
+        const r = await fetch(`/api/profile/${MY_ID}/react`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({emoji})
+        });
+        const data = await r.json();
+        if (data.id) { lastSeenId = Math.max(lastSeenId, data.id); shown.add(data.id); }
+      } catch (err) {}
+    });
+  });
+  async function pollReactions() {
+    try {
+      const r = await fetch(`/api/profile/${MY_ID}/reactions?since=${lastSeenId}`);
+      const list = await r.json();
+      list.forEach(entry => {
+        lastSeenId = Math.max(lastSeenId, entry.id);
+        if (!shown.has(entry.id)) { shown.add(entry.id); spawnFloatingEmoji(entry.emoji); }
+      });
+    } catch (e) {}
+  }
+  setInterval(pollReactions, 2500);
+})();
+
+// ── Fərdi Progress Bar Skini ────────────────────────────────────────────────
+(function progressSkin() {
+  const btn = document.getElementById('progressSkinBtn');
+  if (!btn) return;
+  const track = document.getElementById('rankProgressTrack');
+  const skins = ['default', 'skin-neon', 'skin-wave', 'skin-dots'];
+  let idx = skins.indexOf(localStorage.getItem('zenith-progress-skin') || 'default');
+  if (idx < 0) idx = 0;
+  function applySkin() {
+    skins.forEach(s => track.classList.remove(s));
+    if (skins[idx] !== 'default') track.classList.add(skins[idx]);
+  }
+  applySkin();
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    idx = (idx + 1) % skins.length;
+    localStorage.setItem('zenith-progress-skin', skins[idx]);
+    applySkin();
+  });
+})();
+
+// ── İnteraktiv Onboarding Checklist ─────────────────────────────────────────
+localStorage.setItem('zenith-onboard-profile', '1');
+function updateOnboardChecklist() {
+  const items = [
+    {key: 'zenith-onboard-profile', el: 'ocProfile', label: 'Profilə bax'},
+    {key: 'zenith-onboard-rival', el: 'ocRival', label: 'Rəqib müqayisə et'},
+    {key: 'zenith-onboard-share', el: 'ocShare', label: 'Profili paylaş'},
+  ];
+  let doneCount = 0;
+  items.forEach(it => {
+    const done = !!localStorage.getItem(it.key);
+    if (done) doneCount++;
+    const el = document.getElementById(it.el);
+    if (el) { el.textContent = (done ? '✓ ' : '○ ') + it.label; el.classList.toggle('done', done); }
+  });
+  const widget = document.getElementById('onboardChecklist');
+  if (doneCount === items.length || localStorage.getItem('zenith-onboard-dismissed')) {
+    widget.classList.add('hide');
+  }
+}
+document.getElementById('ocCloseBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  localStorage.setItem('zenith-onboard-dismissed', '1');
+  document.getElementById('onboardChecklist').classList.add('hide');
+});
+updateOnboardChecklist();
+
 // ── Nailiyyət Kolleksiya Divarı ───────────────────────────────────────────
 fetch(`/api/profile/${MY_ID}/achievements`).then(r => r.json()).then(data => {
   const earned = data.earned || [], locked = data.locked || [];
@@ -1441,8 +1715,10 @@ document.getElementById('randomRivalBtn').addEventListener('click', async (e) =>
     if (!candidates.length) { showToast('❌ Uyğun rəqib tapılmadı'); return; }
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
     showToast(`🎲 Tapıldı: ${pick.nick} (${pick.elo} ELO)`);
+    localStorage.setItem('zenith-onboard-rival', '1');
+    updateOnboardChecklist();
     startLoadingBar();
-    setTimeout(() => { window.location.href = `/compare/${MY_ID}/${pick.discord_id}`; }, 500);
+    triggerShatter(() => { window.location.href = `/compare/${MY_ID}/${pick.discord_id}`; });
   } catch (err) {
     showToast('❌ Xəta baş verdi');
   }

@@ -26,6 +26,12 @@ _active_viewers = {}
 # bot restart olsa günün sayı sıfırlanır (məqbul, canlı statistika üçündür).
 _search_counts = {}
 
+# ── Profil emoji reaksiyaları ("Emoji Reaksiya Buludu") ───────────────────────
+# Yaddaşda, qısa ömürlü: {discord_id: [{"id", "emoji", "ts"}, ...]}. DB-siz —
+# canlı, keçici effekt üçündür, tarixi məlumat saxlamağa ehtiyac yoxdur.
+_profile_reactions = {}
+_reaction_counter = 0
+
 # ── Bayram günləri (bot.py-dəki HOLIDAY_DATES ilə EYNİ təqvim — bot.py birbaşa
 # import oluna bilmir, çünki modul səviyyəsində bot.run() çağırır) ────────────
 HOLIDAY_DATES = {
@@ -263,6 +269,71 @@ def api_profile_milestones(discord_id):
     if milestones is None:
         abort(404)
     return jsonify(milestones)
+
+
+@app.route("/api/profile/<int:discord_id>/momentum")
+def api_profile_momentum(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    momentum = database.get_player_momentum(discord_id)
+    return jsonify(momentum or {
+        "net_change_24h": 0, "match_count_24h": 0, "heat_pct": 0,
+        "avg_win_gain": 25.0, "avg_loss_amount": -20.0, "sample_size": 0,
+    })
+
+
+ALLOWED_REACTION_EMOJIS = {"🔥", "👏", "😮", "💪", "🏆", "❤️"}
+
+
+@app.route("/api/profile/<int:discord_id>/react", methods=["POST"])
+def api_profile_react(discord_id):
+    global _reaction_counter
+    emoji = (request.json or {}).get("emoji") if request.is_json else None
+    if emoji not in ALLOWED_REACTION_EMOJIS:
+        return jsonify({"ok": False}), 400
+    now = time.time()
+    _reaction_counter += 1
+    entry = {"id": _reaction_counter, "emoji": emoji, "ts": now}
+    bucket = _profile_reactions.setdefault(discord_id, [])
+    bucket.append(entry)
+    cutoff = now - 15
+    _profile_reactions[discord_id] = [r for r in bucket if r["ts"] > cutoff]
+    return jsonify({"ok": True, "id": entry["id"]})
+
+
+@app.route("/api/profile/<int:discord_id>/reactions")
+def api_profile_reactions(discord_id):
+    since_id = request.args.get("since", 0, type=int)
+    bucket = _profile_reactions.get(discord_id, [])
+    fresh = [r for r in bucket if r["id"] > since_id]
+    return jsonify(fresh)
+
+
+@app.route("/api/active_matches")
+def api_active_matches():
+    matches = database.get_all_active_matches()
+    result = []
+    for m in matches:
+        team_a_nicks = []
+        for pid in m["team_a"]:
+            p = database.get_player(pid)
+            if p:
+                team_a_nicks.append(p[1])
+        team_b_nicks = []
+        for pid in m["team_b"]:
+            p = database.get_player(pid)
+            if p:
+                team_b_nicks.append(p[1])
+        result.append({
+            "match_number": m["match_number"],
+            "team_a": team_a_nicks,
+            "team_b": team_b_nicks,
+            "selected_map": m["selected_map"],
+            "created_at": m["created_at"],
+            "is_golden": m["is_golden"],
+            "is_lightning": m["is_lightning"],
+        })
+    return jsonify(result)
 
 
 @app.route("/api/profile/<int:discord_id>/achievements")

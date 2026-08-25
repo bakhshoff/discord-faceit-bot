@@ -607,11 +607,58 @@
   }
   .tour-tip .tt-skip { background: none; color: var(--text-dim); font-weight: 400; text-decoration: underline; padding: 6px 4px; }
   .tour-highlight { position: relative; z-index: 71; box-shadow: 0 0 0 4px var(--gold-soft), 0 0 0 9999px rgba(0,0,0,0.55); border-radius: 8px; }
+
+  /* ── Canlı Matç İzləmə Kartı ── */
+  #liveMatchesWrap { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .live-match-card {
+    background: var(--bg-panel); border: 1px solid var(--red); border-radius: 12px;
+    padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  }
+  .live-match-card .lm-badge {
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px;
+    color: var(--red); text-transform: uppercase; letter-spacing: 1px; font-weight: 700;
+  }
+  .live-match-card .lm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: pulse 1.2s infinite; }
+  .live-match-card .lm-teams { font-size: 13px; display: flex; align-items: center; gap: 8px; flex: 1; }
+  .live-match-card .lm-teams b { color: var(--text); }
+  .live-match-card .lm-timer { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); }
+
+  /* ── Sürüklə-Burax Sütun Sıralaması ── */
+  thead th[draggable="true"] { cursor: grab; }
+  thead th.dragging { opacity: 0.4; }
+  thead th.drag-over { border-left: 2px solid var(--gold); }
+
+  /* ── 3D Kart Parçalanma Keçidi ── */
+  #shatterOverlay {
+    position: fixed; inset: 0; z-index: 80; display: grid;
+    grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(6, 1fr);
+    pointer-events: none;
+  }
+  #shatterOverlay .shard {
+    background: var(--bg); transform: scale(0); opacity: 0;
+    transition: transform 0.4s cubic-bezier(.2,.8,.2,1), opacity 0.4s ease;
+  }
+  #shatterOverlay.active .shard { transform: scale(1); opacity: 1; }
+
+  /* ── Tam Klaviatura Naviqasiyası (a11y) ── */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 4px;
+  }
+  tbody tr[tabindex] { cursor: pointer; }
+
+  /* ── Səs Ekvalayzer Animasiyası ── */
+  .eq-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; margin-left: 4px; vertical-align: middle; }
+  .eq-bars span { width: 2px; height: 3px; background: var(--gold); border-radius: 1px; }
+  .eq-bars.playing span:nth-child(1) { animation: eqBounce 0.4s ease-in-out infinite; }
+  .eq-bars.playing span:nth-child(2) { animation: eqBounce 0.4s ease-in-out infinite 0.1s; }
+  .eq-bars.playing span:nth-child(3) { animation: eqBounce 0.4s ease-in-out infinite 0.2s; }
+  @keyframes eqBounce { 0%, 100% { height: 3px; } 50% { height: 12px; } }
 </style>
 </head>
 <body>
 
 <div id="loadingBar"></div>
+<div id="shatterOverlay"></div>
 <div id="tourOverlay"><div class="tour-dim"></div></div>
 <button id="backToTop" type="button" title="Yuxarı qayıt">↑</button>
 <div id="auroraBg"></div>
@@ -619,7 +666,7 @@
 <div id="matchToast"></div>
 <div id="miniProfilePopup"></div>
 <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
-<button id="soundToggle" type="button" title="Səs effektləri">🔊</button>
+<button id="soundToggle" type="button" title="Səs effektləri">🔊<span class="eq-bars" id="eqBars"><span></span><span></span><span></span></span></button>
 <button id="paletteBtn" type="button" title="Sürətli axtarış (Ctrl+K)">⌘</button>
 
 <div id="cmdPalette">
@@ -638,6 +685,8 @@
 </header>
 
 <div class="container">
+
+  <div id="liveMatchesWrap"></div>
 
   <div class="side-panels">
     <div class="side-panel">
@@ -678,16 +727,7 @@
 
   <table id="leaderboardTable">
     <thead>
-      <tr>
-        <th>#</th>
-        <th>Player</th>
-        <th>SO2 ID</th>
-        <th>ELO</th>
-        <th>M</th>
-        <th>W</th>
-        <th>L</th>
-        <th>WR%</th>
-      </tr>
+      <tr id="tableHeadRow"></tr>
     </thead>
     <tbody id="tableBody">
       <!-- Skeleton loading: ilk data gələnə qədər göstərilir -->
@@ -797,6 +837,25 @@ document.addEventListener('mouseout', (e) => {
   if (e.target.closest('#tableBody tr')) miniPopup.style.display = 'none';
 });
 
+// ── Tam Klaviatura Naviqasiyası (a11y) — sətrə Tab+Enter ilə profilə keçid ──
+function goToProfileRow(row) {
+  const id = row.dataset.discordId;
+  if (!id) return;
+  startLoadingBar();
+  triggerShatter(() => { window.location.href = `/u/${id}`; });
+}
+document.getElementById('tableBody').addEventListener('click', (e) => {
+  const row = e.target.closest('tr[data-discord-id]');
+  if (row) goToProfileRow(row);
+});
+document.getElementById('tableBody').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const row = e.target.closest('tr[data-discord-id]');
+  if (!row) return;
+  e.preventDefault();
+  goToProfileRow(row);
+});
+
 // ── Yuxarı yüklənmə zolağı ───────────────────────────────────────────────
 const loadingBar = document.getElementById('loadingBar');
 function startLoadingBar() {
@@ -809,6 +868,19 @@ function finishLoadingBar() {
   setTimeout(() => { loadingBar.classList.remove('active'); loadingBar.style.width = '0%'; }, 300);
 }
 
+// ── 3D Kart Parçalanma Keçidi — daxili keçidlərdə mozaik-şüşə örtüyü ───────
+const shatterOverlay = document.getElementById('shatterOverlay');
+for (let i = 0; i < 8 * 6; i++) {
+  const shard = document.createElement('div');
+  shard.className = 'shard';
+  shard.style.transitionDelay = (Math.random() * 220) + 'ms';
+  shatterOverlay.appendChild(shard);
+}
+function triggerShatter(callback) {
+  shatterOverlay.classList.add('active');
+  setTimeout(callback, 480);
+}
+
 // ── Səhifə keçid effekti ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   requestAnimationFrame(() => document.body.classList.add('ready'));
@@ -818,9 +890,8 @@ document.addEventListener('click', (e) => {
   const a = e.target.closest('a[href]');
   if (!a || a.target === '_blank' || a.hostname !== window.location.hostname) return;
   e.preventDefault();
-  document.body.classList.remove('ready');
   startLoadingBar();
-  setTimeout(() => { window.location.href = a.href; }, 300);
+  triggerShatter(() => { window.location.href = a.href; });
 });
 
 // ── Səs Effektləri ───────────────────────────────────────────────────────────
@@ -851,6 +922,12 @@ function playTone(freq, duration = 0.08, type = 'sine', vol = 0.05) {
     osc.connect(gain).connect(audioCtx.destination);
     osc.start();
     osc.stop(audioCtx.currentTime + duration);
+    const eqBars = document.getElementById('eqBars');
+    if (eqBars) {
+      eqBars.classList.add('playing');
+      clearTimeout(eqBars._t);
+      eqBars._t = setTimeout(() => eqBars.classList.remove('playing'), duration * 1000 + 200);
+    }
   } catch (e) { /* sakitcə keç */ }
 }
 document.addEventListener('click', (e) => {
@@ -919,6 +996,55 @@ async function fetchData() {
   }
 }
 
+// ── Sürüklə-Burax Sütun Sıralaması ─────────────────────────────────────────
+const COLUMN_DEFS = {
+  rank:    { label: '#',      cell: (p, ctx) => `<td class="rank-cell">#${ctx.rank}${ctx.moveHtml}</td>` },
+  player:  { label: 'Player', cell: (p) => `<td class="player-cell">${escapeHtml(p.nick)}</td>` },
+  id:      { label: 'SO2 ID', cell: (p) => `<td class="id-cell">${escapeHtml(String(p.so2_id))}</td>` },
+  elo:     { label: 'ELO',    cell: (p, ctx) => `<td class="elo-cell${ctx.eloPulseClass}">${p.elo}</td>` },
+  matches: { label: 'M',      cell: (p) => `<td>${p.matches}</td>` },
+  wins:    { label: 'W',      cell: (p) => `<td>${p.wins}</td>` },
+  losses:  { label: 'L',      cell: (p) => `<td>${p.losses}</td>` },
+  wr:      { label: 'WR%',    cell: (p) => `<td class="wr-cell">${p.win_rate}%</td>` },
+};
+let columnOrder = [];
+try {
+  const saved = JSON.parse(localStorage.getItem('zenith-col-order') || 'null');
+  columnOrder = (saved && saved.every(k => COLUMN_DEFS[k])) ? saved : Object.keys(COLUMN_DEFS);
+} catch (e) { columnOrder = Object.keys(COLUMN_DEFS); }
+
+let dragSrcKey = null;
+function renderTableHead() {
+  const headRow = document.getElementById('tableHeadRow');
+  headRow.innerHTML = columnOrder.map(key =>
+    `<th draggable="true" data-key="${key}">${COLUMN_DEFS[key].label}</th>`
+  ).join('');
+  headRow.querySelectorAll('th').forEach(th => {
+    th.addEventListener('dragstart', (e) => {
+      dragSrcKey = th.dataset.key;
+      th.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    th.addEventListener('dragend', () => th.classList.remove('dragging'));
+    th.addEventListener('dragover', (e) => { e.preventDefault(); th.classList.add('drag-over'); });
+    th.addEventListener('dragleave', () => th.classList.remove('drag-over'));
+    th.addEventListener('drop', (e) => {
+      e.preventDefault();
+      th.classList.remove('drag-over');
+      const targetKey = th.dataset.key;
+      if (!dragSrcKey || dragSrcKey === targetKey) return;
+      const from = columnOrder.indexOf(dragSrcKey);
+      const to = columnOrder.indexOf(targetKey);
+      columnOrder.splice(from, 1);
+      columnOrder.splice(to, 0, dragSrcKey);
+      localStorage.setItem('zenith-col-order', JSON.stringify(columnOrder));
+      renderTableHead();
+      render();
+    });
+  });
+}
+renderTableHead();
+
 function render(trackRankChanges = false) {
   // Sıra dəyişmə oxları YALNIZ əsl data yeniləməsində (fetchData) müqayisə olunur —
   // axtarış/sıralama dropdown-u ilə görünüş dəyişəndə saxta "sıra dəyişimi" göstərilməsin.
@@ -969,18 +1095,10 @@ function render(trackRankChanges = false) {
       }
     }
 
-    return `
-      <tr class="${rankClass}${flashClass}">
-        <td class="rank-cell">#${rank}${moveHtml}</td>
-        <td class="player-cell">${escapeHtml(p.nick)}</td>
-        <td class="id-cell">${escapeHtml(String(p.so2_id))}</td>
-        <td class="elo-cell${eloPulseClass}">${p.elo}</td>
-        <td>${p.matches}</td>
-        <td>${p.wins}</td>
-        <td>${p.losses}</td>
-        <td class="wr-cell">${p.win_rate}%</td>
-      </tr>
-    `;
+    const ctx = { rank, moveHtml, eloPulseClass };
+    const cellsHtml = columnOrder.map(key => COLUMN_DEFS[key].cell(p, ctx)).join('');
+    const tabAttr = p.discord_id ? ` tabindex="0" data-discord-id="${p.discord_id}"` : '';
+    return `<tr class="${rankClass}${flashClass}"${tabAttr}>${cellsHtml}</tr>`;
   }).join('');
 
   tbody.innerHTML = rowsHtml;
@@ -1223,6 +1341,36 @@ async function loadTicker() {
 }
 loadTicker();
 setInterval(loadTicker, 20000);
+
+// ── Canlı Matç İzləmə Kartı ─────────────────────────────────────────────────
+function formatElapsed(createdAt) {
+  const secs = Math.max(0, Math.floor(Date.now() / 1000 - createdAt));
+  const m = Math.floor(secs / 60), s = secs % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+async function loadLiveMatches() {
+  try {
+    const r = await fetch('/api/active_matches');
+    const matches = await r.json();
+    const wrap = document.getElementById('liveMatchesWrap');
+    if (!matches.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = matches.map(m => `
+      <div class="live-match-card" data-created="${m.created_at}">
+        <span class="lm-badge"><span class="lm-dot"></span>CANLI · Matç #${m.match_number}</span>
+        <span class="lm-teams"><b>${escapeHtml((m.team_a || []).join(', ') || '?')}</b> vs <b>${escapeHtml((m.team_b || []).join(', ') || '?')}</b>${m.selected_map ? ' · ' + escapeHtml(m.selected_map) : ''}</span>
+        <span class="lm-timer">⏱ <span class="lm-timer-val">${formatElapsed(m.created_at)}</span></span>
+      </div>
+    `).join('');
+  } catch (e) {}
+}
+loadLiveMatches();
+setInterval(loadLiveMatches, 15000);
+setInterval(() => {
+  document.querySelectorAll('.live-match-card').forEach(card => {
+    const val = card.querySelector('.lm-timer-val');
+    if (val) val.textContent = formatElapsed(parseInt(card.dataset.created, 10));
+  });
+}, 1000);
 
 // ── Mövsümi Tema Overlay (bayram günü qar effekti) ──────────────────────────
 fetch('/api/holiday').then(r => r.json()).then(h => {

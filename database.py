@@ -4851,6 +4851,44 @@ def get_player_milestones(discord_id):
     }
 
 
+def get_player_momentum(discord_id):
+    """Son 24 saatdakı NET ELO sürəti ("isti seriya" indeksi üçün) və oyunçunun
+    tarixi orta qazanc/itki dəyərləri (What-If simulyatoru üçün) — eyni
+    match_history keçidindən hər ikisi hesablanır, ayrıca sorğu lazım deyil."""
+    import time as _time
+    matches = get_player_match_history(discord_id, limit=300)
+    if not matches:
+        return None
+
+    now = int(_time.time())
+    cutoff_24h = now - 86400
+    net_change_24h = 0
+    match_count_24h = 0
+    win_deltas = []
+    loss_deltas = []
+    for m in matches:
+        if m["played_at"] >= cutoff_24h:
+            net_change_24h += m["elo_change"]
+            match_count_24h += 1
+        if m["won"]:
+            win_deltas.append(m["elo_change"])
+        else:
+            loss_deltas.append(m["elo_change"])
+
+    avg_win_gain = round(sum(win_deltas) / len(win_deltas), 1) if win_deltas else 25.0
+    avg_loss_amount = round(sum(loss_deltas) / len(loss_deltas), 1) if loss_deltas else -20.0
+    heat_pct = max(0, min(100, round((net_change_24h / 150) * 100)))
+
+    return {
+        "net_change_24h": net_change_24h,
+        "match_count_24h": match_count_24h,
+        "heat_pct": heat_pct,
+        "avg_win_gain": avg_win_gain,
+        "avg_loss_amount": avg_loss_amount,
+        "sample_size": len(matches),
+    }
+
+
 def get_rising_star(days=1):
     """Son `days` gündə ən çox NET ELO qazanan oyunçunu qaytarır (match_history-dəki
     hər matçın before/after ELO-suna əsasən) — {"discord_id","nick","elo_gain"} və ya None."""
