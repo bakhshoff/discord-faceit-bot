@@ -2487,6 +2487,15 @@ def update_streak(discord_id, won: bool):
     return streak, max_s
 
 
+def get_current_win_streak(discord_id):
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT win_streak FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
 def get_loss_streak(discord_id):
     conn = _get_conn(); cursor = conn.cursor()
     cursor.execute("SELECT loss_streak FROM players WHERE discord_id=?", (discord_id,))

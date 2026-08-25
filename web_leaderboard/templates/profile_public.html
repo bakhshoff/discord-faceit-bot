@@ -698,11 +698,71 @@
     transition: transform 0.4s cubic-bezier(.2,.8,.2,1), opacity 0.4s ease;
   }
   #shatterOverlay.active .shard { transform: scale(1); opacity: 1; }
+
+  /* ── Generativ İmza Fon Sənəti ── */
+  #signatureCanvas {
+    position: absolute; inset: -6px; z-index: -1; border-radius: 18px; opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* ── Vaxt-Maşını Slayderi ── */
+  .time-travel-badge {
+    display: none; align-items: center; justify-content: center; gap: 6px; font-size: 10px;
+    color: #ffd166; font-family: var(--font-mono); margin-bottom: 6px; letter-spacing: 1px;
+  }
+  .time-travel-badge.show { display: flex; }
+  .timemachine-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .timemachine-row label { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; }
+  .timemachine-row input[type="range"] { width: 100%; accent-color: #ffd166; }
+  .timemachine-reset {
+    background: none; border: 1px solid var(--border); color: var(--text-dim); font-size: 11px;
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; margin-top: 4px; width: 100%;
+  }
+  .timemachine-reset:hover { border-color: var(--rank); color: var(--rank); }
+
+  /* ── AI-Bənzəri Performans Hekayəsi ── */
+  #storyText { font-size: 13px; line-height: 1.6; color: var(--text); min-height: 20px; }
+  #storyText .story-cursor { display: inline-block; width: 2px; background: var(--rank); animation: blink 0.9s steps(1) infinite; margin-left: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Nəbz-Sinxron İnterfeys (win streak zamanı) ── */
+  @keyframes heartbeatPulse {
+    0%, 100% { transform: scale(1); }
+    14% { transform: scale(1.015); }
+    28% { transform: scale(1); }
+    42% { transform: scale(1.01); }
+    70% { transform: scale(1); }
+  }
+  .scene.heartbeat-active { animation: heartbeatPulse 1.1s ease-in-out infinite; }
+
+  /* ── Səs Əmrləri / Səs-Reaktiv Fon düymələri ── */
+  #voiceBtn, #micReactBtn { position: static; }
+  #voiceBtn.listening, #micReactBtn.active { border-color: #ff5d5d; color: #ff5d5d; }
+
+  /* ── ELO DNT Sarmalı ── */
+  #dnaChart { width: 100%; height: 140px; }
+  #dnaChart .dna-strand { fill: none; stroke-width: 1.5; opacity: 0.8; }
+  #dnaChart .dna-rung { stroke-width: 2; }
+
+  /* ── Jest-Əsaslı Sürətli Əmrlər ── */
+  #gestureCanvas { position: fixed; inset: 0; z-index: 65; pointer-events: none; display: none; }
+  #gestureCanvas.active { display: block; }
+
+  /* ── Parallax Dərinlik Qatları ── */
+  #parallaxLayer1, #parallaxLayer2 {
+    position: fixed; inset: -10%; z-index: -1; pointer-events: none; opacity: 0.5;
+    background: radial-gradient(circle at 30% 40%, var(--rank-soft), transparent 50%);
+    transition: transform 0.15s ease-out;
+  }
+  #parallaxLayer2 { background: radial-gradient(circle at 70% 60%, rgba(95,208,122,0.08), transparent 50%); }
 </style>
 </head>
 <body>
   <div id="loadingBar"></div>
   <div id="shatterOverlay"></div>
+  <canvas id="gestureCanvas"></canvas>
+  <div id="parallaxLayer1"></div>
+  <div id="parallaxLayer2"></div>
   <div id="auroraBg"></div>
   <canvas id="particleCanvas"></canvas>
   <canvas id="confettiCanvas"></canvas>
@@ -711,16 +771,20 @@
     <button id="colorPickerBtn" type="button" title="Aksent rəngi">🎨</button>
     <button id="soundToggle" type="button" title="Səs effektləri">🔊<span class="eq-bars" id="eqBars"><span></span><span></span><span></span></span></button>
     <button id="themeToggle" type="button" title="Tema dəyiş">🌙</button>
+    <button id="voiceBtn" type="button" title="Səs əmrləri">🎙️</button>
+    <button id="micReactBtn" type="button" title="Səs-reaktiv fon">📡</button>
   </div>
   <div id="colorSwatches"></div>
   <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 
   <div class="scene">
+    <canvas id="signatureCanvas"></canvas>
     <div class="flip-container" id="flipContainer">
       <div class="card front spotlight">
         <div class="eyebrow">Zenith's Academy — Oyunçu Profili</div>
         <div class="search-badge" id="searchBadge"></div>
         <div class="heat-badge" id="heatBadge"><span class="flame">🔥</span><span id="heatText"></span></div>
+        <div class="time-travel-badge" id="timeTravelBadge">🕰️ <span id="timeTravelText"></span></div>
         <h1>{{ nick }}</h1>
         <div class="rank-row">
           <svg class="badge-svg" viewBox="0 0 42 42">
@@ -855,6 +919,25 @@
     <div class="ach-grid" id="achGrid"></div>
   </div>
 
+  <div class="extra-panel reveal spotlight" id="storyPanel" style="display:none;">
+    <h2>📖 Performans Hekayəsi</h2>
+    <div id="storyText"></div>
+  </div>
+
+  <div class="extra-panel reveal spotlight" id="timeMachinePanel" style="display:none;">
+    <h2>🕰️ Vaxt Maşını</h2>
+    <div class="timemachine-row">
+      <label>Matç: <span id="tmMatchLbl">-</span></label>
+      <input type="range" id="tmSlider" min="0" max="0" value="0">
+    </div>
+    <button class="timemachine-reset" id="tmResetBtn" type="button">Bugünə qayıt</button>
+  </div>
+
+  <div class="extra-panel reveal spotlight" id="dnaPanel" style="display:none;">
+    <h2>🧬 ELO DNT Sarmalı</h2>
+    <svg id="dnaChart" viewBox="0 0 300 140" preserveAspectRatio="none"></svg>
+  </div>
+
   <div class="extra-panel reveal spotlight" id="whatIfPanel" style="display:none;">
     <h2>🔮 What-If ELO Simulyatoru</h2>
     <div class="whatif-row">
@@ -893,6 +976,7 @@
 <script>
 const MY_ID = {{ discord_id }};
 const MY_ELO = {{ elo }};
+const MY_WIN_STREAK = {{ win_streak }};
 const PROFILE_URL = window.location.href;
 const SAFE_NICK = {{ nick|tojson }};  // tojson istifadəçi nickindəki backtick/${}-kimi JS-i qıra biləcək simvolları düzgün escape edir
 
@@ -1643,6 +1727,318 @@ document.getElementById('ocCloseBtn').addEventListener('click', (e) => {
   document.getElementById('onboardChecklist').classList.add('hide');
 });
 updateOnboardChecklist();
+
+// ── Generativ İmza Fon Sənəti (seed = MY_ID + MY_ELO, təkrarolunmaz naxış) ──
+(function generativeSignature() {
+  const canvas = document.getElementById('signatureCanvas');
+  const scene = document.querySelector('.scene');
+  const ctx = canvas.getContext('2d');
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const seed = (MY_ID % 1000000) * 31 + MY_ELO;
+  const rand = mulberry32(seed);
+  function draw() {
+    const rect = scene.getBoundingClientRect();
+    canvas.width = rect.width + 12;
+    canvas.height = rect.height + 12;
+    const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const cols = 14, rows = 18;
+    const cw = canvas.width / cols, ch = canvas.height / rows;
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const v = rand();
+        if (v < 0.14) {
+          const alpha = 0.04 + rand() * 0.10;
+          ctx.fillStyle = rankColor.startsWith('rgb') ? rankColor.replace(')', `,${alpha.toFixed(2)})`).replace('rgb', 'rgba') : `rgba(138,92,230,${alpha})`;
+          const size = cw * (0.4 + rand() * 0.6);
+          ctx.beginPath();
+          ctx.arc(x * cw + cw / 2, y * ch + ch / 2, size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+  draw();
+  window.addEventListener('resize', () => requestAnimationFrame(draw));
+})();
+
+// ── Nəbz-Sinxron İnterfeys — qazanma seriyası zamanı zərif döyüntü ─────────
+if (MY_WIN_STREAK >= 3) {
+  document.querySelector('.scene').classList.add('heartbeat-active');
+}
+
+// ── AI-Bənzəri Performans Hekayəsi (yazı-maşını effekti) ────────────────────
+fetch(`/api/profile/${MY_ID}/story`).then(r => r.json()).then(data => {
+  if (!data.text) return;
+  const panel = document.getElementById('storyPanel');
+  panel.style.display = 'block';
+  const el = document.getElementById('storyText');
+  const cursor = document.createElement('span');
+  cursor.className = 'story-cursor';
+  cursor.textContent = ' ';
+  let i = 0;
+  function tick() {
+    if (i <= data.text.length) {
+      el.textContent = data.text.slice(0, i);
+      el.appendChild(cursor);
+      i++;
+      setTimeout(tick, 18);
+    } else {
+      setTimeout(() => cursor.remove(), 1200);
+    }
+  }
+  tick();
+}).catch(() => {});
+
+// ── Vaxt-Maşını Slayderi + ELO DNT Sarmalı (eyni tarixçə datasından) ───────
+let ranksCache = null;
+function rankForElo(elo) {
+  if (!ranksCache) return null;
+  for (const t of ranksCache) {
+    if (elo >= t.lo && elo < t.hi) return t;
+  }
+  return ranksCache[ranksCache.length - 1];
+}
+Promise.all([
+  fetch('/api/ranks').then(r => r.json()),
+  fetch(`/api/profile/${MY_ID}/history`).then(r => r.json())
+]).then(([ranks, history]) => {
+  ranksCache = ranks;
+  if (!history || history.length < 2) return;
+
+  // Vaxt Maşını
+  const tmPanel = document.getElementById('timeMachinePanel');
+  tmPanel.style.display = 'block';
+  const slider = document.getElementById('tmSlider');
+  const lbl = document.getElementById('tmMatchLbl');
+  const badge = document.getElementById('timeTravelBadge');
+  const badgeText = document.getElementById('timeTravelText');
+  const eloEl = document.querySelector('.card.front .elo');
+  const rankEl = document.querySelector('.card.front .rank');
+  const originalEloText = eloEl.textContent;
+  const originalRankHtml = rankEl.innerHTML;
+  slider.max = history.length - 1;
+  slider.value = history.length - 1;
+  function applyHistoricalState(idx) {
+    const point = history[idx];
+    const isLatest = idx === history.length - 1;
+    lbl.textContent = `#${point.match_number}`;
+    if (isLatest) {
+      badge.classList.remove('show');
+      eloEl.textContent = originalEloText;
+      rankEl.innerHTML = originalRankHtml;
+      document.documentElement.style.removeProperty('--rank');
+      document.documentElement.style.removeProperty('--rank-soft');
+      return;
+    }
+    badge.classList.add('show');
+    badgeText.textContent = `Tarixi baxış — Matç #${point.match_number}`;
+    eloEl.textContent = point.elo_after;
+    const tier = rankForElo(point.elo_after);
+    if (tier) {
+      rankEl.textContent = `${tier.emoji || ''} ${tier.name}`.trim();
+      const rgb = tier.color.join(',');
+      document.documentElement.style.setProperty('--rank', `rgb(${rgb})`);
+      document.documentElement.style.setProperty('--rank-soft', `rgba(${rgb},0.18)`);
+    }
+  }
+  slider.addEventListener('input', () => applyHistoricalState(parseInt(slider.value, 10)));
+  document.getElementById('tmResetBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    slider.value = history.length - 1;
+    applyHistoricalState(history.length - 1);
+  });
+  applyHistoricalState(history.length - 1);
+
+  // ELO DNT Sarmalı
+  const dnaPanel = document.getElementById('dnaPanel');
+  dnaPanel.style.display = 'block';
+  const svg = document.getElementById('dnaChart');
+  const w = 300, h = 140, mid = h / 2, amp = 42;
+  const n = history.length;
+  let strand1 = '', strand2 = '', rungs = '';
+  const pts1 = [], pts2 = [];
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * w;
+    const phase = (i / n) * Math.PI * 4;
+    const y1 = mid + Math.sin(phase) * amp;
+    const y2 = mid + Math.sin(phase + Math.PI) * amp;
+    pts1.push(`${x.toFixed(1)},${y1.toFixed(1)}`);
+    pts2.push(`${x.toFixed(1)},${y2.toFixed(1)}`);
+    if (i % 2 === 0) {
+      const color = history[i].won ? 'var(--green)' : 'var(--red)';
+      rungs += `<line class="dna-rung" x1="${x.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${color}" opacity="0.5"/>`;
+    }
+  }
+  strand1 = `<polyline class="dna-strand" points="${pts1.join(' ')}" stroke="var(--rank)"/>`;
+  strand2 = `<polyline class="dna-strand" points="${pts2.join(' ')}" stroke="var(--rank)" opacity="0.4"/>`;
+  svg.innerHTML = rungs + strand1 + strand2;
+}).catch(() => {});
+
+// ── Səs Əmrləri ilə Naviqasiya ──────────────────────────────────────────────
+(function voiceCommands() {
+  const btn = document.getElementById('voiceBtn');
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) { btn.style.display = 'none'; return; }
+  const recognition = new SR();
+  recognition.lang = 'az-AZ';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  let listening = false;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (listening) { recognition.stop(); return; }
+    try { recognition.start(); listening = true; btn.classList.add('listening'); }
+    catch (err) {}
+  });
+  recognition.addEventListener('end', () => { listening = false; btn.classList.remove('listening'); });
+  recognition.addEventListener('result', (e) => {
+    const said = (e.results[0][0].transcript || '').toLowerCase();
+    if (said.includes('paylaş')) document.getElementById('shareBtn').click();
+    else if (said.includes('rəqib')) document.getElementById('randomRivalBtn').click();
+    else if (said.includes('geri') || said.includes('leaderboard')) {
+      startLoadingBar(); triggerShatter(() => { window.location.href = '/'; });
+    } else if (said.includes('yuxarı')) window.scrollTo({ top: 0, behavior: 'smooth' });
+    else if (said.includes('aşağı')) window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    else showToast(`🎙️ Anlaşılmadı: "${said}"`);
+  });
+})();
+
+// ── Səs-Reaktiv Fon (mikrofon icazəsi ilə) ──────────────────────────────────
+(function micReactiveBackground() {
+  const btn = document.getElementById('micReactBtn');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { btn.style.display = 'none'; return; }
+  let active = false, stream = null, analyser = null, dataArray = null, rafId = null;
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctxA = new (window.AudioContext || window.webkitAudioContext)();
+      const source = ctxA.createMediaStreamSource(stream);
+      analyser = ctxA.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      active = true;
+      btn.classList.add('active');
+      loop();
+    } catch (err) { showToast('❌ Mikrofona icazə verilmədi'); }
+  }
+  function stop() {
+    active = false;
+    btn.classList.remove('active');
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (rafId) cancelAnimationFrame(rafId);
+    document.getElementById('auroraBg').style.filter = '';
+  }
+  function loop() {
+    if (!active) return;
+    analyser.getByteFrequencyData(dataArray);
+    const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+    const intensity = Math.min(1, avg / 90);
+    document.getElementById('auroraBg').style.filter = `blur(${40 - intensity * 15}px) brightness(${1 + intensity * 0.6})`;
+    rafId = requestAnimationFrame(loop);
+  }
+  btn.addEventListener('click', (e) => { e.stopPropagation(); active ? stop() : start(); });
+})();
+
+// ── Jest-Əsaslı Sürətli Əmrlər (siçanla "Z" cızma) ──────────────────────────
+(function gestureCommands() {
+  const canvas = document.getElementById('gestureCanvas');
+  const gctx = canvas.getContext('2d');
+  let drawing = false, points = [];
+  let gestureArmed = false;
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() === 'g' && document.activeElement.tagName !== 'INPUT') {
+      gestureArmed = !gestureArmed;
+      canvas.classList.toggle('active', gestureArmed);
+      canvas.style.pointerEvents = gestureArmed ? 'auto' : 'none';
+      canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+      showToast(gestureArmed ? '✏️ Jest rejimi aktiv — "Z" hərfini çəkin' : '✏️ Jest rejimi bağlandı');
+    }
+  });
+  canvas.addEventListener('mousedown', (e) => {
+    if (!gestureArmed) return;
+    drawing = true; points = [{x: e.clientX, y: e.clientY}];
+    gctx.clearRect(0, 0, canvas.width, canvas.height);
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    if (!drawing) return;
+    points.push({x: e.clientX, y: e.clientY});
+    gctx.strokeStyle = '#8a5ce6';
+    gctx.lineWidth = 3;
+    gctx.beginPath();
+    const p = points;
+    gctx.moveTo(p[p.length - 2].x, p[p.length - 2].y);
+    gctx.lineTo(p[p.length - 1].x, p[p.length - 1].y);
+    gctx.stroke();
+  });
+  canvas.addEventListener('mouseup', () => {
+    if (!drawing) return;
+    drawing = false;
+    detectZ(points);
+    setTimeout(() => gctx.clearRect(0, 0, canvas.width, canvas.height), 400);
+  });
+  function detectZ(pts) {
+    if (pts.length < 8) return;
+    const third = Math.floor(pts.length / 3);
+    const seg1 = pts.slice(0, third);
+    const seg2 = pts.slice(third, third * 2);
+    const seg3 = pts.slice(third * 2);
+    const dx = (arr) => arr[arr.length - 1].x - arr[0].x;
+    const dy = (arr) => arr[arr.length - 1].y - arr[0].y;
+    const seg1Right = dx(seg1) > 40;
+    const seg2Diagonal = dx(seg2) < -20 && dy(seg2) > 30;
+    const seg3Right = dx(seg3) > 40;
+    if (seg1Right && seg2Diagonal && seg3Right) {
+      showToast('✨ "Z" jesti aşkarlandı!');
+      playTone(880, 0.2, 'triangle');
+      gestureArmed = false;
+      canvas.classList.remove('active');
+      canvas.style.pointerEvents = 'none';
+      setTimeout(() => {
+        startLoadingBar();
+        triggerShatter(() => { window.location.href = '/'; });
+      }, 500);
+    }
+  }
+})();
+
+// ── Parallax Dərinlik Qatları ────────────────────────────────────────────────
+(function parallaxLayers() {
+  const l1 = document.getElementById('parallaxLayer1');
+  const l2 = document.getElementById('parallaxLayer2');
+  document.addEventListener('mousemove', (e) => {
+    const x = (e.clientX / window.innerWidth - 0.5);
+    const y = (e.clientY / window.innerHeight - 0.5);
+    l1.style.transform = `translate(${x * -20}px, ${y * -20}px)`;
+    l2.style.transform = `translate(${x * 30}px, ${y * 30}px)`;
+  });
+  if (window.DeviceOrientationEvent) {
+    function handleOrientation(e) {
+      const x = (e.gamma || 0) / 45;
+      const y = (e.beta || 0) / 45;
+      l1.style.transform = `translate(${x * -14}px, ${y * -14}px)`;
+      l2.style.transform = `translate(${x * 20}px, ${y * 20}px)`;
+    }
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      document.addEventListener('click', function reqOnce() {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state === 'granted') window.addEventListener('deviceorientation', handleOrientation);
+        }).catch(() => {});
+        document.removeEventListener('click', reqOnce);
+      }, { once: true });
+    } else {
+      window.addEventListener('deviceorientation', handleOrientation);
+    }
+  }
+})();
 
 // ── Nailiyyət Kolleksiya Divarı ───────────────────────────────────────────
 fetch(`/api/profile/${MY_ID}/achievements`).then(r => r.json()).then(data => {

@@ -165,6 +165,7 @@ def _profile_dict(discord_id):
 
     today_key = time.strftime("%Y-%m-%d")
     search_count_today = _search_counts.get((today_key, str(so2_id)), 0)
+    win_streak = database.get_current_win_streak(discord_id)
 
     return {
         "discord_id": discord_id, "nick": nick, "so2_id": so2_id, "elo": elo,
@@ -172,8 +173,70 @@ def _profile_dict(discord_id):
         "kills": stats.get("kills", 0), "assists": stats.get("assists", 0), "deaths": stats.get("deaths", 0),
         "rank_name": rank_name, "rank_color": list(rank_color), "rank_emoji": rank_emoji,
         "next_rank_name": next_rank_name, "elo_to_next": elo_to_next, "tier_progress_pct": tier_progress_pct,
-        "search_count_today": search_count_today,
+        "search_count_today": search_count_today, "win_streak": win_streak,
     }
+
+
+@app.route("/api/ranks")
+def api_ranks():
+    return jsonify([
+        {"lo": lo, "hi": hi, "name": name, "color": list(color), "emoji": emoji}
+        for (lo, hi, name, color, emoji) in RANKS
+    ])
+
+
+def _build_performance_story(discord_id, nick):
+    history = database.get_player_match_history(discord_id, limit=10)
+    map_stats = database.get_map_stats(discord_id) or {}
+    milestones = database.get_player_milestones(discord_id) or {}
+    win_streak = database.get_current_win_streak(discord_id)
+
+    if not history:
+        return f"{nick} hələ heç bir matç oynamayıb — hekayə hələ başlamayıb."
+
+    recent5 = history[:5]
+    recent_wins = sum(1 for m in recent5 if m["won"])
+    recent_losses = len(recent5) - recent_wins
+
+    best_map = None
+    best_wr = -1
+    for map_name, s in map_stats.items():
+        total = s["wins"] + s["losses"]
+        if total < 2:
+            continue
+        wr = s["wins"] / total * 100
+        if wr > best_wr:
+            best_wr = wr
+            best_map = map_name
+
+    parts = []
+    if win_streak >= 3:
+        parts.append(f"{nick} hazırda {win_streak} qələbəlik seriyadadır — əla formadadır.")
+    elif recent_wins >= 4:
+        parts.append(f"{nick} son {len(recent5)} matçdan {recent_wins}-ni qazanıb, yüksəliş göstərir.")
+    elif recent_losses >= 4:
+        parts.append(f"{nick} son matçlarda çətinlik çəkir — {recent_losses} məğlubiyyət, amma hər seriya bitir.")
+    else:
+        parts.append(f"{nick} sabit templə davam edir — son {len(recent5)} matçda {recent_wins} qələbə.")
+
+    if best_map:
+        parts.append(f"Ən güclü olduğu xəritə: {best_map} ({round(best_wr)}% qazanma).")
+
+    if milestones.get("peak_elo"):
+        parts.append(f"Karyerasının zirvəsi {milestones['peak_elo']} ELO.")
+    if milestones.get("max_streak") and milestones["max_streak"] >= 5:
+        parts.append(f"Ən uzun seriyası {milestones['max_streak']} ardıcıl qələbə olub.")
+
+    return " ".join(parts)
+
+
+@app.route("/api/profile/<int:discord_id>/story")
+def api_profile_story(discord_id):
+    player = database.get_player(discord_id)
+    if not player:
+        abort(404)
+    nick = player[1]
+    return jsonify({"text": _build_performance_story(discord_id, nick)})
 
 
 @app.route("/u/<int:discord_id>")
@@ -205,7 +268,10 @@ def api_profile_history(discord_id):
     if not database.get_player(discord_id):
         abort(404)
     history = list(reversed(database.get_player_match_history(discord_id, limit=30)))
-    return jsonify([{"match_number": h["match_number"], "elo_after": h["elo_after"]} for h in history])
+    return jsonify([
+        {"match_number": h["match_number"], "elo_after": h["elo_after"], "won": h["won"]}
+        for h in history
+    ])
 
 
 @app.route("/api/profile/<int:discord_id>/maps")

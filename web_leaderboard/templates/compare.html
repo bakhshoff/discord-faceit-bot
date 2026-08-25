@@ -66,6 +66,19 @@
   ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 6px; }
   html { scrollbar-color: var(--gold) var(--bg); scrollbar-width: thin; }
   ::selection { background: var(--gold); color: #0b0a0d; }
+
+  /* ── "Güc Döyüşü" Kəndir-Çəkmə Animasiyası ── */
+  .tug-of-war { margin-bottom: 28px; }
+  .tug-emoji { display: flex; justify-content: space-between; font-size: 22px; margin-bottom: 6px; }
+  .tug-track { position: relative; height: 6px; background: #1a171e; border-radius: 4px; overflow: visible; }
+  .tug-rope { position: absolute; inset: 0; background: linear-gradient(90deg, var(--p1), var(--p2)); border-radius: 4px; opacity: 0.5; }
+  .tug-knot {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 20px; transition: left 1.1s cubic-bezier(.34,1.56,.64,1);
+  }
+  .tug-knot.jitter { animation: tugJitter 0.35s ease-in-out infinite; }
+  @keyframes tugJitter { 0%, 100% { margin-left: 0; } 50% { margin-left: 4px; } }
+  .tug-lbl { text-align: center; font-size: 11px; color: var(--text-dim); margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -87,6 +100,15 @@
     </div>
   </div>
 
+  <div class="tug-of-war">
+    <div class="tug-emoji"><span>💪</span><span>💪</span></div>
+    <div class="tug-track">
+      <div class="tug-rope"></div>
+      <div class="tug-knot" id="tugKnot">🪢</div>
+    </div>
+    <div class="tug-lbl" id="tugLbl">Statistikalar hesablanır...</div>
+  </div>
+
   <div id="statsContainer"></div>
 
   <footer>
@@ -96,6 +118,9 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => document.body.classList.add('ready')));
+
+const P1_NICK = {{ p1.nick|tojson }};
+const P2_NICK = {{ p2.nick|tojson }};
 
 const STATS = [
   {label: 'ELO', v1: {{ p1.elo }}, v2: {{ p2.elo }}},
@@ -108,12 +133,15 @@ const STATS = [
 ];
 
 const container = document.getElementById('statsContainer');
+let p1WinCount = 0, p2WinCount = 0;
 container.innerHTML = STATS.map(s => {
   const total = s.v1 + s.v2;
   let pct1 = total > 0 ? (s.v1 / total) * 100 : 50;
   if (s.lowerBetter) pct1 = 100 - pct1;
   const winner1 = s.lowerBetter ? s.v1 < s.v2 : s.v1 > s.v2;
   const winner2 = s.lowerBetter ? s.v2 < s.v1 : s.v2 > s.v1;
+  if (winner1) p1WinCount++;
+  if (winner2) p2WinCount++;
   return `
     <div class="stat-row">
       <div class="lbl">${s.label}</div>
@@ -129,6 +157,33 @@ container.innerHTML = STATS.map(s => {
     </div>
   `;
 }).join('');
+
+// ── "Güc Döyüşü" Kəndir-Çəkmə Animasiyası ────────────────────────────────
+(function tugOfWar() {
+  const totalWins = p1WinCount + p2WinCount;
+  const ratio = totalWins > 0 ? p1WinCount / totalWins : 0.5;
+  const leftPct = Math.min(85, Math.max(15, ratio * 100));
+  const knot = document.getElementById('tugKnot');
+  const lbl = document.getElementById('tugLbl');
+  const closeness = 1 - Math.abs(ratio - 0.5) * 2;
+  setTimeout(() => {
+    knot.style.left = leftPct + '%';
+    if (closeness > 0.5) knot.classList.add('jitter');
+  }, 300);
+  if (p1WinCount === p2WinCount) {
+    lbl.textContent = `Bərabər gedir — ${p1WinCount}-${p2WinCount}`;
+  } else {
+    const winnerNick = p1WinCount > p2WinCount ? P1_NICK : P2_NICK;
+    const winnerClass = p1WinCount > p2WinCount ? 'p1-color' : 'p2-color';
+    const winCounts = p1WinCount > p2WinCount ? `${p1WinCount}-${p2WinCount}` : `${p2WinCount}-${p1WinCount}`;
+    lbl.textContent = '';
+    const span = document.createElement('span');
+    span.className = winnerClass;
+    span.textContent = winnerNick;
+    lbl.appendChild(span);
+    lbl.appendChild(document.createTextNode(` kəndiri çəkir — ${winCounts}`));
+  }
+})();
 </script>
 </body>
 </html>
