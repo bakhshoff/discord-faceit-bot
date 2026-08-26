@@ -71,6 +71,7 @@ from database import (
     add_boost, get_active_boost, get_all_active_boosts,
     get_or_create_current_season, get_season_by_number, add_season_stat,
     get_season_stat, get_season_leaderboard, close_season,
+    get_completed_seasons, reset_all_players_for_new_season,
     get_dm_notifications, set_dm_notifications, use_free_nickname_change,
     check_and_grant_comeback_bonus, COMEBACK_BONUS_COINS,
     create_report, get_recent_reports_for,
@@ -628,9 +629,11 @@ _last_season_rotation_month = None
 @tasks.loop(minutes=30)
 async def season_rotation_loop():
     """Ayın 1-ində (AZ vaxtı ilə) əvvəlki sezonu bağlayıb yeni sezon açır, keçən ayın
-    top-3-nə bonus coin verir və Hall of Fame kanalında elan edir. 30 dəqiqəlik interval
-    (bax: weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından asılı olmadan
-    ayın 1-i başlayan kimi tezliklə aşkarlanmasını təmin edir."""
+    top-3-nə bonus coin verir, Hall of Fame kanalında elan edir və BÜTÜN oyunçuların
+    ELO/wins/losses/kills/assists/deaths-ini sıfırlayır (karyera rekordları toxunulmaz
+    qalır — bax: reset_all_players_for_new_season). 30 dəqiqəlik interval (bax:
+    weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından asılı olmadan ayın
+    1-i başlayan kimi tezliklə aşkarlanmasını təmin edir."""
     global _last_season_rotation_month
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
     if now.day != 1:
@@ -659,10 +662,19 @@ async def season_rotation_loop():
                 description="\n".join(lines),
                 color=discord.Color.from_rgb(*_seasonal_accent())
             )
-            embed.set_footer(text="Yeni sezon başladı — Karyera Yolu düyməsindən sezon tarixçənizi izləyin.")
+            embed.set_footer(text="Bütün oyunçuların ELO/statistikası sıfırlandı — yeni sezon başladı. Karyera Yolu düyməsindən keçmiş sezonları izləyin.")
             await channel.send(embed=embed)
     close_season(current["id"])
-    get_or_create_current_season()  # yeni sezonu dərhal yaradır
+    reset_all_players_for_new_season()
+    new_season = get_or_create_current_season()  # yeni sezonu dərhal yaradır
+
+    if leaderboard_channel_id is not None:
+        channel = bot.get_channel(leaderboard_channel_id)
+        if channel is not None:
+            try:
+                await channel.edit(name=f"leaderboard-sezon-{new_season['season_number']}")
+            except discord.Forbidden:
+                pass
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -3096,7 +3108,43 @@ class RewardsMenuView(_ProfileSubMenuBase):
         if archives:
             lines = [f"**{a['season_name']}** — {a['total_participants']} iştirakçı" for a in archives[:5]]
             embed.add_field(name="🎫 Keçmiş Battle Pass sezonları", value="\n".join(lines), inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        completed = get_completed_seasons()
+        view = SeasonHistoryView(completed) if completed else discord.utils.MISSING
+        if completed:
+            embed.set_footer(text="Aşağıdan keçmiş bir ELO sezonunu seçib final sıralamasına baxa bilərsiniz.")
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+class SeasonHistoryView(discord.ui.View):
+    """Bağlanmış ELO sezonlarının final sıralamasına Discord-dan baxmaq üçün — veb
+    saytdakı "Zaman Kapsulu" funksiyasının Discord tərəfdaşı."""
+    def __init__(self, completed_seasons):
+        super().__init__(timeout=180)
+        options = [
+            discord.SelectOption(label=f"Sezon #{s['season_number']}", value=str(s["id"]),
+                                  description=f"{s['start_date']} → {s['end_date']}")
+            for s in completed_seasons[:25]
+        ]
+        sel = discord.ui.Select(placeholder="Keçmiş sezona bax...", options=options)
+        sel.callback = self._on_select
+        self.add_item(sel)
+        self.select_menu = sel
+
+    async def _on_select(self, interaction: discord.Interaction):
+        season_id = int(self.select_menu.values[0])
+        rows = get_season_leaderboard(season_id, limit=10)
+        if not rows:
+            await interaction.response.send_message("ℹ️ Bu sezonda qeydə alınmış statistika yoxdur.", ephemeral=True)
+            return
+        lines = []
+        for i, (nick, so2_id, elo_gained, kills, assists, deaths, wins, losses, discord_id) in enumerate(rows):
+            lines.append(f"**#{i+1}** {nick} — {'+' if elo_gained >= 0 else ''}{elo_gained} ELO ({wins}Q/{losses}M)")
+        embed = discord.Embed(
+            title="🕰️ Sezon Nəticələri",
+            description="\n".join(lines),
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class SocialMenuView(_ProfileSubMenuBase):
@@ -3546,7 +3594,10 @@ async def full_setup(interaction: discord.Interaction):
     ch_register = await _recreate_text("faceit-qeydiyyat", announce_overwrites)
     ch_matchmaking = await _recreate_text("matchmaking", announce_overwrites)
     ch_rules = await _recreate_text("faceit-qaydalari", announce_overwrites)
-    ch_leaderboard = await _recreate_text("leaderboard", announce_overwrites)
+    current_season_for_setup = get_or_create_current_season()
+    ch_leaderboard = await _recreate_text(
+        f"leaderboard-sezon-{current_season_for_setup['season_number']}", announce_overwrites
+    )
     ch_pass = await _recreate_text(f"pass-{BP_SEASON_NAME.lower()}", announce_overwrites)
     ch_hof = await _recreate_text("hall-of-fame", announce_overwrites)
     ch_log = await _recreate_text("faceit-log")

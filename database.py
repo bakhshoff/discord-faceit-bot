@@ -2062,6 +2062,26 @@ def close_season(season_id):
     conn.close()
 
 
+def reset_all_players_for_new_season(base_elo=1000):
+    """Yeni sezon başlayanda bütün oyunçuların RƏQABƏT statistikasını sıfırlayır:
+    ELO, wins, losses, kills, assists, deaths, win_streak, loss_streak. Karyera
+    rekordları (peak_elo, max_streak, created_at və s.) TOXUNULMAZ qalır — bunlar
+    sezonlar arası davam edən lifetime nailiyyətlərdir, season_stats cədvəli isə
+    (add_season_stat vasitəsilə artıq hər matçda ayrıca yazılır) bu sıfırlamadan
+    asılı olmadan hər sezonun tam tarixçəsini saxlayır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE players SET elo=?, wins=0, losses=0, kills=0, assists=0, deaths=0, "
+        "win_streak=0, loss_streak=0",
+        (base_elo,)
+    )
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected
+
+
 def get_completed_seasons():
     """Bağlanmış (keçmiş) sezonların siyahısını qaytarır — "zaman kapsulu" veb funksiyası üçün."""
     conn = _get_conn(); cursor = conn.cursor()
