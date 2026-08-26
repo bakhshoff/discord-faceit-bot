@@ -5249,10 +5249,12 @@ async def reaksiya_yarisi_cmd(interaction: discord.Interaction):
     message = await interaction.original_response()
     await asyncio.sleep(random.uniform(3, 8))
     target = random.choice(["⚡", "🔥", "🎯", "💥"])
-    await message.edit(content=f"🏁 **BAŞLA!** İlk kim {target} ilə reaksiya versə udur!")
+    # Yarış vəziyyəti mesaj redaktəsindən ƏVVƏL qeydə alınır ki, "BAŞLA!" görünən kimi
+    # (super-sürətli) reaksiya versə belə heç bir hadisə itirilmiş olmasın.
     _active_reaction_races[message.id] = {
         "target_emoji": target, "resolved": False, "started_at": datetime.datetime.utcnow()
     }
+    await message.edit(content=f"🏁 **BAŞLA!** İlk kim {target} ilə reaksiya versə udur!")
     try:
         await message.add_reaction(target)
     except discord.HTTPException:
