@@ -657,6 +657,12 @@ async def season_rotation_loop():
                          + (f" 🎁 +{reward} coin" if reward else ""))
         channel = await _get_hall_of_fame_channel()
         if channel:
+            progress_msg = await channel.send("⏳ Sezon yekunlaşdırılır...\n`░░░░░░░░░░░░░░░░░░░░` 0%")
+            await _progress_step(progress_msg, 1, 3, "Mükafatlar hesablanır...")
+            await asyncio.sleep(1.0)
+            await _progress_step(progress_msg, 2, 3, "Bütün oyunçuların statistikası sıfırlanır...")
+            await asyncio.sleep(1.0)
+            await _progress_step(progress_msg, 3, 3, "Yeni sezon başlayır!")
             embed = discord.Embed(
                 title=f"🛤️ Sezon #{current['season_number']} başa çatdı!",
                 description="\n".join(lines),
@@ -1652,6 +1658,36 @@ class RegisterView(discord.ui.View):
         await interaction.response.send_modal(RegisterModal())
 
 
+async def _progress_step(message, step, total, label):
+    """Uzun proseslərdə (full_setup, sezon rotasiyası) saxta 'yüklənmə' effekti —
+    mesaj ardıcıl redaktə olunaraq vizual irəliləyiş zolağı göstərir."""
+    if not message:
+        return
+    filled = round(step / total * 20)
+    bar = "▓" * filled + "░" * (20 - filled)
+    pct = round(step / total * 100)
+    try:
+        await message.edit(content=f"⏳ {label}\n`{bar}` {pct}%")
+    except discord.HTTPException:
+        pass
+
+
+def _build_match_status_embed(active):
+    """Matç kartının yanında göstərilən 'canlı status' embedi — komanda hazırlığı,
+    xəritə və səs kanalı vəziyyəti dəyişdikcə yenidən redaktə olunur (bax:
+    TeamReadyView._set_ready/_veto, _start_one_match)."""
+    embed = discord.Embed(
+        title=f"📋 Matç No{active['match_number']} — Canlı Status",
+        color=discord.Color.blurple()
+    )
+    embed.add_field(name="🔵 Komanda A", value="✅ Hazırdır" if active["team_a_ready"] else "⏳ Gözlənilir", inline=True)
+    embed.add_field(name="🔴 Komanda B", value="✅ Hazırdır" if active["team_b_ready"] else "⏳ Gözlənilir", inline=True)
+    embed.add_field(name="🗺️ Xəritə", value=active["selected_map"] or "?", inline=True)
+    voice_ready = bool(active.get("voice_a_id")) and bool(active.get("voice_b_id"))
+    embed.add_field(name="🎙️ Səs kanalları", value="✅ Hazır" if voice_ready else "⏳ Hazırlanır", inline=True)
+    return embed
+
+
 class TeamReadyView(discord.ui.View):
     """Stateless/persistent görünüş: hər klik zamanı aktiv matçı bazadan təzədən oxuyur,
     ona görə bot restart olsa belə (deploy zamanı) düymələr işləməyə davam edir."""
@@ -1713,9 +1749,19 @@ class TeamReadyView(discord.ui.View):
             button.disabled = True
             button.label = "Komanda B Hazırdır ✅"
 
-        await interaction.response.edit_message(view=self)
-
         active = get_active_match(active["match_number"])
+        status_embed = _build_match_status_embed(active) if active else None
+        await interaction.response.edit_message(embed=status_embed, view=self)
+
+        if active and active.get("thread_id"):
+            thread = interaction.guild.get_thread(active["thread_id"]) if interaction.guild else None
+            if thread:
+                team_label = "🔵 Komanda A" if is_team_a else "🔴 Komanda B"
+                try:
+                    await thread.send(f"✅ {team_label} hazırdır!")
+                except discord.HTTPException:
+                    pass
+
         if active and active["team_a_ready"] and active["team_b_ready"]:
             log_embed = discord.Embed(
                 title=f"✅ Matç No{active['match_number']} — Hər iki komanda hazır",
@@ -1764,12 +1810,42 @@ class TeamReadyView(discord.ui.View):
             generate_match_card, active["match_number"], new_map, active["team_a"], active["team_b"],
             active["captain_a_id"], active["captain_b_id"], card_path
         )
+        active = get_active_match(active["match_number"])
         await interaction.message.edit(
-            attachments=[discord.File(card_path, filename="match.png")], view=self
+            attachments=[discord.File(card_path, filename="match.png")],
+            embed=_build_match_status_embed(active) if active else None,
+            view=self
         )
         await interaction.followup.send(
             f"🚫 {'Komanda A' if is_team_a else 'Komanda B'} kapitanı xəritəni vetoladı! Yeni xəritə: **{new_map}**",
         )
+
+        if active and active.get("thread_id") and interaction.guild:
+            thread = interaction.guild.get_thread(active["thread_id"])
+            if thread:
+                try:
+                    await thread.send(f"🚫 Xəritə vetolandı — yeni xəritə: **{new_map}**")
+                except discord.HTTPException:
+                    pass
+
+        # Səs kanalları artıq yaradılıbsa, yeni xəritəni əks etdirsin deyə adları yenilənir
+        # (hər komanda cəmi 1 veto haqqına malikdir, ona görə kanal başına maksimum 1 rename —
+        # Discord-un ad-dəyişmə limitindən (10 dəqiqədə 2) çox-çox aşağıdır).
+        if active and interaction.guild:
+            if active.get("voice_a_id"):
+                va = interaction.guild.get_channel(active["voice_a_id"])
+                if va:
+                    try:
+                        await va.edit(name=f"🔵 M{active['match_number']}-A · {new_map}")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+            if active.get("voice_b_id"):
+                vb = interaction.guild.get_channel(active["voice_b_id"])
+                if vb:
+                    try:
+                        await vb.edit(name=f"🔴 M{active['match_number']}-B · {new_map}")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
 
     @discord.ui.button(label="🚫 Xəritəni Veto Et (A)", style=discord.ButtonStyle.secondary, custom_id="veto_a", row=2)
     async def veto_a_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2146,6 +2222,15 @@ class MatchResultView(discord.ui.View):
             value="\n".join([_fmt_line(p, r) for p, r in zip(loser_team, results["losers"])]),
             inline=False
         )
+
+        # Animasiyalı nailiyyət/ləqəb bildirişi — əvvəlcə "açılır..." teaser göstərilir,
+        # sonra (aşağıda) tam siyahı ilə redaktə olunur ki hədiyyə qutusu açılan effekti yaransın.
+        if new_achievements or new_titles:
+            teaser = embed.copy()
+            teaser.set_footer(text="🎁 Yeni nailiyyətlər açılır...")
+            await interaction.edit_original_response(embed=teaser, view=self)
+            await asyncio.sleep(1.4)
+
         if new_achievements:
             embed.add_field(
                 name="🏆 Yeni nailiyyətlər",
@@ -2522,9 +2607,14 @@ async def _start_one_match(channel, guild) -> bool:
     if is_lightning:
         mentions += "\n\n⚡ **İldırım Turu davam edir!** Bu matçda ELO və Coin əlavə 2x-dir!"
     ready_view = TeamReadyView(team_a, team_b)
+    initial_status_embed = _build_match_status_embed({
+        "match_number": match_number, "team_a_ready": False, "team_b_ready": False,
+        "selected_map": selected_map, "voice_a_id": None, "voice_b_id": None,
+    })
     sent_message = await channel.send(
         content=mentions,
         file=discord.File(card_path, filename="match.png"),
+        embed=initial_status_embed,
         view=ready_view
     )
 
@@ -2578,13 +2668,29 @@ async def _start_one_match(channel, guild) -> bool:
     if guild:
         category = discord.utils.get(guild.categories, name=FULL_SETUP_CATEGORY_NAME)
         try:
-            voice_a_channel = await guild.create_voice_channel(f"🔵 M{match_number}-A", category=category)
-            voice_b_channel = await guild.create_voice_channel(f"🔴 M{match_number}-B", category=category)
+            voice_a_channel = await guild.create_voice_channel(f"🔵 M{match_number}-A · {selected_map}", category=category)
+            voice_b_channel = await guild.create_voice_channel(f"🔴 M{match_number}-B · {selected_map}", category=category)
             set_active_match_voice(
                 match_number,
                 voice_a_channel.id if voice_a_channel else None,
                 voice_b_channel.id if voice_b_channel else None
             )
+            active_now = get_active_match(match_number)
+            if active_now:
+                try:
+                    await sent_message.edit(embed=_build_match_status_embed(active_now))
+                except discord.HTTPException:
+                    pass
+            if thread_id:
+                thread_obj = guild.get_thread(thread_id)
+                if thread_obj:
+                    try:
+                        await thread_obj.send(
+                            f"🎙️ Səs kanalları hazırdır: {voice_a_channel.mention} (Komanda A) · "
+                            f"{voice_b_channel.mention} (Komanda B)"
+                        )
+                    except discord.HTTPException:
+                        pass
         except discord.Forbidden:
             print(f"[VOICE] Matç #{match_number} üçün səs kanalları yaradıla bilmədi (icazə yoxdur).", flush=True)
 
@@ -2786,23 +2892,64 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    embed = discord.Embed(
-        title=f"👋 Xoş gəldin, {member.name}!",
-        description=(
-            f"**{member.guild.name}** — Standoff 2 FACEIT 2v2 icması!\n\n"
-            "**Necə başlamaq olar:**\n"
-            "1️⃣ Qeydiyyat kanalındakı **Qeydiyyat** düyməsini bas (ya da `/register`)\n"
-            "2️⃣ Matchmaking kanalında **Sıraya qoşul** ilə 2v2 sıraya yaz\n"
-            "3️⃣ `/profile` ilə profilini, ELO-nu və statistikanı izlə\n\n"
-            "Sual üçün rəhbərliklə əlaqə saxlaya bilərsən. Uğurlar! 🎮"
-        ),
-        color=discord.Color.from_rgb(138, 92, 230)
-    )
-    embed.set_footer(text="Zenith's Academy")
+    view = OnboardingTourView(member.name, member.guild.name)
     try:
-        await member.send(embed=embed)
+        await member.send(embed=view._embed(), view=view)
     except discord.Forbidden:
         pass
+
+
+ONBOARDING_STEPS = [
+    {
+        "title": "👋 Xoş gəldin!",
+        "description": "**{guild}** — Standoff 2 FACEIT 2v2 icması!\n\nBu qısa tur botun əsas funksiyalarını 3 addımda tanıdacaq — \"Növbəti →\" düyməsinə basaraq davam et."
+    },
+    {
+        "title": "1️⃣ Qeydiyyat",
+        "description": "Qeydiyyat kanalındakı **Qeydiyyat** düyməsini bas (ya da `/register` yaz) — Standoff 2 ID-ni hesabına əlaqələndir."
+    },
+    {
+        "title": "2️⃣ Matchmaking",
+        "description": "Matchmaking kanalında **Sıraya qoşul** düyməsi ilə 2v2 sıraya yaz — 4 nəfər tamamlanan kimi matç avtomatik başlayır."
+    },
+    {
+        "title": "3️⃣ Profilin",
+        "description": "`/profile` ilə profilini, ELO-nu, statistikanı və inventarını izlə. Sual üçün rəhbərliklə əlaqə saxlaya bilərsən. Uğurlar! 🎮"
+    },
+]
+
+
+class OnboardingTourView(discord.ui.View):
+    """Yeni üzv qoşulanda DM-ə göndərilən addım-addım tanışlıq turu."""
+    def __init__(self, member_name, guild_name):
+        super().__init__(timeout=600)
+        self.step = 0
+        self.member_name = member_name
+        self.guild_name = guild_name
+        self._update_button_label()
+
+    def _update_button_label(self):
+        self.next_btn.label = "Bitir ✅" if self.step == len(ONBOARDING_STEPS) - 1 else "Növbəti →"
+
+    def _embed(self):
+        s = ONBOARDING_STEPS[self.step]
+        embed = discord.Embed(
+            title=s["title"],
+            description=s["description"].format(name=self.member_name, guild=self.guild_name),
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        embed.set_footer(text=f"Zenith's Academy · Addım {self.step + 1}/{len(ONBOARDING_STEPS)}")
+        return embed
+
+    @discord.ui.button(label="Növbəti →", style=discord.ButtonStyle.primary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.step < len(ONBOARDING_STEPS) - 1:
+            self.step += 1
+            self._update_button_label()
+            await interaction.response.edit_message(embed=self._embed(), view=self)
+        else:
+            button.disabled = True
+            await interaction.response.edit_message(embed=self._embed(), view=self)
 
 
 # discord_id -> unix timestamp botların səs kanalına qoşulduğu an. Bu, YALNIZ canlı, cari
@@ -3567,10 +3714,12 @@ async def full_setup(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
+    progress_msg = await interaction.followup.send("⏳ Server qurulur...\n`░░░░░░░░░░░░░░░░░░░░` 0%", ephemeral=True)
 
     category = discord.utils.get(guild.categories, name=FULL_SETUP_CATEGORY_NAME)
     if category is None:
         category = await guild.create_category(FULL_SETUP_CATEGORY_NAME)
+    await _progress_step(progress_msg, 1, 5, "Kateqoriya hazırlanır...")
 
     announce_overwrites = {
         guild.default_role: discord.PermissionOverwrite(send_messages=False)
@@ -3607,6 +3756,7 @@ async def full_setup(interaction: discord.Interaction):
     ch_boss = await _recreate_text("boss-event", announce_overwrites)
     ch_masters = await _recreate_text("xerite-ustalari", announce_overwrites)
     ch_news = await _recreate_text("standoff2-yenilikleri", announce_overwrites)
+    await _progress_step(progress_msg, 2, 5, "Kanallar yaradılır...")
 
     # Köhnə statik "Komanda A/B" səs kanalları artıq lazım deyil — hər matç
     # üçün səs kanalları indi avtomatik, dinamik yaradılır/silinir (bax:
@@ -3638,6 +3788,7 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("map_masters_channel_id", ch_masters.id)
     STANDOFF2_NEWS_CHANNEL_ID = ch_news.id
     set_meta("standoff2_news_channel_id", ch_news.id)
+    await _progress_step(progress_msg, 3, 5, "İcazələr və köhnə kanallar təmizlənir...")
 
     await _post_register(ch_register)
     await _post_matchmaking(ch_matchmaking)
@@ -3661,6 +3812,8 @@ async def full_setup(interaction: discord.Interaction):
         "məqalələri aşkarlanan kimi bura Azərbaycan dilinə tərcümə edilib avtomatik göndəriləcək "
         "(hər 6 saatdan bir yoxlanılır)."
     )
+    await _progress_step(progress_msg, 4, 5, "Tanıtım mesajları göndərilir...")
+    await _progress_step(progress_msg, 5, 5, "Tamamlandı!")
 
     await interaction.followup.send(
         "✅ Server yenidən quruldu! Köhnə FACEIT kanalları silinib, yenilənmiş formada təzədən yaradıldı.\n\n"
@@ -4990,6 +5143,123 @@ async def squad_cmd(interaction: discord.Interaction, partnyor: discord.Member):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# REAKSİYA-ƏSASLI CANLI SORĞU VƏ REAKSİYA-YARIŞI (yaddaşda, keçici vəziyyət —
+# bot restart olsa aktiv sorğu/yarış sıfırlanır, məqbul tərəddüddür)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_active_polls = {}            # message_id -> {"question", "options", "channel_id"}
+_active_reaction_races = {}   # message_id -> {"target_emoji", "resolved", "started_at"}
+POLL_NUMBER_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
+
+
+def _render_poll_embed(question, options, counts):
+    total = sum(counts) or 1
+    lines = []
+    for i, opt in enumerate(options):
+        pct = round(counts[i] / total * 100) if sum(counts) else 0
+        filled = round(pct / 5)
+        bar = "▓" * filled + "░" * (20 - filled)
+        lines.append(f"{POLL_NUMBER_EMOJIS[i]} **{opt}**\n`{bar}` {pct}% ({counts[i]} səs)")
+    embed = discord.Embed(title=f"📊 {question}", description="\n\n".join(lines), color=discord.Color.blurple())
+    embed.set_footer(text=f"Cəmi səs: {sum(counts)}")
+    return embed
+
+
+async def _refresh_poll(payload):
+    poll = _active_polls.get(payload.message_id)
+    if not poll:
+        return
+    channel = bot.get_channel(payload.channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(payload.channel_id)
+        except discord.HTTPException:
+            return
+    try:
+        message = await channel.fetch_message(payload.message_id)
+    except (discord.NotFound, discord.Forbidden):
+        _active_polls.pop(payload.message_id, None)
+        return
+    counts = []
+    for i in range(len(poll["options"])):
+        reaction = discord.utils.get(message.reactions, emoji=POLL_NUMBER_EMOJIS[i])
+        counts.append(max(0, (reaction.count - 1) if reaction else 0))  # botun öz reaksiyası çıxarılır
+    try:
+        await message.edit(embed=_render_poll_embed(poll["question"], poll["options"], counts))
+    except discord.HTTPException:
+        pass
+
+
+async def _handle_race_reaction(payload):
+    race = _active_reaction_races.get(payload.message_id)
+    if not race or race["resolved"] or str(payload.emoji) != race["target_emoji"]:
+        return
+    race["resolved"] = True
+    elapsed = (datetime.datetime.utcnow() - race["started_at"]).total_seconds()
+    channel = bot.get_channel(payload.channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(payload.channel_id)
+        except discord.HTTPException:
+            return
+    try:
+        message = await channel.fetch_message(payload.message_id)
+        await message.edit(content=f"🏆 <@{payload.user_id}> qazandı! ({elapsed:.2f} saniyə)")
+    except discord.HTTPException:
+        pass
+    _active_reaction_races.pop(payload.message_id, None)
+
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if bot.user and payload.user_id == bot.user.id:
+        return
+    if payload.message_id in _active_polls:
+        await _refresh_poll(payload)
+    elif payload.message_id in _active_reaction_races:
+        await _handle_race_reaction(payload)
+
+
+@bot.event
+async def on_raw_reaction_remove(payload: discord.RawReactionActionEvent):
+    if payload.message_id in _active_polls:
+        await _refresh_poll(payload)
+
+
+@bot.tree.command(name="sorgu", description="Reaksiya ilə canlı faiz-bar sorğu yaradır")
+@app_commands.describe(sual="Sorğu sualı", seçimlər="Vergüllə ayrılmış 2-5 seçim (məs: Bəli,Xeyr,Bilmirəm)")
+async def sorgu_cmd(interaction: discord.Interaction, sual: str, seçimlər: str):
+    options = [o.strip() for o in seçimlər.split(",") if o.strip()][:5]
+    if len(options) < 2:
+        await interaction.response.send_message("❌ Vergüllə ayrılmış ən azı 2 seçim daxil edin.", ephemeral=True)
+        return
+    await interaction.response.send_message(embed=_render_poll_embed(sual, options, [0] * len(options)))
+    message = await interaction.original_response()
+    _active_polls[message.id] = {"question": sual, "options": options, "channel_id": interaction.channel_id}
+    for i in range(len(options)):
+        try:
+            await message.add_reaction(POLL_NUMBER_EMOJIS[i])
+        except discord.HTTPException:
+            pass
+
+
+@bot.tree.command(name="reaksiya_yarisi", description="Reaksiya sürəti mini-oyunu — ilk düzgün reaksiya verən udur!")
+async def reaksiya_yarisi_cmd(interaction: discord.Interaction):
+    await interaction.response.send_message("🎮 **Reaksiya Yarışı** başlayır... Hazır olun! ⏳")
+    message = await interaction.original_response()
+    await asyncio.sleep(random.uniform(3, 8))
+    target = random.choice(["⚡", "🔥", "🎯", "💥"])
+    await message.edit(content=f"🏁 **BAŞLA!** İlk kim {target} ilə reaksiya versə udur!")
+    _active_reaction_races[message.id] = {
+        "target_emoji": target, "resolved": False, "started_at": datetime.datetime.utcnow()
+    }
+    try:
+        await message.add_reaction(target)
+    except discord.HTTPException:
+        pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # GÜNDƏLİK TAPŞIRIQ
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -5673,6 +5943,13 @@ async def admin_matc_elave_et_cmd(
 async def admin_matc_elave_et_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@admin_matc_elave_et_cmd.autocomplete("xerite")
+async def admin_matc_elave_et_xerite_autocomplete(interaction: discord.Interaction, current: str):
+    current_lower = current.lower()
+    matches = [m for m in MAPS if current_lower in m.lower()] if current else list(MAPS)
+    return [app_commands.Choice(name=m, value=m) for m in matches[:25]]
 
 
 @bot.tree.command(name="rank_rollari_qur", description="[Admin] ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir")
