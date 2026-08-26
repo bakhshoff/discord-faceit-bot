@@ -58,7 +58,10 @@ def get_players():
         rank_name, rank_color, rank_emoji = get_rank(elo)
         players.append({
             "rank": i,
-            "discord_id": discord_id,
+            # JS Number itkisiz yalnız 2^53-ə qədər dəqiqdir — Discord snowflake ID-ləri
+            # bunu keçdiyi üçün string kimi göndərilir (əks halda son rəqəmlər korlanır
+            # və klik-naviqasiyası səhv/mövcud olmayan profilə aparır).
+            "discord_id": str(discord_id),
             "nick": nick,
             "so2_id": so2_id,
             "elo": elo,
@@ -168,7 +171,7 @@ def _profile_dict(discord_id):
     win_streak = database.get_current_win_streak(discord_id)
 
     return {
-        "discord_id": discord_id, "nick": nick, "so2_id": so2_id, "elo": elo,
+        "discord_id": str(discord_id), "nick": nick, "so2_id": so2_id, "elo": elo,
         "wins": wins, "losses": losses, "matches": matches, "win_rate": win_rate,
         "kills": stats.get("kills", 0), "assists": stats.get("assists", 0), "deaths": stats.get("deaths", 0),
         "rank_name": rank_name, "rank_color": list(rank_color), "rank_emoji": rank_emoji,
@@ -304,7 +307,7 @@ def api_season_leaderboard(season_id):
     rows = database.get_season_leaderboard(season_id, limit=10)
     return jsonify([
         {"nick": r[0], "so2_id": r[1], "elo_gained": r[2], "kills": r[3], "assists": r[4],
-         "deaths": r[5], "wins": r[6], "losses": r[7], "discord_id": r[8]}
+         "deaths": r[5], "wins": r[6], "losses": r[7], "discord_id": str(r[8])}
         for r in rows
     ])
 
@@ -422,6 +425,9 @@ def api_recent_matches():
 def api_rising_star():
     daily = database.get_rising_star(days=1)
     weekly = database.get_rising_star(days=7)
+    for entry in (daily, weekly):
+        if entry:
+            entry["discord_id"] = str(entry["discord_id"])
     return jsonify({"daily": daily, "weekly": weekly})
 
 

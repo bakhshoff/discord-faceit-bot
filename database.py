@@ -1052,6 +1052,28 @@ def add_to_inventory(discord_id, item_id):
     return result
 
 
+def remove_from_inventory(discord_id, item_id):
+    """Əşyanı inventardan silir (sat/sil hər ikisi üçün istifadə olunur). Əgər əşya
+    həmin an aktiv edilmişdirsə (banner/çərçivə/tema), aktiv sahəni də təmizləyir ki
+    profil mövcud olmayan əşyaya istinad etməsin."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM inventory WHERE discord_id=? AND item_id=?", (discord_id, item_id))
+    removed = cursor.rowcount > 0
+    if removed:
+        cursor.execute(
+            "UPDATE players SET "
+            "active_banner = CASE WHEN active_banner=? THEN NULL ELSE active_banner END, "
+            "active_frame = CASE WHEN active_frame=? THEN NULL ELSE active_frame END, "
+            "active_theme = CASE WHEN active_theme=? THEN NULL ELSE active_theme END "
+            "WHERE discord_id=?",
+            (item_id, item_id, item_id, discord_id)
+        )
+    conn.commit()
+    conn.close()
+    return removed
+
+
 def set_active_banner(discord_id, item_id):
     conn = _get_conn()
     cursor = conn.cursor()

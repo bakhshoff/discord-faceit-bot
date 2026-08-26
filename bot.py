@@ -30,7 +30,7 @@ from database import (
     is_player_in_active_match, set_active_match_voice,
     add_combat_stats, get_combat_stats, record_match_history,
     save_scan_result, get_scan_result, confirm_scan,
-    add_coins, get_coins, spend_coins, get_inventory, owns_item, add_to_inventory,
+    add_coins, get_coins, spend_coins, get_inventory, owns_item, add_to_inventory, remove_from_inventory,
     set_active_banner, get_active_banner, set_active_frame, get_active_frame,
     set_active_theme, get_active_theme, add_coin_log, get_coin_logs, check_daily_login,
     refresh_daily_tasks, get_active_daily_tasks, get_player_active_task,
@@ -4634,6 +4634,50 @@ class InventoryView(discord.ui.View):
             await interaction.response.send_message("❌ Bu əşya növü aktiv edilə bilmir.", ephemeral=True)
             return
         await interaction.response.send_message(f"✅ **{item['name']}** aktiv edildi!", ephemeral=True)
+
+    @discord.ui.button(label="Coin qarşılığı sat", style=discord.ButtonStyle.primary, emoji="💰", row=2)
+    async def sell_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        if not self.selected_item_id:
+            await interaction.response.send_message("❌ Əvvəlcə yuxarıdan bir əşya seçin.", ephemeral=True)
+            return
+        item = get_item_by_id(self.selected_item_id)
+        if not item:
+            await interaction.response.send_message("❌ Əşya tapılmadı.", ephemeral=True)
+            return
+        if item.get("exclusive") or item.get("price") is None:
+            await interaction.response.send_message(
+                "❌ Bu əşya satıla bilməz (unikal hədiyyə və ya pulla alınıb).", ephemeral=True
+            )
+            return
+        refund = item["price"] // 2
+        removed = remove_from_inventory(self.discord_id, self.selected_item_id)
+        if not removed:
+            await interaction.response.send_message("❌ Bu əşya artıq inventarınızda yoxdur.", ephemeral=True)
+            return
+        new_bal = add_coins(self.discord_id, refund)
+        add_coin_log(self.discord_id, refund, f"Satış: {item['name']}", "earn", new_bal)
+        self.selected_item_id = None
+        await interaction.response.send_message(
+            f"💰 **{item['name']}** satıldı — **+{refund} coin** (yeni balans: {new_bal}).", ephemeral=True
+        )
+
+    @discord.ui.button(label="Sil", style=discord.ButtonStyle.danger, emoji="🗑️", row=2)
+    async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        if not self.selected_item_id:
+            await interaction.response.send_message("❌ Əvvəlcə yuxarıdan bir əşya seçin.", ephemeral=True)
+            return
+        item = get_item_by_id(self.selected_item_id)
+        name = item["name"] if item else self.selected_item_id
+        removed = remove_from_inventory(self.discord_id, self.selected_item_id)
+        if not removed:
+            await interaction.response.send_message("❌ Bu əşya artıq inventarınızda yoxdur.", ephemeral=True)
+            return
+        self.selected_item_id = None
+        await interaction.response.send_message(f"🗑️ **{name}** inventardan silindi (əvəzi qaytarılmır).", ephemeral=True)
 
 
 async def _render_inventory(interaction: discord.Interaction, discord_id: int):
