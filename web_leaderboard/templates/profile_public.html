@@ -1716,7 +1716,7 @@ document.getElementById('melodyBtn').addEventListener('click', async (e) => {
 // ── Generativ Ambient Musiqi Fonu ────────────────────────────────────────────
 (function ambientMusic() {
   let ctxA = null, nodes = [], playing = false;
-  const seedBase = 180 + (WIN_RATE || 50) * 2;
+  const seedBase = 180 + ((MY_ELO % 200) || 50);
   function start() {
     ctxA = ctxA || new (window.AudioContext || window.webkitAudioContext)();
     playing = true;

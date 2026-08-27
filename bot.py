@@ -1123,14 +1123,12 @@ leaderboard_channel_id = None
 leaderboard_message_id = None
 queue_status_channel_id = None
 queue_status_message_id = None
-live_board_message_id = None
-
-
 async def _update_live_board_message(change_note=None):
-    """Leaderboard kanalında hər matçdan sonra (60 saniyəlik şəkil-yeniləməsindən daha sürətli)
-    yenilənən, mətn-əsaslı pinlənmiş "Top 10 + son dəyişiklik" mesajı."""
-    global live_board_message_id
-    if leaderboard_channel_id is None:
+    """Hər matçdan sonra (60 saniyəlik şəkil-yeniləməsindən daha sürətli) MÖVCUD leaderboard
+    mesajının mətn hissəsini Top-10 + son dəyişikliklə yeniləyir. Qəsdən AYRI bir ikinci
+    mesaj YARATMIR — eyni pinlənmiş mesajı refresh_leaderboard-ın (şəkli hər 60 saniyə
+    yeniləyən loop) payı ilə bölüşür, kanalda iki fərqli "leaderboard" görünüşü olmasın."""
+    if leaderboard_channel_id is None or leaderboard_message_id is None:
         return
     channel = bot.get_channel(leaderboard_channel_id)
     if channel is None:
@@ -1139,22 +1137,19 @@ async def _update_live_board_message(change_note=None):
     if not rows:
         return
     lines = [f"{i+1}. **{r[0]}** — {r[2]} ELO ({r[3]}Q/{r[4]}M)" for i, r in enumerate(rows)]
-    content = "📊 **Canlı Liderlik Lövhəsi — Top 10**\n" + "\n".join(lines)
+    content = (
+        "🏆 **Zenith's Academy FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+        "(bu şəkil Top-20-ni göstərir).\n"
+        f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}\n\n"
+        "📊 **Top 10 (canlı):**\n" + "\n".join(lines)
+    )
     if change_note:
         content += f"\n\n🔄 {change_note}"
     content += f"\n\n🕒 Son yeniləmə: <t:{int(datetime.datetime.utcnow().timestamp())}:R>"
-    if live_board_message_id:
-        try:
-            msg = await channel.fetch_message(live_board_message_id)
-            await msg.edit(content=content)
-            return
-        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-            live_board_message_id = None
     try:
-        msg = await channel.send(content)
-        live_board_message_id = msg.id
-        await msg.pin()
-    except discord.HTTPException:
+        message = await channel.fetch_message(leaderboard_message_id)
+        await message.edit(content=content)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         pass
 
 
