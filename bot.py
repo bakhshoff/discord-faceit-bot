@@ -74,6 +74,10 @@ from database import (
     get_completed_seasons, reset_all_players_for_new_season,
     add_teammate_rating, get_teammate_rating_summary,
     mark_anniversary_greeted, get_players_with_anniversary_today,
+    ensure_5v5_stats_row, get_player_5v5, get_player_stats_dict_5v5, update_team_elo_5v5,
+    update_streak_5v5, get_loss_streak_5v5, add_to_queue_5v5, remove_from_queue_5v5,
+    queue_size_5v5, get_queue_list_5v5, clear_queue_5v5, is_in_queue_5v5, pop_10_and_balance,
+    get_leaderboard_5v5, get_all_players_5v5,
     get_dm_notifications, set_dm_notifications, use_free_nickname_change,
     check_and_grant_comeback_bonus, COMEBACK_BONUS_COINS,
     create_report, get_recent_reports_for,
@@ -169,6 +173,7 @@ if os.environ.get("DIAGNOSE_KD") == "1":
     _c.close()
 
 LOG_CHANNEL_ID = 1500790545172267028
+LOG_CHANNEL_ID_5V5 = None
 LOBBY_VOICE_ID = 1529228399464288456
 PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://discord-faceit-bot-production.up.railway.app")
 COMMUNITY_GOAL_TARGET = 150
@@ -201,6 +206,8 @@ SOCIAL_LINKS = {
 }
 
 FULL_SETUP_CATEGORY_NAME = "🏆 FACEIT 2v2"
+CATEGORY_GENERAL_NAME = "📌 Ümumi"
+CATEGORY_5V5_NAME = "🎯 FACEIT 5v5"
 
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
@@ -321,6 +328,36 @@ async def _sync_rank_role(guild, discord_id, elo):
         pass
 
 
+RANK_ROLE_NAMES_5V5 = {f"5v5 {r[2]}" for r in RANKS}
+
+
+async def _sync_rank_role_5v5(guild, discord_id, elo):
+    """`_sync_rank_role`-un 5v5 analoqu — "5v5 {Rütbə}" adlı AYRICA rol dəstini idarə edir,
+    2v2 rütbə rollarına TOXUNMUR."""
+    if not guild:
+        return
+    member = guild.get_member(discord_id)
+    if not member:
+        try:
+            member = await guild.fetch_member(discord_id)
+        except (discord.NotFound, discord.HTTPException):
+            return
+    rank_name, _color, _emoji = get_rank(elo)
+    target_role_name = f"5v5 {rank_name}"
+    target_role = discord.utils.get(guild.roles, name=target_role_name)
+    if not target_role:
+        return
+
+    to_remove = [r for r in member.roles if r.name in RANK_ROLE_NAMES_5V5 and r.id != target_role.id]
+    try:
+        if to_remove:
+            await member.remove_roles(*to_remove, reason="5v5 rütbə yeniləndi")
+        if target_role not in member.roles:
+            await member.add_roles(target_role, reason="5v5 rütbə yeniləndi")
+    except discord.Forbidden:
+        pass
+
+
 async def _get_log_channel():
     """bot.get_channel keş boşluğu (məs. restart-dan dərhal sonra) səbəbindən None
     qaytarsa belə, fetch_channel ilə API-dən birbaşa çəkməyə çalışır — kritik
@@ -332,6 +369,19 @@ async def _get_log_channel():
         return await bot.fetch_channel(LOG_CHANNEL_ID)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         print(f"[LOG_CHANNEL] Kanal tapılmadı: {LOG_CHANNEL_ID}", flush=True)
+        return None
+
+
+async def _get_log_channel_5v5():
+    """`_get_log_channel`-in 5v5 analoqu — 5v5 matç nəticə düymələri bu kanala göndərilir."""
+    if not LOG_CHANNEL_ID_5V5:
+        return None
+    channel = bot.get_channel(LOG_CHANNEL_ID_5V5)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(LOG_CHANNEL_ID_5V5)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         return None
 
 
@@ -658,14 +708,61 @@ async def anniversary_check_loop():
                 break
 
 
+REWARDS_5V5_TOP3 = [250, 125, 50]  # 2v2-dən fərqli (daha böyük komanda formatı) sezon-sonu mükafatı
+
+
+async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_prefix):
+    """`season_rotation_loop`-un hər format üçün ortaq işi — sezonu bağlayır, top-3-ə mükafat
+    verir, Hall of Fame-də elan edir, statistikanı sıfırlayır, yeni sezon açır və leaderboard
+    kanalının adını yeniləyir. 2v2 və 5v5 TAM MÜSTƏQİL çağırılır (öz season_id/cədvəlləri)."""
+    current = get_or_create_current_season(mode)
+    leaderboard = get_season_leaderboard(current["id"], limit=3)
+    mode_label = "5v5" if mode == "5v5" else "2v2"
+    icon = "🎯" if mode == "5v5" else "🛤️"
+    if leaderboard:
+        lines = []
+        for i, (nick, so2_id, elo_gained, kills, assists, deaths, wins, losses, discord_id) in enumerate(leaderboard):
+            reward = rewards[i] if i < len(rewards) else 0
+            if reward:
+                new_bal = add_coins(discord_id, reward)
+                add_coin_log(discord_id, reward, f"{mode_label} Sezon #{current['season_number']} Top-{i+1} mükafatı", "earn", new_bal)
+            lines.append(f"**#{i+1}** {nick} — {'+' if elo_gained >= 0 else ''}{elo_gained} ELO ({wins}Q/{losses}M)"
+                         + (f" 🎁 +{reward} coin" if reward else ""))
+        channel = await _get_hall_of_fame_channel()
+        if channel:
+            progress_msg = await channel.send(f"⏳ {mode_label} sezonu yekunlaşdırılır...\n`░░░░░░░░░░░░░░░░░░░░` 0%")
+            await _progress_step(progress_msg, 1, 3, "Mükafatlar hesablanır...")
+            await asyncio.sleep(1.0)
+            await _progress_step(progress_msg, 2, 3, "Bütün oyunçuların statistikası sıfırlanır...")
+            await asyncio.sleep(1.0)
+            await _progress_step(progress_msg, 3, 3, "Yeni sezon başlayır!")
+            embed = discord.Embed(
+                title=f"{icon} {mode_label} Sezon #{current['season_number']} başa çatdı!",
+                description="\n".join(lines),
+                color=discord.Color.from_rgb(*_seasonal_accent())
+            )
+            embed.set_footer(text=f"Bütün {mode_label} oyunçularının ELO/statistikası sıfırlandı — yeni sezon başladı.")
+            await channel.send(embed=embed)
+    close_season(current["id"])
+    reset_all_players_for_new_season(mode=mode)
+    new_season = get_or_create_current_season(mode)
+
+    if lb_channel_id is not None:
+        channel = bot.get_channel(lb_channel_id)
+        if channel is not None:
+            try:
+                await channel.edit(name=f"{channel_name_prefix}-{new_season['season_number']}")
+            except discord.Forbidden:
+                pass
+
+
 @tasks.loop(minutes=30)
 async def season_rotation_loop():
-    """Ayın 1-ində (AZ vaxtı ilə) əvvəlki sezonu bağlayıb yeni sezon açır, keçən ayın
-    top-3-nə bonus coin verir, Hall of Fame kanalında elan edir və BÜTÜN oyunçuların
-    ELO/wins/losses/kills/assists/deaths-ini sıfırlayır (karyera rekordları toxunulmaz
-    qalır — bax: reset_all_players_for_new_season). 30 dəqiqəlik interval (bax:
-    weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından asılı olmadan ayın
-    1-i başlayan kimi tezliklə aşkarlanmasını təmin edir."""
+    """Ayın 1-ində (AZ vaxtı ilə) 2v2 VƏ 5v5 sezonlarını SİNXRON (eyni tsikldə, ardıcıl)
+    bağlayıb yeni sezon açır — hər biri öz mükafat cədvəli və öz statistika cədvəli ilə,
+    biri digərinə TOXUNMUR (bax: _rotate_season_for_mode, reset_all_players_for_new_season).
+    30 dəqiqəlik interval (bax: weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından
+    asılı olmadan ayın 1-i başlayan kimi tezliklə aşkarlanmasını təmin edir."""
     global _last_season_rotation_month
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
     if now.day != 1:
@@ -675,44 +772,8 @@ async def season_rotation_loop():
         return
     _last_season_rotation_month = month_key
 
-    current = get_or_create_current_season()
-    leaderboard = get_season_leaderboard(current["id"], limit=3)
-    if leaderboard:
-        rewards = [150, 75, 30]
-        lines = []
-        for i, (nick, so2_id, elo_gained, kills, assists, deaths, wins, losses, discord_id) in enumerate(leaderboard):
-            reward = rewards[i] if i < len(rewards) else 0
-            if reward:
-                new_bal = add_coins(discord_id, reward)
-                add_coin_log(discord_id, reward, f"Sezon #{current['season_number']} Top-{i+1} mükafatı", "earn", new_bal)
-            lines.append(f"**#{i+1}** {nick} — {'+' if elo_gained >= 0 else ''}{elo_gained} ELO ({wins}Q/{losses}M)"
-                         + (f" 🎁 +{reward} coin" if reward else ""))
-        channel = await _get_hall_of_fame_channel()
-        if channel:
-            progress_msg = await channel.send("⏳ Sezon yekunlaşdırılır...\n`░░░░░░░░░░░░░░░░░░░░` 0%")
-            await _progress_step(progress_msg, 1, 3, "Mükafatlar hesablanır...")
-            await asyncio.sleep(1.0)
-            await _progress_step(progress_msg, 2, 3, "Bütün oyunçuların statistikası sıfırlanır...")
-            await asyncio.sleep(1.0)
-            await _progress_step(progress_msg, 3, 3, "Yeni sezon başlayır!")
-            embed = discord.Embed(
-                title=f"🛤️ Sezon #{current['season_number']} başa çatdı!",
-                description="\n".join(lines),
-                color=discord.Color.from_rgb(*_seasonal_accent())
-            )
-            embed.set_footer(text="Bütün oyunçuların ELO/statistikası sıfırlandı — yeni sezon başladı. Karyera Yolu düyməsindən keçmiş sezonları izləyin.")
-            await channel.send(embed=embed)
-    close_season(current["id"])
-    reset_all_players_for_new_season()
-    new_season = get_or_create_current_season()  # yeni sezonu dərhal yaradır
-
-    if leaderboard_channel_id is not None:
-        channel = bot.get_channel(leaderboard_channel_id)
-        if channel is not None:
-            try:
-                await channel.edit(name=f"leaderboard-sezon-{new_season['season_number']}")
-            except discord.Forbidden:
-                pass
+    await _rotate_season_for_mode("2v2", [150, 75, 30], leaderboard_channel_id, "leaderboard-sezon")
+    await _rotate_season_for_mode("5v5", REWARDS_5V5_TOP3, leaderboard_channel_id_5v5, "leaderboard-5v5-sezon")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1121,8 +1182,12 @@ def is_queue_open():
 
 leaderboard_channel_id = None
 leaderboard_message_id = None
+leaderboard_channel_id_5v5 = None
+leaderboard_message_id_5v5 = None
 queue_status_channel_id = None
 queue_status_message_id = None
+queue_status_channel_id_5v5 = None
+queue_status_message_id_5v5 = None
 async def _update_live_board_message(change_note=None):
     """Hər matçdan sonra (60 saniyəlik şəkil-yeniləməsindən daha sürətli) MÖVCUD leaderboard
     mesajının mətn hissəsini Top-10 + son dəyişikliklə yeniləyir. Qəsdən AYRI bir ikinci
@@ -1154,6 +1219,7 @@ async def _update_live_board_message(change_note=None):
 
 
 LEADERBOARD_IMAGE_PATH = "leaderboard.png"
+LEADERBOARD_IMAGE_PATH_5V5 = "leaderboard_5v5.png"
 
 
 @tasks.loop(seconds=60)
@@ -1169,6 +1235,50 @@ async def refresh_leaderboard():
     try:
         message = await channel.fetch_message(leaderboard_message_id)
         await message.edit(attachments=[discord.File(LEADERBOARD_IMAGE_PATH, filename="leaderboard.png")])
+    except discord.NotFound:
+        pass
+
+
+async def _update_live_board_message_5v5(change_note=None):
+    """`_update_live_board_message`-in 5v5 analoqu."""
+    if leaderboard_channel_id_5v5 is None or leaderboard_message_id_5v5 is None:
+        return
+    channel = bot.get_channel(leaderboard_channel_id_5v5)
+    if channel is None:
+        return
+    rows = get_leaderboard_5v5(10)
+    if not rows:
+        return
+    lines = [f"{i+1}. **{r[0]}** — {r[2]} ELO ({r[3]}Q/{r[4]}M)" for i, r in enumerate(rows)]
+    content = (
+        "🎯 **Zenith's Academy FACEIT 5v5 Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+        "(bu şəkil Top-20-ni göstərir).\n"
+        f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}\n\n"
+        "📊 **Top 10 (canlı):**\n" + "\n".join(lines)
+    )
+    if change_note:
+        content += f"\n\n🔄 {change_note}"
+    content += f"\n\n🕒 Son yeniləmə: <t:{int(datetime.datetime.utcnow().timestamp())}:R>"
+    try:
+        message = await channel.fetch_message(leaderboard_message_id_5v5)
+        await message.edit(content=content)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        pass
+
+
+@tasks.loop(seconds=60)
+async def refresh_leaderboard_5v5():
+    global leaderboard_message_id_5v5
+    if leaderboard_channel_id_5v5 is None or leaderboard_message_id_5v5 is None:
+        return
+    channel = bot.get_channel(leaderboard_channel_id_5v5)
+    if channel is None:
+        return
+    rows = get_leaderboard_5v5(20)
+    generate_leaderboard_image(rows, LEADERBOARD_IMAGE_PATH_5V5)
+    try:
+        message = await channel.fetch_message(leaderboard_message_id_5v5)
+        await message.edit(attachments=[discord.File(LEADERBOARD_IMAGE_PATH_5V5, filename="leaderboard_5v5.png")])
     except discord.NotFound:
         pass
 
@@ -1947,6 +2057,291 @@ class TeamReadyView(discord.ui.View):
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
+class TeamReadyView5v5(discord.ui.View):
+    """`TeamReadyView`-in 5v5 analoqu — 10 oyunçu-info düyməsi (5+5, hər komanda öz sırasında),
+    ready/veto/ləğv düymələri Discord-un 5-sıra limitinə tam sığacaq şəkildə yerləşdirilib."""
+
+    def __init__(self, team_a=None, team_b=None):
+        super().__init__(timeout=None)
+        for row_idx, team in enumerate((team_a or [], team_b or [])):
+            for i, p in enumerate(team[:5]):
+                slot = row_idx * 5 + i
+                btn = discord.ui.Button(
+                    label=p["nick"][:80], style=discord.ButtonStyle.secondary,
+                    custom_id=f"player_info_5v5_{slot}", row=row_idx
+                )
+                btn.callback = self._make_player_info_callback(slot)
+                self.add_item(btn)
+
+    def _make_player_info_callback(self, slot: int):
+        async def _callback(interaction: discord.Interaction):
+            active = await self._get_active_for_message(interaction)
+            if not active:
+                return
+            roster = active["team_a"] + active["team_b"]
+            if slot >= len(roster):
+                await interaction.response.send_message("❌ Bu slot boşdur.", ephemeral=True)
+                return
+            target_id = roster[slot]["discord_id"]
+            if not get_player(target_id):
+                await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+                return
+            stats5 = get_player_stats_dict_5v5(target_id)
+            if not stats5:
+                await interaction.response.send_message("❌ Bu oyunçunun hələ 5v5 statistikası yoxdur.", ephemeral=True)
+                return
+            card_path = os.path.join(DATA_DIR or ".", f"stats_5v5_{target_id}.png")
+            await interaction.response.defer(ephemeral=True)
+            achievements = get_player_achievements(target_id)
+            await asyncio.to_thread(generate_stats_card, stats5, achievements, card_path)
+            await interaction.followup.send(file=discord.File(card_path, filename="stats_5v5.png"), ephemeral=True)
+        return _callback
+
+    async def _get_active_for_message(self, interaction: discord.Interaction):
+        active = get_active_match_by_message_id(interaction.message.id)
+        if not active:
+            await interaction.response.send_message(
+                "⚠️ Bu matç artıq aktual deyil (artıq bitib və ya ləğv olunub).", ephemeral=True
+            )
+            return None
+        return active
+
+    async def _set_ready(self, interaction: discord.Interaction, is_team_a: bool, button: discord.ui.Button):
+        active = await self._get_active_for_message(interaction)
+        if not active:
+            return
+
+        expected_captain_id = active["captain_a_id"] if is_team_a else active["captain_b_id"]
+        if interaction.user.id != expected_captain_id and not is_staff(interaction):
+            await interaction.response.send_message(
+                "❌ Bu düyməni yalnız öz komandanızın kapitanı və ya rəhbərlik basa bilər.", ephemeral=True
+            )
+            return
+
+        set_match_ready(active["match_number"], is_team_a)
+        if is_team_a:
+            button.disabled = True
+            button.label = "Komanda A Hazırdır ✅"
+        else:
+            button.disabled = True
+            button.label = "Komanda B Hazırdır ✅"
+
+        active = get_active_match(active["match_number"])
+        status_embed = _build_match_status_embed(active) if active else None
+        await interaction.response.edit_message(embed=status_embed, view=self)
+
+        if active and active.get("thread_id"):
+            thread = interaction.guild.get_thread(active["thread_id"]) if interaction.guild else None
+            if thread:
+                team_label = "🔵 Komanda A" if is_team_a else "🔴 Komanda B"
+                try:
+                    await thread.send(f"✅ {team_label} hazırdır!")
+                except discord.HTTPException:
+                    pass
+
+        if active and active["team_a_ready"] and active["team_b_ready"]:
+            log_embed = discord.Embed(
+                title=f"✅ 5v5 Matç No{active['match_number']} — Hər iki komanda hazır",
+                description="Admin/moderator nəticəni aşağıdaki düymələrlə qeyd etməlidir.",
+                color=discord.Color.blurple()
+            )
+            log_channel = await _get_log_channel_5v5() or await _get_log_channel()
+            if log_channel:
+                result_view = MatchResultView5v5(active["match_number"], active["team_a"], active["team_b"])
+                await log_channel.send(embed=log_embed, view=result_view)
+
+    @discord.ui.button(label="Komanda A Hazır", style=discord.ButtonStyle.primary, custom_id="ready_a_5v5", row=2)
+    async def team_a_ready_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._set_ready(interaction, True, button)
+
+    @discord.ui.button(label="Komanda B Hazır", style=discord.ButtonStyle.danger, custom_id="ready_b_5v5", row=2)
+    async def team_b_ready_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._set_ready(interaction, False, button)
+
+    async def _veto(self, interaction: discord.Interaction, is_team_a: bool, button: discord.ui.Button):
+        active = await self._get_active_for_message(interaction)
+        if not active:
+            return
+        expected_captain_id = active["captain_a_id"] if is_team_a else active["captain_b_id"]
+        if interaction.user.id != expected_captain_id and not is_staff(interaction):
+            await interaction.response.send_message(
+                "❌ Xəritə veto yalnız öz komandanızın kapitanı üçündür.", ephemeral=True
+            )
+            return
+        already_used = active["veto_a_used"] if is_team_a else active["veto_b_used"]
+        if already_used:
+            await interaction.response.send_message("❌ Veto haqqınızı artıq istifadə etmisiniz.", ephemeral=True)
+            return
+        excluded = set(active["map_vetoed"]) | {active["selected_map"]}
+        candidates = [m for m in MAPS if m not in excluded]
+        if not candidates:
+            await interaction.response.send_message("❌ Vetolanacaq başqa xəritə qalmadı.", ephemeral=True)
+            return
+        new_map = random.choice(candidates)
+        veto_map(active["match_number"], is_team_a, new_map)
+        button.disabled = True
+        button.label = "Veto istifadə edildi"
+        await interaction.response.defer()
+        card_path = os.path.join(DATA_DIR or ".", f"match_5v5_{active['match_number']}.png")
+        await asyncio.to_thread(
+            generate_match_card, active["match_number"], new_map, active["team_a"], active["team_b"],
+            active["captain_a_id"], active["captain_b_id"], card_path
+        )
+        active = get_active_match(active["match_number"])
+        await interaction.message.edit(
+            attachments=[discord.File(card_path, filename="match.png")],
+            embed=_build_match_status_embed(active) if active else None,
+            view=self
+        )
+        await interaction.followup.send(
+            f"🚫 {'Komanda A' if is_team_a else 'Komanda B'} kapitanı xəritəni vetoladı! Yeni xəritə: **{new_map}**",
+        )
+
+        if active and active.get("thread_id") and interaction.guild:
+            thread = interaction.guild.get_thread(active["thread_id"])
+            if thread:
+                try:
+                    await thread.send(f"🚫 Xəritə vetolandı — yeni xəritə: **{new_map}**")
+                except discord.HTTPException:
+                    pass
+
+        if active and interaction.guild:
+            if active.get("voice_a_id"):
+                va = interaction.guild.get_channel(active["voice_a_id"])
+                if va:
+                    try:
+                        await va.edit(name=f"🔵 M{active['match_number']}-A · {new_map}")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+            if active.get("voice_b_id"):
+                vb = interaction.guild.get_channel(active["voice_b_id"])
+                if vb:
+                    try:
+                        await vb.edit(name=f"🔴 M{active['match_number']}-B · {new_map}")
+                    except (discord.Forbidden, discord.HTTPException):
+                        pass
+
+    @discord.ui.button(label="🚫 Veto (A)", style=discord.ButtonStyle.secondary, custom_id="veto_a_5v5", row=3)
+    async def veto_a_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._veto(interaction, True, button)
+
+    @discord.ui.button(label="🚫 Veto (B)", style=discord.ButtonStyle.secondary, custom_id="veto_b_5v5", row=3)
+    async def veto_b_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._veto(interaction, False, button)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary, emoji="🚫", custom_id="cancel_match_5v5", row=4)
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız rəhbərlik üçündür.", ephemeral=True)
+            return
+
+        active = await self._get_active_for_message(interaction)
+        if not active:
+            return
+
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+
+        view = CancelMatchView5v5(active["match_number"], active["team_a"], active["team_b"])
+        embed = discord.Embed(
+            title=f"🚫 5v5 Matç No{active['match_number']} ləğv edilir",
+            description=(
+                "Gəlməyən oyunçu varsa aşağıdan seçin (ELO cəzası alacaq), "
+                "yoxdursa \"Heç kimə cəza olmasın\"-ı seçin."
+            ),
+            color=discord.Color.orange()
+        )
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+class CancelMatchView5v5(discord.ui.View):
+    """`CancelMatchView`-in 5v5 analoqu — ELO cəzası `players_5v5`-ə yazılır, oyunçular
+    `matchmaking_queue_5v5`-ə qaytarılır."""
+    def __init__(self, match_number, team_a, team_b):
+        super().__init__(timeout=120)
+        self.match_number = match_number
+        self.team_a = team_a
+        self.team_b = team_b
+
+        options = [
+            discord.SelectOption(label=p["nick"][:100], value=str(p["discord_id"]))
+            for p in team_a + team_b
+        ]
+        options.append(discord.SelectOption(label="Heç kimə cəza olmasın", value="none"))
+        sel = discord.ui.Select(placeholder="Gəlməyən oyunçu (opsional)...", options=options[:25])
+        sel.callback = self._on_select
+        self.add_item(sel)
+        self.select_menu = sel
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu yalnız rəhbərlik üçündür.", ephemeral=True)
+            return
+
+        active = get_active_match(self.match_number)
+        if not active:
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(
+                content="⚠️ Bu matç artıq aktiv deyil (başqa əməliyyatla bağlanıb).", embed=None, view=self
+            )
+            return
+
+        value = self.select_menu.values[0]
+        all_players = self.team_a + self.team_b
+        absent_id = int(value) if value != "none" else None
+        penalized_nick = None
+
+        if absent_id is not None:
+            stats5 = get_player_5v5(absent_id)
+            if stats5:
+                old_elo = stats5["elo"]
+                new_elo = max(0, old_elo - MATCH_CANCEL_ELO_PENALTY)
+                set_player_5v5_elo(absent_id, new_elo)
+                log_admin_action(
+                    "match_cancel_penalty_5v5", absent_id, "elo", str(old_elo), str(new_elo),
+                    f"5v5 Matç No{self.match_number} ləğvi — gəlmədi", interaction.user.id
+                )
+                await _post_audit_log(
+                    "match_cancel_penalty_5v5", absent_id, "elo", old_elo, new_elo,
+                    f"5v5 Matç No{self.match_number} ləğvi — gəlmədi", interaction.user.id
+                )
+                penalized_nick = next((p["nick"] for p in all_players if p["discord_id"] == absent_id), None)
+
+        returned = []
+        for p in all_players:
+            if absent_id is not None and p["discord_id"] == absent_id:
+                continue
+            stats5 = get_player_5v5(p["discord_id"])
+            elo = stats5["elo"] if stats5 else 1000
+            if add_to_queue_5v5(p["discord_id"], p["nick"], elo):
+                returned.append(p["nick"])
+
+        clear_active_match(self.match_number)
+        await _cleanup_match_voice_channels(interaction.guild, active)
+
+        desc = f"5v5 Matç No{self.match_number} ləğv edildi."
+        if penalized_nick:
+            desc += f"\n🔴 ELO cəzası: **{penalized_nick}** (-{MATCH_CANCEL_ELO_PENALTY} ELO)"
+        if returned:
+            desc += f"\n🔁 Sıraya qaytarıldı: {', '.join(returned)}"
+
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content=desc, embed=None, view=self)
+
+        if active.get("thread_id") and interaction.guild:
+            thread = interaction.guild.get_thread(active["thread_id"])
+            if thread:
+                try:
+                    await thread.send("🚫 Matç ləğv edildi.")
+                except discord.HTTPException:
+                    pass
+
+        await update_queue_status_message_5v5()
+
+
 MATCH_CANCEL_ELO_PENALTY = 15
 
 
@@ -2401,6 +2796,341 @@ class MatchResultView(discord.ui.View):
         await self._finish(interaction, self.team_b, self.team_a, "Komanda B", "Komanda A")
 
 
+class MatchResultView5v5(discord.ui.View):
+    """`MatchResultView`-in 5v5 analoqu. FƏRQ: ELO/streak/rütbə/mövsüm 5v5 cədvəllərinə
+    yazılır, `match_history` "5v5" işarəli. PAYLAŞILAN (dəyişməz): coin, Battle Pass XP,
+    gündəlik çağırış, nailiyyət/ləqəb, şəxsi rekord, coach/tilt DM-ləri — bunlar discord_id-yə
+    bağlıdır, formatdan asılı deyil. Squad bonusu (2-nəfərlik sabit cütlük konsepti) 5 nəfərlik
+    komandaya aid olmadığı üçün buraxılıb."""
+    def __init__(self, match_number, team_a, team_b):
+        super().__init__(timeout=None)
+        self.match_number = match_number
+        self.team_a = team_a
+        self.team_b = team_b
+        self.finished = False
+
+    async def _finish(self, interaction: discord.Interaction, winner_team, loser_team, winner_label, loser_label):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
+            return
+
+        if self.finished:
+            await interaction.response.send_message("⚠️ Bu matçın nəticəsi artıq qeyd olunub.", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        winner_ids = [p["discord_id"] for p in winner_team]
+        loser_ids = [p["discord_id"] for p in loser_team]
+
+        active_before = get_active_match(self.match_number)
+        selected_map = active_before.get("selected_map") if active_before else None
+        is_golden = bool(active_before.get("is_golden")) if active_before else False
+        is_lightning = bool(active_before.get("is_lightning")) if active_before else False
+        elo_multiplier = (2 if is_golden else 1) * (2 if is_lightning else 1)
+
+        results = update_team_elo_5v5(winner_ids, loser_ids, elo_multiplier=elo_multiplier)
+        if results is None:
+            await interaction.followup.send("❌ Xəta: oyunçu məlumatları tapılmadı.", ephemeral=True)
+            return
+
+        self.finished = True
+        for child in self.children:
+            child.disabled = True
+
+        stats_by_id = {}
+        scan = get_scan_result(self.match_number)
+        if scan and scan["confirmed"]:
+            try:
+                parsed = json.loads(scan["scan_data"])
+            except (TypeError, ValueError):
+                parsed = {}
+            for key, s in parsed.items():
+                try:
+                    did = int(key)
+                except ValueError:
+                    continue
+                add_combat_stats(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0))
+                stats_by_id[did] = s
+
+        winner_avg_old_elo = sum(r["old_elo"] for r in results["winners"]) / len(results["winners"])
+        loser_avg_old_elo = sum(r["old_elo"] for r in results["losers"]) / len(results["losers"])
+        is_upset = (loser_avg_old_elo - winner_avg_old_elo) >= UPSET_ELO_THRESHOLD
+
+        az_now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+        today_key = az_now.strftime("%Y-%m-%d")
+
+        new_achievements = []
+        new_titles = []
+        new_quests = []
+        new_bp_levels = []
+        challenge_claimers = []
+        achievement_rarity = get_achievement_rarity()
+
+        mvp_id = None
+        if stats_by_id:
+            mvp_id = max(
+                stats_by_id.items(),
+                key=lambda kv: kv[1].get("kills", 0) * 2 + kv[1].get("assists", 0) - kv[1].get("deaths", 0)
+            )[0]
+
+        def _award_bp_xp(did, nick, s, is_winner):
+            xp = 40 if is_winner else 20
+            xp += update_bp_mission(did, "matches", 1)
+            if is_winner:
+                xp += update_bp_mission(did, "wins", 1)
+            if did in stats_by_id:
+                xp += update_bp_mission(did, "kills", s.get("kills", 0))
+                xp += update_bp_mission(did, "assists", s.get("assists", 0))
+                if did == mvp_id:
+                    xp += update_bp_mission(did, "mvp", 1)
+            if _is_double_xp_active():
+                xp *= 2
+            personal_boost = get_active_boost(did, "bp_xp")
+            if personal_boost:
+                xp = round(xp * personal_boost["multiplier"])
+            bp_result = add_bp_xp(did, xp)
+            if bp_result.get("leveled_up"):
+                new_bp_levels.append((nick, bp_result))
+                if get_dm_notifications(did) and interaction.guild:
+                    asyncio.create_task(_send_bp_levelup_dm(interaction.guild, did, nick, bp_result["new_level"]))
+
+        current_season = get_or_create_current_season("5v5")
+
+        for p, r in zip(winner_team, results["winners"]):
+            did = p["discord_id"]
+            add_season_stat(did, current_season["id"], kills=stats_by_id.get(did, {}).get("kills", 0),
+                             assists=stats_by_id.get(did, {}).get("assists", 0),
+                             deaths=stats_by_id.get(did, {}).get("deaths", 0),
+                             wins=1, elo_gained=r["new_elo"] - r["old_elo"], elo_start=r["old_elo"], mode="5v5")
+            streak, _ = update_streak_5v5(did, True)
+            bonus_coins, _bonus_elo = get_streak_bonus(streak)
+            earned = random.randint(5, 10) + bonus_coins
+            if _is_weekend_bonus_active():
+                earned *= 2
+            if is_golden:
+                earned *= 2
+            if is_lightning:
+                earned *= 2
+            new_bal = add_coins(did, earned)
+            reason = f"5v5 Matç No{self.match_number} qələbə" + (f" (seriya {streak})" if bonus_coins else "")
+            if _is_weekend_bonus_active():
+                reason += " (həftəsonu 2x)"
+            if is_golden:
+                reason += " (Qızıl Matç 2x)"
+            if is_lightning:
+                reason += " (İldırım Turu 2x)"
+            add_coin_log(did, earned, reason, "earn", new_bal)
+            s = stats_by_id.get(did, {})
+            update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
+            if did in stats_by_id:
+                update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
+            _award_bp_xp(did, p["nick"], s, True)
+            for ach in check_and_grant_achievements(did):
+                new_achievements.append((p["nick"], ach))
+                if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+            for ti in check_and_grant_titles(did):
+                new_titles.append((p["nick"], ti))
+                if interaction.guild:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ti["name"], ti["icon"], "ləqəb"))
+            for q in update_quest_progress(did, "win_matches"):
+                new_quests.append((p["nick"], q))
+            if is_golden:
+                for q in update_quest_progress(did, "golden_match_play"):
+                    new_quests.append((p["nick"], q))
+            if did in stats_by_id and claim_daily_challenge(
+                did, today_key, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), True
+            ):
+                challenge_claimers.append(p["nick"])
+            await _sync_rank_role_5v5(interaction.guild, did, r["new_elo"])
+            if did in stats_by_id and interaction.guild:
+                asyncio.create_task(_send_coach_dm(
+                    interaction.guild, did, p["nick"], s, r["old_elo"], r["new_elo"], True, self.match_number
+                ))
+
+        for p, r in zip(loser_team, results["losers"]):
+            did = p["discord_id"]
+            add_season_stat(did, current_season["id"], kills=stats_by_id.get(did, {}).get("kills", 0),
+                             assists=stats_by_id.get(did, {}).get("assists", 0),
+                             deaths=stats_by_id.get(did, {}).get("deaths", 0),
+                             losses=1, elo_gained=r["new_elo"] - r["old_elo"], elo_start=r["old_elo"], mode="5v5")
+            update_streak_5v5(did, False)
+            loss_streak = get_loss_streak_5v5(did)
+            if loss_streak == TILT_LOSS_STREAK_THRESHOLD and get_dm_notifications(did) and interaction.guild:
+                asyncio.create_task(_send_tilt_warning_dm(interaction.guild, did, p["nick"], loss_streak))
+            earned = random.randint(0, 5)
+            if _is_weekend_bonus_active():
+                earned *= 2
+            if is_golden:
+                earned *= 2
+            if is_lightning:
+                earned *= 2
+            new_bal = add_coins(did, earned)
+            add_coin_log(
+                did, earned,
+                f"5v5 Matç No{self.match_number} iştirak"
+                + (" (həftəsonu 2x)" if _is_weekend_bonus_active() else "")
+                + (" (Qızıl Matç 2x)" if is_golden else "")
+                + (" (İldırım Turu 2x)" if is_lightning else ""),
+                "earn", new_bal
+            )
+            s = stats_by_id.get(did, {})
+            update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
+            if did in stats_by_id:
+                update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
+            _award_bp_xp(did, p["nick"], s, False)
+            for ach in check_and_grant_achievements(did):
+                new_achievements.append((p["nick"], ach))
+                if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+            for ti in check_and_grant_titles(did):
+                new_titles.append((p["nick"], ti))
+                if interaction.guild:
+                    asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ti["name"], ti["icon"], "ləqəb"))
+            if did in stats_by_id and claim_daily_challenge(
+                did, today_key, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), False
+            ):
+                challenge_claimers.append(p["nick"])
+            await _sync_rank_role_5v5(interaction.guild, did, r["new_elo"])
+            if did in stats_by_id and interaction.guild:
+                asyncio.create_task(_send_coach_dm(
+                    interaction.guild, did, p["nick"], s, r["old_elo"], r["new_elo"], False, self.match_number
+                ))
+
+        now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+        embed = discord.Embed(
+            title=f"✅ 5v5 Matç No{self.match_number} — Nəticə qeyd edildi",
+            description=f"🗓️ {now.strftime('%d.%m.%Y %H:%M')} (AZ vaxtı)\n🏆 Qalib: **{winner_label}**"
+            + ("\n🎉 **Həftəsonu bonusu aktivdir — 2x coin!**" if _is_weekend_bonus_active() else "")
+            + ("\n🌟 **Qızıl Matç idi — 2x ELO və Coin!**" if is_golden else "")
+            + ("\n⚡ **İldırım Turu idi — əlavə 2x ELO və Coin!**" if is_lightning else ""),
+            color=discord.Color.from_rgb(230, 130, 40)
+        )
+
+        def _fmt_line(p, r):
+            line = f"{p['nick']} — {r['old_elo']} → **{r['new_elo']}** ({'+' if r['new_elo']-r['old_elo']>=0 else ''}{r['new_elo']-r['old_elo']})"
+            s = stats_by_id.get(p["discord_id"])
+            if s:
+                line += f"  ·  K:{s.get('kills',0)} A:{s.get('assists',0)} D:{s.get('deaths',0)}"
+            return line
+
+        embed.add_field(
+            name=f"✅ {winner_label}",
+            value="\n".join([_fmt_line(p, r) for p, r in zip(winner_team, results["winners"])]),
+            inline=False
+        )
+        embed.add_field(
+            name=f"❌ {loser_label}",
+            value="\n".join([_fmt_line(p, r) for p, r in zip(loser_team, results["losers"])]),
+            inline=False
+        )
+
+        if new_achievements or new_titles:
+            teaser = embed.copy()
+            teaser.set_footer(text="🎁 Yeni nailiyyətlər açılır...")
+            await interaction.edit_original_response(embed=teaser, view=self)
+            await asyncio.sleep(1.4)
+
+        if new_achievements:
+            embed.add_field(
+                name="🏆 Yeni nailiyyətlər",
+                value="\n".join(f"{ach['icon']} **{ach['name']}** — {nick}" for nick, ach in new_achievements),
+                inline=False
+            )
+        if new_titles:
+            embed.add_field(
+                name="🏅 Yeni ləqəblər",
+                value="\n".join(f"{t['icon']} **{t['name']}** — {nick}" for nick, t in new_titles),
+                inline=False
+            )
+        if new_quests:
+            embed.add_field(
+                name="🧗 Quest tamamlandı!",
+                value="\n".join(f"**{q['name']}** ({q['reward_coins']} coin) — {nick}" for nick, q in new_quests),
+                inline=False
+            )
+        if new_bp_levels:
+            embed.add_field(
+                name="🎫 Pass Level artdı!",
+                value="\n".join(f"**{nick}** → Level {bp['new_level']}" for nick, bp in new_bp_levels)
+                      + "\n`/pass` → \"Mükafatları tələb et\" ilə yığılmış mükafatları alın",
+                inline=False
+            )
+        if challenge_claimers:
+            embed.add_field(
+                name="🎯 Günün Çağırışı tamamlandı",
+                value=", ".join(challenge_claimers),
+                inline=False
+            )
+
+        await asyncio.to_thread(
+            record_match_history, "5v5", winner_ids, loser_ids,
+            [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
+            [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
+            self.match_number, selected_map
+        )
+        if interaction.guild:
+            await _check_community_goal(interaction.guild)
+        asyncio.create_task(_update_live_board_message_5v5(f"5v5 Matç No{self.match_number}: **{winner_label}** qalib gəldi"))
+        if interaction.guild:
+            asyncio.create_task(_send_teammate_rating_prompts(interaction.guild, winner_team, self.match_number))
+            asyncio.create_task(_send_teammate_rating_prompts(interaction.guild, loser_team, self.match_number))
+
+        await interaction.edit_original_response(embed=embed, view=self)
+        log_channel = await _get_log_channel_5v5() or await _get_log_channel()
+        if log_channel and log_channel.id != interaction.channel.id:
+            await log_channel.send(embed=embed)
+
+        if is_upset:
+            upset_embed = discord.Embed(
+                title="🔥 BÖYÜK SÜRPRİZ!",
+                description=(
+                    f"**{winner_label}** ({round(winner_avg_old_elo)} orta ELO) "
+                    f"**{loser_label}**-i ({round(loser_avg_old_elo)} orta ELO) məğlub etdi — "
+                    f"{round(loser_avg_old_elo - winner_avg_old_elo)} ELO fərqinə baxmayaraq!"
+                ),
+                color=discord.Color.red()
+            )
+            await interaction.channel.send(embed=upset_embed)
+            if log_channel and log_channel.id != interaction.channel.id:
+                await log_channel.send(embed=upset_embed)
+
+        clear_active_match(self.match_number)
+
+        if active_before:
+            if active_before.get("log_channel_id") and active_before.get("log_message_id"):
+                try:
+                    msg_channel = bot.get_channel(active_before["log_channel_id"]) or \
+                        await bot.fetch_channel(active_before["log_channel_id"])
+                    old_msg = await msg_channel.fetch_message(active_before["log_message_id"])
+                    await old_msg.delete()
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    pass
+
+            if interaction.guild:
+                await _cleanup_match_voice_channels(interaction.guild, active_before)
+
+                if active_before.get("thread_id"):
+                    thread = interaction.guild.get_thread(active_before["thread_id"])
+                    if thread:
+                        try:
+                            await thread.send("✅ Matç nəticəsi qeyd olundu.")
+                        except discord.HTTPException:
+                            pass
+                        await _post_thread_summary_and_archive(thread)
+
+        await _start_match_if_ready_5v5(log_channel or interaction.channel, interaction.guild)
+
+    @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a_5v5")
+    async def team_a_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._finish(interaction, self.team_a, self.team_b, "Komanda A", "Komanda B")
+
+    @discord.ui.button(label="Komanda B qalib", style=discord.ButtonStyle.danger, emoji="🔴", custom_id="result_b_5v5")
+    async def team_b_wins(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._finish(interaction, self.team_b, self.team_a, "Komanda B", "Komanda A")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SCAN SİSTEMİ — skor ekranından K/A/D oxuyub matç nəticəsinə əlavə edir
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2602,6 +3332,23 @@ async def update_queue_status_message():
         pass
 
 
+async def update_queue_status_message_5v5():
+    global queue_status_message_id_5v5
+    if queue_status_channel_id_5v5 is None or queue_status_message_id_5v5 is None:
+        return
+    channel = bot.get_channel(queue_status_channel_id_5v5)
+    if channel is None:
+        return
+    players = get_queue_list_5v5()
+    image_path = os.path.join(DATA_DIR or ".", "queue_status_5v5.png")
+    await asyncio.to_thread(generate_queue_status_card, players, image_path, None, 10)
+    try:
+        message = await channel.fetch_message(queue_status_message_id_5v5)
+        await message.edit(attachments=[discord.File(image_path, filename="queue_status_5v5.png")])
+    except discord.NotFound:
+        pass
+
+
 async def _post_thread_summary_and_archive(thread):
     """Matç bitəndə thread-ə avtomatik qısa xülasə yazır (mesaj sayı, ən aktiv iştirakçı)
     və thread-i arxivləşdirir/kilidləyir ki, artıq lazımsız qalmasın."""
@@ -2665,24 +3412,40 @@ async def _start_match_if_ready(channel, guild):
     eyni anda sıraya qoşulanda, hər birinin öz handler-i də bu funksiyanı çağırır) təsadüfən
     2 dublikat matç yaratmasın — kilid altında sıra artıq boşalmış olacaq, ikinci çağırış heç nə etməyəcək."""
     async with _match_start_lock:
-        while count_active_matches() < MAX_PARALLEL_MATCHES and queue_size() >= 4:
+        while count_active_matches(mode="2v2") < MAX_PARALLEL_MATCHES and queue_size() >= 4:
             started = await _start_one_match(channel, guild)
             if not started:
                 break
 
 
+_match_start_lock_5v5 = asyncio.Lock()
+
+
+async def _start_match_if_ready_5v5(channel, guild):
+    """`_start_match_if_ready`-in 5v5 analoqu — AYRICA kilid istifadə edir ki, 2v2 və 5v5
+    matç başlatma məntiqi bir-birini gözləməsin (əsl paralellik)."""
+    async with _match_start_lock_5v5:
+        while count_active_matches(mode="5v5") < MAX_PARALLEL_MATCHES and queue_size_5v5() >= 10:
+            started = await _start_one_5v5_match(channel, guild)
+            if not started:
+                break
+
+
 WARMUP_VOICE_CHANNEL_NAME = "🎤 İsınma Otağı"
+WARMUP_VOICE_CHANNEL_NAME_5V5 = "🎤 İsınma Otağı (5v5)"
 
 
-async def _get_or_create_warmup_channel(guild):
+async def _get_or_create_warmup_channel(guild, mode="2v2"):
     if not guild:
         return None
-    existing = discord.utils.get(guild.voice_channels, name=WARMUP_VOICE_CHANNEL_NAME)
+    name = WARMUP_VOICE_CHANNEL_NAME_5V5 if mode == "5v5" else WARMUP_VOICE_CHANNEL_NAME
+    category_name = CATEGORY_5V5_NAME if mode == "5v5" else FULL_SETUP_CATEGORY_NAME
+    existing = discord.utils.get(guild.voice_channels, name=name)
     if existing:
         return existing
-    category = discord.utils.get(guild.categories, name=FULL_SETUP_CATEGORY_NAME)
+    category = discord.utils.get(guild.categories, name=category_name)
     try:
-        return await guild.create_voice_channel(WARMUP_VOICE_CHANNEL_NAME, category=category)
+        return await guild.create_voice_channel(name, category=category)
     except discord.Forbidden:
         return None
 
@@ -2846,6 +3609,166 @@ async def _start_one_match(channel, guild) -> bool:
     return True
 
 
+async def _start_one_5v5_match(channel, guild) -> bool:
+    """`_start_one_match`-ın 5v5 analoqu — eyni axın (kapitan reveal, matç kartı, thread,
+    intel briefing, dinamik səs kanalları), yalnız 10 nəfər/2×5 komanda və AYRICA
+    kateqoriya/queue/status funksiyaları istifadə edir."""
+    result = pop_10_and_balance()
+    if result is None:
+        return False
+    team_a, team_b, captain_a, captain_b = result
+    selected_map = random.choice(MAPS)
+    match_number = get_next_match_number()
+    is_golden = random.random() < GOLDEN_MATCH_CHANCE
+    is_lightning = _is_lightning_round_active()
+
+    set_active_match(
+        match_number,
+        team_a_json=json.dumps(team_a, ensure_ascii=False),
+        team_b_json=json.dumps(team_b, ensure_ascii=False),
+        selected_map=selected_map,
+        captain_a_id=captain_a["discord_id"],
+        captain_b_id=captain_b["discord_id"],
+        is_golden=is_golden, is_lightning=is_lightning,
+        mode="5v5"
+    )
+
+    captain_reveal_msg = None
+    try:
+        captain_reveal_msg = await channel.send(f"🎲 5v5 Matç No{match_number} — kapitanlar seçilir...")
+        await asyncio.sleep(1.0)
+        await captain_reveal_msg.edit(content=f"🔵 Komanda A Kapitanı: **{captain_a['nick']}** seçildi!")
+        await asyncio.sleep(0.8)
+        await captain_reveal_msg.edit(
+            content=f"🔵 Komanda A Kapitanı: **{captain_a['nick']}**\n🔴 Komanda B Kapitanı: **{captain_b['nick']}** seçildi!"
+        )
+        await asyncio.sleep(0.8)
+    except discord.HTTPException:
+        pass
+
+    card_path = os.path.join(DATA_DIR or ".", f"match_5v5_{match_number}.png")
+    await asyncio.to_thread(
+        generate_match_card, match_number, selected_map, team_a, team_b,
+        captain_a["discord_id"], captain_b["discord_id"], card_path
+    )
+
+    if captain_reveal_msg:
+        try:
+            await captain_reveal_msg.delete()
+        except discord.HTTPException:
+            pass
+
+    mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
+    if is_golden:
+        mentions += "\n\n🌟 **QIZIL MATÇ!** Bu matçda ELO və Coin dəyişimi 2x-dir!"
+    if is_lightning:
+        mentions += "\n\n⚡ **İldırım Turu davam edir!** Bu matçda ELO və Coin əlavə 2x-dir!"
+    ready_view = TeamReadyView5v5(team_a, team_b)
+    initial_status_embed = _build_match_status_embed({
+        "match_number": match_number, "team_a_ready": False, "team_b_ready": False,
+        "selected_map": selected_map, "voice_a_id": None, "voice_b_id": None,
+    })
+    sent_message = await channel.send(
+        content=mentions,
+        file=discord.File(card_path, filename="match.png"),
+        embed=initial_status_embed,
+        view=ready_view
+    )
+
+    thread_id = None
+    try:
+        thread = await sent_message.create_thread(
+            name=f"5v5 Matç #{match_number} — {selected_map}", auto_archive_duration=60
+        )
+        thread_id = thread.id
+        await thread.send(f"{mentions}\n💬 Bu matç üçün koordinasiyanı burada apara bilərsiniz.")
+    except discord.HTTPException:
+        pass
+
+    set_active_match_message(match_number, sent_message.id, channel.id, thread_id)
+
+    social_channel = await _get_social_channel()
+    if social_channel:
+        announce_embed = discord.Embed(
+            title=f"🎯 Yeni 5v5 Matç Başladı — No{match_number}",
+            description=(
+                f"🗺️ Xəritə: **{selected_map}**\n\n"
+                "Lobbi operativ qurulsun deyə kapitanlarla dərhal əlaqə saxlayın!"
+            ),
+            color=discord.Color.from_rgb(230, 130, 40)
+        )
+        announce_embed.add_field(
+            name="🔵 Komanda A Kapitanı",
+            value=f"**{captain_a['nick']}**\n<@{captain_a['discord_id']}> · `{captain_a['discord_id']}`",
+            inline=True
+        )
+        announce_embed.add_field(
+            name="🔴 Komanda B Kapitanı",
+            value=f"**{captain_b['nick']}**\n<@{captain_b['discord_id']}> · `{captain_b['discord_id']}`",
+            inline=True
+        )
+        announce_embed.set_footer(text="Zenith's Academy — 5v5")
+        try:
+            await social_channel.send(embed=announce_embed)
+        except discord.Forbidden:
+            pass
+
+    if guild:
+        for p in team_a:
+            asyncio.create_task(_send_intel_briefing(guild, p["discord_id"], p["nick"], team_b, selected_map))
+        for p in team_b:
+            asyncio.create_task(_send_intel_briefing(guild, p["discord_id"], p["nick"], team_a, selected_map))
+
+    voice_a_channel = voice_b_channel = None
+    if guild:
+        category = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
+        try:
+            voice_a_channel = await guild.create_voice_channel(f"🔵 M{match_number}-A · {selected_map}", category=category)
+            voice_b_channel = await guild.create_voice_channel(f"🔴 M{match_number}-B · {selected_map}", category=category)
+            set_active_match_voice(
+                match_number,
+                voice_a_channel.id if voice_a_channel else None,
+                voice_b_channel.id if voice_b_channel else None
+            )
+            active_now = get_active_match(match_number)
+            if active_now:
+                try:
+                    await sent_message.edit(embed=_build_match_status_embed(active_now))
+                except discord.HTTPException:
+                    pass
+            if thread_id:
+                thread_obj = guild.get_thread(thread_id)
+                if thread_obj:
+                    try:
+                        await thread_obj.send(
+                            f"🎙️ Səs kanalları hazırdır: {voice_a_channel.mention} (Komanda A) · "
+                            f"{voice_b_channel.mention} (Komanda B)"
+                        )
+                    except discord.HTTPException:
+                        pass
+        except discord.Forbidden:
+            print(f"[VOICE] 5v5 Matç #{match_number} üçün səs kanalları yaradıla bilmədi (icazə yoxdur).", flush=True)
+
+    for p in team_a:
+        member = guild.get_member(p["discord_id"]) if guild else None
+        if member and member.voice and voice_a_channel:
+            try:
+                await member.move_to(voice_a_channel)
+            except discord.Forbidden:
+                pass
+
+    for p in team_b:
+        member = guild.get_member(p["discord_id"]) if guild else None
+        if member and member.voice and voice_b_channel:
+            try:
+                await member.move_to(voice_b_channel)
+            except discord.Forbidden:
+                pass
+
+    await update_queue_status_message_5v5()
+    return True
+
+
 class MatchmakingView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -2890,7 +3813,7 @@ class MatchmakingView(discord.ui.View):
             return
 
         size = queue_size()
-        active_count = count_active_matches()
+        active_count = count_active_matches(mode="2v2")
         comeback_line = f"\n🎉 **Geri dönüş bonusu: +{comeback_bonus} coin!** Yenidən görməyə şadıq!" if comeback_bonus else ""
         if active_count >= MAX_PARALLEL_MATCHES:
             await interaction.response.send_message(
@@ -2942,15 +3865,117 @@ class MatchmakingView(discord.ui.View):
         await update_queue_status_message()
 
 
+class MatchmakingView5v5(discord.ui.View):
+    """`MatchmakingView`-in 5v5 analoqu — AYRICA sıra (matchmaking_queue_5v5), 10 nəfər
+    tamamlananda `_start_match_if_ready_5v5` işə düşür."""
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    async def _do_join_queue(self, interaction: discord.Interaction):
+        if not is_queue_open():
+            await interaction.response.send_message(
+                f"🌙 Matchmaking yalnız gecə saatlarında aktivdir.\n🇦🇿 Azərbaycan vaxtı: **20:00 - 02:00**",
+                ephemeral=True
+            )
+            return
+
+        player = get_player(interaction.user.id)
+        if not player:
+            await interaction.response.send_message(
+                "❌ Əvvəlcə qeydiyyatdan keçməlisiniz. `#faceit-qeydiyyat` kanalına keçin.",
+                ephemeral=True
+            )
+            return
+
+        if is_player_in_active_match(interaction.user.id):
+            await interaction.response.send_message(
+                "❌ Siz artıq aktiv bir matçdasınız — əvvəlcə onu bitirin, sonra yenidən sıraya qoşula bilərsiniz.",
+                ephemeral=True
+            )
+            return
+
+        if queue_size_5v5() >= 10:
+            await interaction.response.send_message(
+                "⏳ 5v5 sırası doludur (10/10). Zəhmət olmasa gözləyin, yer boşalan kimi qoşula bilərsiniz.",
+                ephemeral=True
+            )
+            return
+
+        discord_id, nick, so2_id, elo = player[0], player[1], player[2], player[3]
+        ensure_5v5_stats_row(discord_id)
+        stats5 = get_player_5v5(discord_id)
+
+        added = add_to_queue_5v5(discord_id, nick, stats5["elo"], so2_id)
+        if not added:
+            await interaction.response.send_message("⚠️ Siz artıq 5v5 sırasındasınız.", ephemeral=True)
+            return
+
+        size = queue_size_5v5()
+        active_count = count_active_matches(mode="5v5")
+        if active_count >= MAX_PARALLEL_MATCHES:
+            await interaction.response.send_message(
+                f"✅ {nick} 5v5 sırasına qoşuldu! ({size}/10)\n"
+                f"⏳ Hazırda {active_count}/{MAX_PARALLEL_MATCHES} 5v5 matç paralel davam edir — "
+                f"yer boşalan kimi növbəti matç avtomatik başlayacaq.",
+                ephemeral=True
+            )
+            await update_queue_status_message_5v5()
+            return
+
+        await interaction.response.send_message(f"✅ {nick} 5v5 sırasına qoşuldu! ({size}/10)", ephemeral=True)
+        await update_queue_status_message_5v5()
+
+        if interaction.guild:
+            member = interaction.guild.get_member(discord_id)
+            if member and member.voice and member.voice.channel:
+                warmup = await _get_or_create_warmup_channel(interaction.guild, mode="5v5")
+                if warmup and member.voice.channel.id != warmup.id:
+                    try:
+                        await member.move_to(warmup)
+                    except discord.Forbidden:
+                        pass
+
+        await _start_match_if_ready_5v5(interaction.channel, interaction.guild)
+
+    @discord.ui.button(label="5v5", style=discord.ButtonStyle.danger, emoji="🎯", custom_id="mm_join_5v5")
+    async def join_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._do_join_queue(interaction)
+
+    @discord.ui.button(label="Sıradan çıx", style=discord.ButtonStyle.secondary, emoji="🚪", custom_id="mm_leave_5v5")
+    async def leave_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
+        removed = remove_from_queue_5v5(interaction.user.id)
+        if removed:
+            await interaction.response.send_message("✅ 5v5 sırasından çıxdınız.", ephemeral=True)
+            await update_queue_status_message_5v5()
+        else:
+            await interaction.response.send_message("⚠️ Siz 5v5 sırasında deyilsiniz.", ephemeral=True)
+
+    @discord.ui.button(label="Queue-dən hamını çıxart - Admins Only", style=discord.ButtonStyle.danger, emoji="🧹", custom_id="mm_clear_5v5")
+    async def clear_all(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
+            return
+        clear_queue_5v5()
+        await interaction.response.send_message("🧹 5v5 sırası tam təmizləndi.", ephemeral=True)
+        await update_queue_status_message_5v5()
+
+
 @bot.event
 async def on_ready():
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
     global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
+    global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5
     init_db()
 
     saved_log = get_meta("log_channel_id")
     if saved_log:
         LOG_CHANNEL_ID = int(saved_log)
+    saved_log_5v5 = get_meta("log_channel_id_5v5")
+    if saved_log_5v5:
+        LOG_CHANNEL_ID_5V5 = int(saved_log_5v5)
+    saved_lb_5v5 = get_meta("leaderboard_channel_id_5v5")
+    if saved_lb_5v5:
+        leaderboard_channel_id_5v5 = int(saved_lb_5v5)
     saved_reward = get_meta("reward_channel_id")
     if saved_reward:
         REWARD_CHANNEL_ID = int(saved_reward)
@@ -2987,8 +4012,10 @@ async def on_ready():
 
     print(f"{bot.user} giriş etdi və hazırdır!")
     bot.add_view(MatchmakingView())
+    bot.add_view(MatchmakingView5v5())
     bot.add_view(RegisterView())
     bot.add_view(TeamReadyView())
+    bot.add_view(TeamReadyView5v5())
     bot.add_view(SquadInviteView())
     for aid in get_open_auction_ids():
         bot.add_view(AuctionBidView(aid))
@@ -3207,12 +4234,28 @@ class StatsMenuView(_ProfileSubMenuBase):
             ("btn.heatmap", "🔥", self.heatmap_btn),
             ("btn.synergy", "🔍", self.synergy_btn),
             ("btn.coach", "🤖", self.coach_btn),
+            ("btn.stats_5v5", "🎯", self.stats_5v5_btn),
         ])
 
     async def stats_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
         await _render_stats(interaction, self.discord_id)
+
+    async def stats_5v5_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        stats5 = get_player_stats_dict_5v5(self.discord_id)
+        if not stats5:
+            await interaction.response.send_message(
+                "ℹ️ Hələ 5v5 oynamamısınız — Matchmaking-5v5 kanalından sıraya qoşulun!", ephemeral=True
+            )
+            return
+        await interaction.response.defer(ephemeral=True)
+        achievements = get_player_achievements(self.discord_id)
+        card_path = os.path.join(DATA_DIR or ".", f"stats_5v5_{self.discord_id}.png")
+        await asyncio.to_thread(generate_stats_card, stats5, achievements, card_path)
+        await interaction.followup.send(file=discord.File(card_path, filename="stats_5v5.png"), ephemeral=True)
 
     async def history_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -3458,21 +4501,26 @@ class TeammateRatingView(discord.ui.View):
 
 
 async def _send_teammate_rating_prompts(guild, team, match_number):
-    if not guild or len(team) != 2:
+    """Komandadakı hər oyunçuya QALAN bütün komanda yoldaşlarını qiymətləndirmək üçün DM
+    göndərir — 2v2-də hər oyunçunun 1, 5v5-də 4 yoldaşı olur, hər biri üçün ayrıca DM."""
+    if not guild or len(team) < 2:
         return
-    for rater, rated in ((team[0], team[1]), (team[1], team[0])):
+    for rater in team:
         member = guild.get_member(rater["discord_id"])
         if not member:
             continue
-        view = TeammateRatingView(rater["discord_id"], rated["discord_id"], rated["nick"], match_number)
-        try:
-            await member.send(
-                f"🤝 Matç No{match_number} bitdi! Komanda yoldaşınız **{rated['nick']}** ilə "
-                "əməkdaşlığınızı necə qiymətləndirərdiniz?",
-                view=view
-            )
-        except discord.Forbidden:
-            pass
+        for rated in team:
+            if rated["discord_id"] == rater["discord_id"]:
+                continue
+            view = TeammateRatingView(rater["discord_id"], rated["discord_id"], rated["nick"], match_number)
+            try:
+                await member.send(
+                    f"🤝 Matç No{match_number} bitdi! Komanda yoldaşınız **{rated['nick']}** ilə "
+                    "əməkdaşlığınızı necə qiymətləndirərdiniz?",
+                    view=view
+                )
+            except discord.Forbidden:
+                break
 
 
 class SeasonHistoryView(discord.ui.View):
@@ -3837,6 +4885,34 @@ async def _post_leaderboard(channel):
         refresh_leaderboard.start()
 
 
+async def _post_leaderboard_5v5(channel):
+    global leaderboard_channel_id_5v5, leaderboard_message_id_5v5
+
+    rows = get_leaderboard_5v5(20)
+    generate_leaderboard_image(rows, LEADERBOARD_IMAGE_PATH_5V5)
+
+    link_view = discord.ui.View(timeout=None)
+    link_view.add_item(discord.ui.Button(
+        label="🌐 Tam Siyahını Gör (Vebsayt)", style=discord.ButtonStyle.link, url=PUBLIC_WEB_URL
+    ))
+
+    message = await channel.send(
+        content=(
+            "🎯 **Zenith's Academy FACEIT 5v5 Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+            "(bu şəkil Top-20-ni göstərir).\n"
+            f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}"
+        ),
+        file=discord.File(LEADERBOARD_IMAGE_PATH_5V5, filename="leaderboard_5v5.png"),
+        view=link_view
+    )
+
+    leaderboard_channel_id_5v5 = channel.id
+    leaderboard_message_id_5v5 = message.id
+
+    if not refresh_leaderboard_5v5.is_running():
+        refresh_leaderboard_5v5.start()
+
+
 async def _post_register(channel):
     banner_path = os.path.join(DATA_DIR or ".", "register_banner.png")
     await asyncio.to_thread(generate_register_banner, LOGO_PATH, banner_path)
@@ -3857,6 +4933,24 @@ async def _post_matchmaking(channel):
     status_message = await channel.send(file=discord.File(status_image_path, filename="queue_status.png"))
     queue_status_channel_id = channel.id
     queue_status_message_id = status_message.id
+
+
+async def _post_matchmaking_5v5(channel):
+    global queue_status_channel_id_5v5, queue_status_message_id_5v5
+
+    banner_path = os.path.join(DATA_DIR or ".", "matchmaking_banner_5v5.png")
+    await asyncio.to_thread(generate_matchmaking_banner, QUEUE_OPEN_HOUR, QUEUE_CLOSE_HOUR, LOGO_PATH, banner_path)
+    view = MatchmakingView5v5()
+    await channel.send(
+        content="🎯 **FACEIT 5v5** — bu kanaldan yalnız 5v5 sırasına qoşulun.",
+        file=discord.File(banner_path, filename="matchmaking_banner_5v5.png"), view=view
+    )
+
+    status_image_path = os.path.join(DATA_DIR or ".", "queue_status_5v5.png")
+    await asyncio.to_thread(generate_queue_status_card, [], status_image_path, None, 10)
+    status_message = await channel.send(file=discord.File(status_image_path, filename="queue_status_5v5.png"))
+    queue_status_channel_id_5v5 = channel.id
+    queue_status_message_id_5v5 = status_message.id
 
 
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")
@@ -3915,11 +5009,12 @@ async def setup_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-@bot.tree.command(name="full_setup", description="[Admin] FACEIT 2v2 kanallarını silib yenilənmiş formada təzədən qurur")
+@bot.tree.command(name="full_setup", description="[Admin] FACEIT 2v2+5v5 kanallarını silib yenilənmiş, kataqoriyalaşdırılmış formada təzədən qurur")
 @staff_check()
 async def full_setup(interaction: discord.Interaction):
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
     global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
+    global LOG_CHANNEL_ID_5V5
 
     if not interaction.guild:
         await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
@@ -3929,10 +5024,18 @@ async def full_setup(interaction: discord.Interaction):
     guild = interaction.guild
     progress_msg = await interaction.followup.send("⏳ Server qurulur...\n`░░░░░░░░░░░░░░░░░░░░` 0%", ephemeral=True)
 
-    category = discord.utils.get(guild.categories, name=FULL_SETUP_CATEGORY_NAME)
-    if category is None:
-        category = await guild.create_category(FULL_SETUP_CATEGORY_NAME)
-    await _progress_step(progress_msg, 1, 5, "Kateqoriya hazırlanır...")
+    # Üç ayrı kataqoriya: Ümumi (hər iki formata aid), 2v2, 5v5 — kanallar səliqəli
+    # şəkildə ayrılsın deyə. Hər kataqoriya öz matchmaking/leaderboard/log üçlüyünə malikdir.
+    category_general = discord.utils.get(guild.categories, name=CATEGORY_GENERAL_NAME)
+    if category_general is None:
+        category_general = await guild.create_category(CATEGORY_GENERAL_NAME)
+    category_2v2 = discord.utils.get(guild.categories, name=FULL_SETUP_CATEGORY_NAME)
+    if category_2v2 is None:
+        category_2v2 = await guild.create_category(FULL_SETUP_CATEGORY_NAME)
+    category_5v5 = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
+    if category_5v5 is None:
+        category_5v5 = await guild.create_category(CATEGORY_5V5_NAME)
+    await _progress_step(progress_msg, 1, 5, "Kataqoriyalar hazırlanır...")
 
     announce_overwrites = {
         guild.default_role: discord.PermissionOverwrite(send_messages=False)
@@ -3941,7 +5044,7 @@ async def full_setup(interaction: discord.Interaction):
         guild.default_role: discord.PermissionOverwrite(view_channel=False)
     }
 
-    async def _recreate_text(name, overwrites=None):
+    async def _recreate_text(name, category, overwrites=None):
         existing = discord.utils.get(category.text_channels, name=name)
         if existing:
             try:
@@ -3950,25 +5053,35 @@ async def full_setup(interaction: discord.Interaction):
                 pass
         return await guild.create_text_channel(name, category=category, overwrites=overwrites or {})
 
-    # Ay sonu mükafat kanalı ən üstdə olsun deyə digərlərindən ƏVVƏL yaradılır
-    # (Discord yeni kanallara ardıcıl artan mövqe verir — kateqoriyada birinci yaranan üstdə görünür).
-    ch_reward = await _recreate_text("ay-sonu-mukafati", announce_overwrites)
-    ch_register = await _recreate_text("faceit-qeydiyyat", announce_overwrites)
-    ch_matchmaking = await _recreate_text("matchmaking", announce_overwrites)
-    ch_rules = await _recreate_text("faceit-qaydalari", announce_overwrites)
-    current_season_for_setup = get_or_create_current_season()
+    # ── Ümumi (hər iki formata aid) ────────────────────────────────────────────
+    # Ay sonu mükafat kanalı ən üstdə olsun deyə digərlərindən ƏVVƏL yaradılır.
+    ch_reward = await _recreate_text("ay-sonu-mukafati", category_general, announce_overwrites)
+    ch_register = await _recreate_text("faceit-qeydiyyat", category_general, announce_overwrites)
+    ch_rules = await _recreate_text("faceit-qaydalari", category_general, announce_overwrites)
+    ch_pass = await _recreate_text(f"pass-{BP_SEASON_NAME.lower()}", category_general, announce_overwrites)
+    ch_hof = await _recreate_text("hall-of-fame", category_general, announce_overwrites)
+    ch_reports = await _recreate_text("reports", category_general, staff_only_overwrites)
+    ch_audit = await _recreate_text("audit-log", category_general, staff_only_overwrites)
+    ch_wall = await _recreate_text("nailiyyet-divari", category_general, announce_overwrites)
+    ch_boss = await _recreate_text("boss-event", category_general, announce_overwrites)
+    ch_masters = await _recreate_text("xerite-ustalari", category_general, announce_overwrites)
+    ch_news = await _recreate_text("standoff2-yenilikleri", category_general, announce_overwrites)
+
+    # ── 2v2 ──────────────────────────────────────────────────────────────────
+    ch_matchmaking = await _recreate_text("matchmaking", category_2v2, announce_overwrites)
+    current_season_2v2 = get_or_create_current_season("2v2")
     ch_leaderboard = await _recreate_text(
-        f"leaderboard-sezon-{current_season_for_setup['season_number']}", announce_overwrites
+        f"leaderboard-sezon-{current_season_2v2['season_number']}", category_2v2, announce_overwrites
     )
-    ch_pass = await _recreate_text(f"pass-{BP_SEASON_NAME.lower()}", announce_overwrites)
-    ch_hof = await _recreate_text("hall-of-fame", announce_overwrites)
-    ch_log = await _recreate_text("faceit-log")
-    ch_reports = await _recreate_text("reports", staff_only_overwrites)
-    ch_audit = await _recreate_text("audit-log", staff_only_overwrites)
-    ch_wall = await _recreate_text("nailiyyet-divari", announce_overwrites)
-    ch_boss = await _recreate_text("boss-event", announce_overwrites)
-    ch_masters = await _recreate_text("xerite-ustalari", announce_overwrites)
-    ch_news = await _recreate_text("standoff2-yenilikleri", announce_overwrites)
+    ch_log = await _recreate_text("faceit-log", category_2v2)
+
+    # ── 5v5 ──────────────────────────────────────────────────────────────────
+    ch_matchmaking_5v5 = await _recreate_text("matchmaking-5v5", category_5v5, announce_overwrites)
+    current_season_5v5 = get_or_create_current_season("5v5")
+    ch_leaderboard_5v5 = await _recreate_text(
+        f"leaderboard-5v5-sezon-{current_season_5v5['season_number']}", category_5v5, announce_overwrites
+    )
+    ch_log_5v5 = await _recreate_text("faceit-log-5v5", category_5v5)
     await _progress_step(progress_msg, 2, 5, "Kanallar yaradılır...")
 
     # Köhnə statik "Komanda A/B" səs kanalları artıq lazım deyil — hər matç
@@ -3976,17 +5089,20 @@ async def full_setup(interaction: discord.Interaction):
     # _start_one_match/_cleanup_match_voice_channels). Əvvəllər bu komanda
     # yaratmış ola biləcəyi köhnə statik kanallar varsa təmizlənir.
     for stale_name in ("🔵 Komanda A", "🔴 Komanda B"):
-        stale = discord.utils.get(category.voice_channels, name=stale_name)
+        stale = discord.utils.get(category_2v2.voice_channels, name=stale_name)
         if stale:
             try:
                 await stale.delete(reason="full_setup: statik komanda kanalları artıq istifadə olunmur")
             except discord.Forbidden:
                 pass
 
-    await _get_or_create_warmup_channel(guild)
+    await _get_or_create_warmup_channel(guild, mode="2v2")
+    await _get_or_create_warmup_channel(guild, mode="5v5")
 
     LOG_CHANNEL_ID = ch_log.id
     set_meta("log_channel_id", ch_log.id)
+    LOG_CHANNEL_ID_5V5 = ch_log_5v5.id
+    set_meta("log_channel_id_5v5", ch_log_5v5.id)
     REWARD_CHANNEL_ID = ch_reward.id
     set_meta("reward_channel_id", ch_reward.id)
     HALL_OF_FAME_CHANNEL_ID = ch_hof.id
@@ -4007,8 +5123,10 @@ async def full_setup(interaction: discord.Interaction):
 
     await _post_register(ch_register)
     await _post_matchmaking(ch_matchmaking)
+    await _post_matchmaking_5v5(ch_matchmaking_5v5)
     await _post_rules(ch_rules)
     await _post_leaderboard(ch_leaderboard)
+    await _post_leaderboard_5v5(ch_leaderboard_5v5)
     await _post_monthly_reward_card(ch_reward)
     await _post_pass_showcase(ch_pass)
     await ch_hof.send(
@@ -4031,22 +5149,28 @@ async def full_setup(interaction: discord.Interaction):
     await _progress_step(progress_msg, 5, 5, "Tamamlandı!")
 
     await interaction.followup.send(
-        "✅ Server yenidən quruldu! Köhnə FACEIT kanalları silinib, yenilənmiş formada təzədən yaradıldı.\n\n"
-        f"🔪 Ay sonu mükafatı: {ch_reward.mention} (ən üstdə, pinlənmiş kart canlı yenilənir)\n"
+        "✅ Server yenidən quruldu! Kanallar 3 kataqoriyaya bölünüb: **📌 Ümumi**, **🏆 FACEIT 2v2**, **🎯 FACEIT 5v5**.\n\n"
+        f"**📌 Ümumi**\n"
+        f"🔪 Ay sonu mükafatı: {ch_reward.mention}\n"
         f"📋 Qeydiyyat: {ch_register.mention}\n"
-        f"🎮 Matchmaking: {ch_matchmaking.mention}\n"
         f"📜 Qaydalar: {ch_rules.mention}\n"
+        f"🎫 Battle Pass ({BP_SEASON_NAME}): {ch_pass.mention}\n"
+        f"🏆 Hall of Fame: {ch_hof.mention}\n"
+        f"🚩 Reports: {ch_reports.mention} (yalnız adminlər)\n"
+        f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər)\n"
+        f"🏅 Nailiyyət Divarı: {ch_wall.mention}\n"
+        f"👹 Boss Event: {ch_boss.mention}\n"
+        f"🗺️ Xəritə Ustaları: {ch_masters.mention}\n"
+        f"🎮 Standoff 2 Yenilikləri: {ch_news.mention}\n\n"
+        f"**🏆 FACEIT 2v2**\n"
+        f"🎮 Matchmaking: {ch_matchmaking.mention}\n"
         f"🏆 Leaderboard: {ch_leaderboard.mention}\n"
-        f"🎫 Battle Pass ({BP_SEASON_NAME}): {ch_pass.mention} (pinlənmiş tanıtım kartı)\n"
-        f"🏆 Hall of Fame: {ch_hof.mention} (həftəlik MVP hər Bazar ertəsi avtomatik elan olunur)\n"
-        f"📰 Faceit log: {ch_log.mention} (hamı görüb yaza bilər)\n"
-        f"🚩 Reports: {ch_reports.mention} (yalnız adminlər — /report komandası ilə göndərilən şikayətlər)\n"
-        f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər — bütün admin əməliyyatları canlı qeydə alınır)\n"
-        f"🏅 Nailiyyət Divarı: {ch_wall.mention} (nadir nailiyyət/ləqəb qazananlar canlı elan olunur)\n"
-        f"👹 Boss Event: {ch_boss.mention} (həftəlik icma boss-u, canlı yenilənən HP paneli)\n"
-        f"🗺️ Xəritə Ustaları: {ch_masters.mention} (hər xəritənin top-3 oyunçusu, hər Bazar ertəsi yenilənir)\n"
-        f"🎮 Standoff 2 Yenilikləri: {ch_news.mention} (rəsmi patch notes, avtomatik AZ tərcümə, hər 6 saatda yoxlanılır)\n"
-        f"🔊 Səs kanalları: hər matç üçün avtomatik yaradılır/silinir (statik kanal lazım deyil)\n\n"
+        f"📰 Faceit log: {ch_log.mention}\n\n"
+        f"**🎯 FACEIT 5v5**\n"
+        f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
+        f"🏆 Leaderboard: {ch_leaderboard_5v5.mention}\n"
+        f"📰 Faceit log: {ch_log_5v5.mention}\n\n"
+        f"🔊 Səs kanalları (isınma otağı daxil) hər format üçün öz kataqoriyasında avtomatik yaradılır/silinir.\n\n"
         "Elan kanallarında adi üzvlər yazı yaza bilmir, yalnız düymələrlə əməliyyat edə bilirlər.\n"
         "⚠️ Diqqət: bu komanda hər işə düşdükdə mövcud FACEIT kanallarını silib təzədən qurur "
         "(köhnə mesaj tarixçəsi itir).",
@@ -6223,15 +7347,24 @@ async def rank_rollari_qur_cmd(interaction: discord.Interaction):
         if not role:
             await guild.create_role(name=name, color=discord.Color.from_rgb(*color), reason="Rütbə rolu")
             created.append(name)
+        role_5v5_name = f"5v5 {name}"
+        role_5v5 = discord.utils.get(guild.roles, name=role_5v5_name)
+        if not role_5v5:
+            await guild.create_role(name=role_5v5_name, color=discord.Color.from_rgb(*color), reason="5v5 rütbə rolu")
+            created.append(role_5v5_name)
 
     players = get_all_players(limit=1000)
     for p in players:
         await _sync_rank_role(guild, p["discord_id"], p["elo"])
 
+    players_5v5 = get_all_players_5v5(limit=1000)
+    for p in players_5v5:
+        await _sync_rank_role_5v5(guild, p["discord_id"], p["elo"])
+
     await interaction.followup.send(
-        f"✅ Rütbə rolları hazırdır.\n"
+        f"✅ Rütbə rolları hazırdır (2v2 + 5v5).\n"
         f"🆕 Yaradılan rollar: {', '.join(created) if created else 'yoxdur (artıq mövcud idi)'}\n"
-        f"🔄 {len(players)} oyunçunun rolu yeniləndi.",
+        f"🔄 {len(players)} oyunçunun 2v2 rolu, {len(players_5v5)} oyunçunun 5v5 rolu yeniləndi.",
         ephemeral=True
     )
 

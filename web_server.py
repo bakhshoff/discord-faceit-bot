@@ -53,12 +53,18 @@ HOLIDAY_DATES = {
 }
 
 
-def get_players():
+def get_players(mode="2v2"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT discord_id, so2_nick, so2_id, elo, wins, losses FROM players ORDER BY elo DESC"
-    )
+    if mode == "5v5":
+        cursor.execute(
+            "SELECT p.discord_id, p.so2_nick, p.so2_id, p5.elo, p5.wins, p5.losses "
+            "FROM players_5v5 p5 JOIN players p ON p.discord_id = p5.discord_id ORDER BY p5.elo DESC"
+        )
+    else:
+        cursor.execute(
+            "SELECT discord_id, so2_nick, so2_id, elo, wins, losses FROM players ORDER BY elo DESC"
+        )
     rows = cursor.fetchall()
     conn.close()
     players = []
@@ -85,11 +91,11 @@ def get_players():
     return players
 
 
-def get_total_matches():
+def get_total_matches(mode="2v2"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT COUNT(*) FROM match_history")
+        cursor.execute("SELECT COUNT(*) FROM match_history WHERE match_type=?", (mode,))
         row = cursor.fetchone()
         result = row[0] if row else 0
     except sqlite3.OperationalError:
@@ -100,7 +106,8 @@ def get_total_matches():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    return render_template("index.html", mode=mode)
 
 
 @app.route("/manifest.json")
@@ -149,18 +156,32 @@ def service_worker():
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
+    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
     return jsonify({
-        "players": get_players(),
-        "total_matches": get_total_matches()
+        "players": get_players(mode),
+        "total_matches": get_total_matches(mode)
     })
 
 
-def _profile_dict(discord_id):
+def _profile_dict(discord_id, mode="2v2"):
     player = database.get_player(discord_id)
     if not player:
         return None
-    _, nick, so2_id, elo, wins, losses = player[:6]
-    stats = database.get_player_stats_dict(discord_id) or {}
+    _, nick, so2_id = player[0], player[1], player[2]
+
+    if mode == "5v5":
+        stats5 = database.get_player_5v5(discord_id) or {
+            "elo": 1000, "wins": 0, "losses": 0, "kills": 0, "assists": 0, "deaths": 0, "win_streak": 0
+        }
+        elo, wins, losses = stats5["elo"], stats5["wins"], stats5["losses"]
+        kills, assists, deaths = stats5["kills"], stats5["assists"], stats5["deaths"]
+        win_streak = stats5["win_streak"]
+    else:
+        _, _, _, elo, wins, losses = player[:6]
+        stats = database.get_player_stats_dict(discord_id) or {}
+        kills, assists, deaths = stats.get("kills", 0), stats.get("assists", 0), stats.get("deaths", 0)
+        win_streak = database.get_current_win_streak(discord_id)
+
     matches = wins + losses
     win_rate = round((wins / matches) * 100, 1) if matches > 0 else 0.0
     rank_name, rank_color, rank_emoji = get_rank(elo)
@@ -178,12 +199,11 @@ def _profile_dict(discord_id):
 
     today_key = time.strftime("%Y-%m-%d")
     search_count_today = _search_counts.get((today_key, str(so2_id)), 0)
-    win_streak = database.get_current_win_streak(discord_id)
 
     return {
-        "discord_id": str(discord_id), "nick": nick, "so2_id": so2_id, "elo": elo,
+        "discord_id": str(discord_id), "nick": nick, "so2_id": so2_id, "elo": elo, "mode": mode,
         "wins": wins, "losses": losses, "matches": matches, "win_rate": win_rate,
-        "kills": stats.get("kills", 0), "assists": stats.get("assists", 0), "deaths": stats.get("deaths", 0),
+        "kills": kills, "assists": assists, "deaths": deaths,
         "rank_name": rank_name, "rank_color": list(rank_color), "rank_emoji": rank_emoji,
         "next_rank_name": next_rank_name, "elo_to_next": elo_to_next, "tier_progress_pct": tier_progress_pct,
         "search_count_today": search_count_today, "win_streak": win_streak,
@@ -254,7 +274,8 @@ def api_profile_story(discord_id):
 
 @app.route("/u/<int:discord_id>")
 def public_profile(discord_id):
-    profile = _profile_dict(discord_id)
+    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    profile = _profile_dict(discord_id, mode)
     if not profile:
         abort(404)
     return render_template("profile_public.html", **profile)
@@ -270,7 +291,8 @@ def embed_profile(discord_id):
 
 @app.route("/api/profile/<int:discord_id>")
 def api_profile(discord_id):
-    profile = _profile_dict(discord_id)
+    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    profile = _profile_dict(discord_id, mode)
     if not profile:
         abort(404)
     return jsonify(profile)

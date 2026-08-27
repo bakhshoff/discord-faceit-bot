@@ -265,6 +265,10 @@ def init_db():
     init_battle_pass(cursor)
 
     # ── Seasons ──────────────────────────────────────────────────────────────
+    # 5v5 dəstəyi üçün `mode` sütunu əlavə olunur — season_number artıq mode-a görə
+    # AYRI say qatarı olduğundan UNIQUE constraint (season_number, mode) cütünə keçir.
+    # SQLite constraint dəyişikliyini ALTER TABLE ilə etmədiyi üçün cədvəl köçürülür,
+    # `id` dəyərləri (season_stats.season_id istinadları) TOXUNULMADAN saxlanılır.
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS seasons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -274,6 +278,26 @@ def init_db():
             status TEXT DEFAULT 'active'
         )
     """)
+    cursor.execute("PRAGMA table_info(seasons)")
+    if "mode" not in [r[1] for r in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE seasons RENAME TO seasons_old")
+        cursor.execute("""
+            CREATE TABLE seasons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                season_number INTEGER NOT NULL,
+                mode TEXT NOT NULL DEFAULT '2v2',
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                status TEXT DEFAULT 'active',
+                UNIQUE(season_number, mode)
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO seasons (id, season_number, mode, start_date, end_date, status)
+            SELECT id, season_number, '2v2', start_date, end_date, status FROM seasons_old
+        """)
+        cursor.execute("DROP TABLE seasons_old")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS season_stats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,6 +311,39 @@ def init_db():
             wins INTEGER DEFAULT 0,
             losses INTEGER DEFAULT 0,
             UNIQUE(discord_id, season_id)
+        )
+    """)
+    cursor.execute("PRAGMA table_info(season_stats)")
+    if "mode" not in [r[1] for r in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE season_stats ADD COLUMN mode TEXT NOT NULL DEFAULT '2v2'")
+
+    # ── 5v5 paralel sistemi — ayrıca rəqabət statistikası cədvəli ─────────────
+    # Kimlik/iqtisadiyyat (nick, so2_id, coins, inventory, achievements, battle pass)
+    # `players`-də PAYLAŞILMIŞ qalır — yalnız ELO/W-L/K-A-D/streak ayrılır.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS players_5v5 (
+            discord_id INTEGER PRIMARY KEY,
+            elo INTEGER DEFAULT 1000,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            kills INTEGER DEFAULT 0,
+            assists INTEGER DEFAULT 0,
+            deaths INTEGER DEFAULT 0,
+            win_streak INTEGER DEFAULT 0,
+            loss_streak INTEGER DEFAULT 0,
+            peak_elo INTEGER DEFAULT 1000,
+            max_streak INTEGER DEFAULT 0,
+            created_at INTEGER
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS matchmaking_queue_5v5 (
+            discord_id INTEGER PRIMARY KEY,
+            nick TEXT NOT NULL,
+            so2_id TEXT,
+            elo INTEGER NOT NULL,
+            joined_at INTEGER NOT NULL
         )
     """)
 
@@ -329,6 +386,8 @@ def init_db():
         cursor.execute("ALTER TABLE active_match ADD COLUMN veto_a_used INTEGER DEFAULT 0")
     if "veto_b_used" not in _am_cols:
         cursor.execute("ALTER TABLE active_match ADD COLUMN veto_b_used INTEGER DEFAULT 0")
+    if "mode" not in _am_cols:
+        cursor.execute("ALTER TABLE active_match ADD COLUMN mode TEXT NOT NULL DEFAULT '2v2'")
 
     # ── Scan results ──────────────────────────────────────────────────────────
     cursor.execute("""
@@ -620,6 +679,7 @@ RESETTABLE_PLAYER_TABLES = [
     "player_tasks", "chat_history", "inventory", "match_history", "squads",
     "skin_inventory", "coin_logs", "active_boosts", "player_bp_missions",
     "battle_pass", "referral_invites", "referrals", "active_match",
+    "players_5v5", "matchmaking_queue_5v5",
 ]
 
 
@@ -979,6 +1039,292 @@ def pop_4_and_balance():
     captain_b = max(team_b, key=lambda p: p["elo"])
 
     return team_a, team_b, captain_a, captain_b
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PARALEL 5v5 SİSTEMİ — ayrıca sıra/ELO/statistika, `players` cədvəlinə TOXUNMUR.
+# Kimlik/iqtisadiyyat (nick, so2_id, coins, inventory, achievements, battle pass)
+# `players`-də PAYLAŞILMIŞ qalır, yalnız rəqabət statistikası `players_5v5`-dədir.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def ensure_5v5_stats_row(discord_id):
+    """Oyunçu ilk dəfə 5v5 sırasına qoşulanda `players_5v5`-də sətir yaradır (yoxdursa)."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM players_5v5 WHERE discord_id=?", (discord_id,))
+    if not cursor.fetchone():
+        cursor.execute(
+            "INSERT INTO players_5v5 (discord_id, elo, peak_elo, created_at) VALUES (?, 1000, 1000, ?)",
+            (discord_id, int(time.time()))
+        )
+        conn.commit()
+    conn.close()
+
+
+def get_player_5v5(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id, elo, wins, losses, kills, assists, deaths, win_streak, "
+        "loss_streak, peak_elo, max_streak, created_at FROM players_5v5 WHERE discord_id=?",
+        (discord_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "discord_id": row[0], "elo": row[1], "wins": row[2], "losses": row[3],
+        "kills": row[4], "assists": row[5], "deaths": row[6], "win_streak": row[7],
+        "loss_streak": row[8], "peak_elo": row[9], "max_streak": row[10], "created_at": row[11],
+    }
+
+
+def get_player_stats_dict_5v5(discord_id):
+    """`get_player_stats_dict`-in 5v5 analoqu — nick/so2_id/coins `players`-dən, rəqabət
+    statistikası `players_5v5`-dən götürülüb eyni dict formatına gətirilir (kart generatorları
+    ilə tam uyğun — bax: generate_stats_card)."""
+    player = get_player(discord_id)
+    stats5 = get_player_5v5(discord_id)
+    if not player or not stats5:
+        return None
+    matches = stats5["wins"] + stats5["losses"]
+    win_rate = round((stats5["wins"] / matches) * 100, 1) if matches > 0 else 0.0
+    kd = round(stats5["kills"] / max(stats5["deaths"], 1), 2)
+    return {
+        "discord_id": discord_id, "nick": player[1], "so2_id": player[2],
+        "elo": stats5["elo"], "wins": stats5["wins"], "losses": stats5["losses"],
+        "matches": matches, "win_rate": win_rate,
+        "kills": stats5["kills"], "assists": stats5["assists"], "deaths": stats5["deaths"], "kd": kd,
+        "win_streak": stats5["win_streak"], "max_streak": stats5["max_streak"],
+        "coins": get_coins(discord_id),
+    }
+
+
+def update_team_elo_5v5(winner_ids, loser_ids, elo_multiplier=1):
+    """`update_team_elo`-nun `players_5v5` üzərində işləyən analoqu — eyni K=32 komanda-orta-ELO
+    düsturu, eyni `apply_elo_modifiers` (ELO kartları PAYLAŞILMIŞ iqtisadiyyat üzvüdür)."""
+    import time
+    for discord_id in winner_ids + loser_ids:
+        ensure_5v5_stats_row(discord_id)
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    now = int(time.time())
+
+    def fetch_all(ids):
+        result = []
+        for discord_id in ids:
+            cursor.execute("SELECT discord_id, elo, wins, losses FROM players_5v5 WHERE discord_id = ?", (discord_id,))
+            row = cursor.fetchone()
+            if row:
+                result.append(row)
+        return result
+
+    winners = fetch_all(winner_ids)
+    losers = fetch_all(loser_ids)
+    if not winners or not losers:
+        conn.close()
+        return None
+
+    winner_avg_elo = sum(p[1] for p in winners) / len(winners)
+    loser_avg_elo = sum(p[1] for p in losers) / len(losers)
+
+    K = 32
+    expected_winner = 1 / (1 + 10 ** ((loser_avg_elo - winner_avg_elo) / 400))
+    expected_loser = 1 / (1 + 10 ** ((winner_avg_elo - loser_avg_elo) / 400))
+    elo_change_winner = round(K * (1 - expected_winner)) * elo_multiplier
+    elo_change_loser = round(K * (0 - expected_loser)) * elo_multiplier
+
+    results = {"winners": [], "losers": []}
+    for discord_id, elo, wins, losses in winners:
+        new_elo = elo + apply_elo_modifiers(discord_id, elo_change_winner, cursor=cursor)
+        peak_elo = max(new_elo, cursor.execute(
+            "SELECT peak_elo FROM players_5v5 WHERE discord_id=?", (discord_id,)
+        ).fetchone()[0])
+        cursor.execute(
+            "UPDATE players_5v5 SET elo=?, wins=?, peak_elo=? WHERE discord_id=?",
+            (new_elo, wins + 1, peak_elo, discord_id)
+        )
+        results["winners"].append({"discord_id": discord_id, "old_elo": elo, "new_elo": new_elo})
+
+    for discord_id, elo, wins, losses in losers:
+        new_elo = elo + apply_elo_modifiers(discord_id, elo_change_loser, cursor=cursor)
+        cursor.execute(
+            "UPDATE players_5v5 SET elo=?, losses=? WHERE discord_id=?",
+            (new_elo, losses + 1, discord_id)
+        )
+        results["losers"].append({"discord_id": discord_id, "old_elo": elo, "new_elo": new_elo})
+
+    conn.commit()
+    conn.close()
+    return results
+
+
+def update_streak_5v5(discord_id, won: bool):
+    ensure_5v5_stats_row(discord_id)
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT win_streak, max_streak, loss_streak FROM players_5v5 WHERE discord_id=?", (discord_id,))
+    streak, max_s, loss_streak = cursor.fetchone()
+    if won:
+        streak += 1
+        max_s = max(max_s, streak)
+        loss_streak = 0
+    else:
+        streak = 0
+        loss_streak += 1
+    cursor.execute("UPDATE players_5v5 SET win_streak=?, max_streak=?, loss_streak=? WHERE discord_id=?",
+                   (streak, max_s, loss_streak, discord_id))
+    conn.commit(); conn.close()
+    return streak, max_s
+
+
+def get_loss_streak_5v5(discord_id):
+    conn = _get_conn(); cursor = conn.cursor()
+    cursor.execute("SELECT loss_streak FROM players_5v5 WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone(); conn.close()
+    return row[0] if row else 0
+
+
+def add_to_queue_5v5(discord_id, nick, elo, so2_id=""):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO matchmaking_queue_5v5 (discord_id, nick, so2_id, elo, joined_at) VALUES (?, ?, ?, ?, ?)",
+            (discord_id, nick, so2_id, elo, int(time.time()))
+        )
+        conn.commit()
+        added = True
+    except sqlite3.IntegrityError:
+        added = False
+    conn.close()
+    return added
+
+
+def remove_from_queue_5v5(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM matchmaking_queue_5v5 WHERE discord_id = ?", (discord_id,))
+    removed = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return removed
+
+
+def queue_size_5v5():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM matchmaking_queue_5v5")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+
+def get_queue_list_5v5():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT discord_id, nick, elo, so2_id, joined_at FROM matchmaking_queue_5v5 ORDER BY joined_at ASC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"discord_id": r[0], "nick": r[1], "elo": r[2], "so2_id": r[3], "joined_at": r[4]} for r in rows]
+
+
+def clear_queue_5v5():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM matchmaking_queue_5v5")
+    conn.commit()
+    conn.close()
+
+
+def is_in_queue_5v5(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM matchmaking_queue_5v5 WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def pop_10_and_balance():
+    """`pop_4_and_balance`-ın 5v5 analoqu — sıradan ən əvvəl qoşulan 10 nəfəri ATOMİK
+    götürüb tam təsadüfi olaraq iki 5-nəfərlik komandaya bölür."""
+    import random
+
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute(
+            "SELECT discord_id, nick, elo, so2_id FROM matchmaking_queue_5v5 ORDER BY joined_at ASC LIMIT 10"
+        )
+        rows = cursor.fetchall()
+        if len(rows) < 10:
+            cursor.execute("ROLLBACK")
+            conn.close()
+            return None
+        ids = [r[0] for r in rows]
+        cursor.executemany("DELETE FROM matchmaking_queue_5v5 WHERE discord_id = ?", [(i,) for i in ids])
+        cursor.execute("COMMIT")
+    except sqlite3.OperationalError:
+        try:
+            cursor.execute("ROLLBACK")
+        except sqlite3.OperationalError:
+            pass
+        conn.close()
+        return None
+    conn.close()
+
+    players = [{"discord_id": r[0], "nick": r[1], "elo": r[2], "so2_id": r[3]} for r in rows]
+    random.shuffle(players)
+    team_a, team_b = players[:5], players[5:]
+
+    captain_a = max(team_a, key=lambda p: p["elo"])
+    captain_b = max(team_b, key=lambda p: p["elo"])
+
+    return team_a, team_b, captain_a, captain_b
+
+
+def set_player_5v5_elo(discord_id, new_elo):
+    """Matç ləğvi ELO cəzası kimi bir-başa yazma hallar üçün (bax: admin_set_player_field-in
+    2v2 analoqu, CancelMatchView5v5)."""
+    ensure_5v5_stats_row(discord_id)
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players_5v5 SET elo=? WHERE discord_id=?", (new_elo, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_all_players_5v5(limit=1000):
+    """5v5 oynamış (players_5v5-də sətri olan) bütün oyunçuları qaytarır — rol-sinxronizasiyası
+    üçün (bax: /rank_rollari_qur)."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT discord_id, elo FROM players_5v5 ORDER BY elo DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"discord_id": r[0], "elo": r[1]} for r in rows]
+
+
+def get_leaderboard_5v5(limit=20):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.so2_nick, p.so2_id, p5.elo, p5.wins, p5.losses, p.active_banner, p5.kills, p5.deaths
+        FROM players_5v5 p5
+        JOIN players p ON p.discord_id = p5.discord_id
+        ORDER BY p5.elo DESC LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 
 def create_giveaway(mukafat, end_unix, winner_id, channel_id, message_id):
@@ -2002,15 +2348,20 @@ def get_combat_stats(discord_id):
 # SEASON SİSTEMİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_or_create_current_season():
+def get_or_create_current_season(mode="2v2"):
+    """`mode`-a görə ayrıca sezon-nömrə qatarı saxlayır (2v2 və 5v5 paralel, müstəqil
+    #1-dən başlayan sezon tarixçələridir)."""
     import datetime as dt
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, season_number, start_date, end_date FROM seasons WHERE status='active' ORDER BY id DESC LIMIT 1")
+    cursor.execute(
+        "SELECT id, season_number, start_date, end_date FROM seasons WHERE status='active' AND mode=? ORDER BY id DESC LIMIT 1",
+        (mode,)
+    )
     row = cursor.fetchone()
     if row:
         conn.close()
-        return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3]}
+        return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3], "mode": mode}
     # Yeni sezon yarat
     now = dt.date.today()
     # Ayın 1-i başlayır, ayın son günü bitir
@@ -2019,14 +2370,14 @@ def get_or_create_current_season():
         end = now.replace(year=now.year+1, month=1, day=1).isoformat()
     else:
         end = now.replace(month=now.month+1, day=1).isoformat()
-    cursor.execute("SELECT COALESCE(MAX(season_number),0)+1 FROM seasons")
+    cursor.execute("SELECT COALESCE(MAX(season_number),0)+1 FROM seasons WHERE mode=?", (mode,))
     season_num = cursor.fetchone()[0]
-    cursor.execute("INSERT INTO seasons (season_number, start_date, end_date, status) VALUES (?,?,?,'active')",
-                   (season_num, start, end))
+    cursor.execute("INSERT INTO seasons (season_number, mode, start_date, end_date, status) VALUES (?,?,?,?,'active')",
+                   (season_num, mode, start, end))
     conn.commit()
     sid = cursor.lastrowid
     conn.close()
-    return {"id": sid, "season_number": season_num, "start_date": start, "end_date": end}
+    return {"id": sid, "season_number": season_num, "start_date": start, "end_date": end, "mode": mode}
 
 
 def get_season_by_number(season_number):
@@ -2040,12 +2391,12 @@ def get_season_by_number(season_number):
     return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3], "status": row[4]}
 
 
-def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0, losses=0, elo_gained=0, elo_start=0):
+def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0, losses=0, elo_gained=0, elo_start=0, mode="2v2"):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO season_stats (discord_id, season_id, elo_start, elo_gained, kills, assists, deaths, wins, losses)
-        VALUES (?,?,?,?,?,?,?,?,?)
+        INSERT INTO season_stats (discord_id, season_id, mode, elo_start, elo_gained, kills, assists, deaths, wins, losses)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(discord_id, season_id) DO UPDATE SET
             elo_gained=elo_gained+excluded.elo_gained,
             kills=kills+excluded.kills,
@@ -2053,7 +2404,7 @@ def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0,
             deaths=deaths+excluded.deaths,
             wins=wins+excluded.wins,
             losses=losses+excluded.losses
-    """, (discord_id, season_id, elo_start, elo_gained, kills, assists, deaths, wins, losses))
+    """, (discord_id, season_id, mode, elo_start, elo_gained, kills, assists, deaths, wins, losses))
     conn.commit()
     conn.close()
 
@@ -2094,17 +2445,19 @@ def close_season(season_id):
     conn.close()
 
 
-def reset_all_players_for_new_season(base_elo=1000):
-    """Yeni sezon başlayanda bütün oyunçuların RƏQABƏT statistikasını sıfırlayır:
+def reset_all_players_for_new_season(mode="2v2", base_elo=1000):
+    """Yeni sezon başlayanda oyunçuların RƏQABƏT statistikasını sıfırlayır:
     ELO, wins, losses, kills, assists, deaths, win_streak, loss_streak. Karyera
     rekordları (peak_elo, max_streak, created_at və s.) TOXUNULMAZ qalır — bunlar
     sezonlar arası davam edən lifetime nailiyyətlərdir, season_stats cədvəli isə
     (add_season_stat vasitəsilə artıq hər matçda ayrıca yazılır) bu sıfırlamadan
-    asılı olmadan hər sezonun tam tarixçəsini saxlayır."""
+    asılı olmadan hər sezonun tam tarixçəsini saxlayır. `mode="5v5"` olanda YALNIZ
+    `players_5v5` cədvəli sıfırlanır — 2v2 statistikasına TOXUNULMUR."""
+    table = "players_5v5" if mode == "5v5" else "players"
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE players SET elo=?, wins=0, losses=0, kills=0, assists=0, deaths=0, "
+        f"UPDATE {table} SET elo=?, wins=0, losses=0, kills=0, assists=0, deaths=0, "
         "win_streak=0, loss_streak=0",
         (base_elo,)
     )
@@ -2114,12 +2467,13 @@ def reset_all_players_for_new_season(base_elo=1000):
     return affected
 
 
-def get_completed_seasons():
+def get_completed_seasons(mode="2v2"):
     """Bağlanmış (keçmiş) sezonların siyahısını qaytarır — "zaman kapsulu" veb funksiyası üçün."""
     conn = _get_conn(); cursor = conn.cursor()
     cursor.execute(
         "SELECT id, season_number, start_date, end_date FROM seasons "
-        "WHERE status='completed' ORDER BY season_number DESC"
+        "WHERE status='completed' AND mode=? ORDER BY season_number DESC",
+        (mode,)
     )
     rows = cursor.fetchall(); conn.close()
     return [{"id": r[0], "season_number": r[1], "start_date": r[2], "end_date": r[3]} for r in rows]
@@ -2132,7 +2486,7 @@ def get_completed_seasons():
 _ACTIVE_MATCH_COLS = (
     "match_number, team_a, team_b, log_message_id, log_channel_id, thread_id, "
     "selected_map, created_at, captain_a_id, captain_b_id, team_a_ready, team_b_ready, "
-    "is_golden, is_lightning, voice_a_id, voice_b_id, map_vetoed, veto_a_used, veto_b_used"
+    "is_golden, is_lightning, voice_a_id, voice_b_id, map_vetoed, veto_a_used, veto_b_used, mode"
 )
 
 
@@ -2160,6 +2514,7 @@ def _row_to_active_match(row):
         "map_vetoed": _json.loads(row[16]) if len(row) > 16 and row[16] else [],
         "veto_a_used": bool(row[17]) if len(row) > 17 else False,
         "veto_b_used": bool(row[18]) if len(row) > 18 else False,
+        "mode": row[19] if len(row) > 19 and row[19] else "2v2",
     }
 
 
@@ -2187,20 +2542,22 @@ def veto_map(match_number, is_team_a, new_map):
 
 def set_active_match(match_number, team_a_json=None, team_b_json=None,
                      log_message_id=None, log_channel_id=None, selected_map=None,
-                     captain_a_id=None, captain_b_id=None, is_golden=False, is_lightning=False):
-    """Yeni aktiv matç sətri yaradır (paralel matçlar dəstəklənir — hər biri öz sətri)."""
+                     captain_a_id=None, captain_b_id=None, is_golden=False, is_lightning=False,
+                     mode="2v2"):
+    """Yeni aktiv matç sətri yaradır (paralel matçlar dəstəklənir — hər biri öz sətri).
+    `mode` 2v2/5v5 matçlarının eyni cədvəldə qarışmadan yaşamasını təmin edir."""
     import time
     conn   = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         "INSERT INTO active_match (match_number, team_a, team_b, log_message_id, log_channel_id, "
         "selected_map, created_at, captain_a_id, captain_b_id, team_a_ready, team_b_ready, "
-        "is_golden, is_lightning) VALUES (?,?,?,?,?,?,?,?,?,0,0,?,?)",
+        "is_golden, is_lightning, mode) VALUES (?,?,?,?,?,?,?,?,?,0,0,?,?,?)",
         (match_number, team_a_json, team_b_json,
          str(log_message_id) if log_message_id else None,
          str(log_channel_id) if log_channel_id else None,
          selected_map, int(time.time()), captain_a_id, captain_b_id,
-         int(bool(is_golden)), int(bool(is_lightning)))
+         int(bool(is_golden)), int(bool(is_lightning)), mode)
     )
     conn.commit()
     conn.close()
@@ -2272,10 +2629,13 @@ def get_all_active_matches():
     return [_row_to_active_match(r) for r in rows]
 
 
-def count_active_matches():
+def count_active_matches(mode=None):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM active_match")
+    if mode is None:
+        cursor.execute("SELECT COUNT(*) FROM active_match")
+    else:
+        cursor.execute("SELECT COUNT(*) FROM active_match WHERE mode=?", (mode,))
     n = cursor.fetchone()[0]
     conn.close()
     return n

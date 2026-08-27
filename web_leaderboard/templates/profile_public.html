@@ -848,6 +848,16 @@
   #compassWidget { display: none; flex-direction: column; align-items: center; gap: 6px; }
   #compassWidget.show { display: flex; }
   #compassNeedle { width: 70px; height: 70px; transition: transform 0.2s ease-out; }
+
+  /* ── 2v2 / 5v5 Rejim Keçidi ── */
+  .mode-toggle { display: flex; justify-content: center; gap: 8px; margin-bottom: 10px; }
+  .mode-toggle-btn {
+    display: inline-block; padding: 5px 14px; border-radius: 999px; border: 1px solid var(--border);
+    background: #1a171e; color: var(--text-dim); text-decoration: none; font-size: 11px;
+    font-weight: 600; transition: border-color 0.2s, color 0.2s;
+  }
+  .mode-toggle-btn.active { border-color: var(--rank); color: var(--rank); background: var(--rank-soft); }
+  .mode-toggle-btn:hover { border-color: var(--rank); }
 </style>
 </head>
 <body>
@@ -891,6 +901,15 @@
     <div class="flip-container" id="flipContainer">
       <div class="card front spotlight">
         <div class="eyebrow">Zenith's Academy — Oyunçu Profili</div>
+        <div class="mode-toggle">
+          <a href="/u/{{ discord_id }}?mode=2v2" class="mode-toggle-btn{{ ' active' if mode == '2v2' else '' }}">🏆 2v2</a>
+          <a href="/u/{{ discord_id }}?mode=5v5" class="mode-toggle-btn{{ ' active' if mode == '5v5' else '' }}">🎯 5v5</a>
+        </div>
+        {% if mode == '5v5' %}
+        <div style="font-size:10px; color:var(--text-dim); margin-bottom:8px;">
+          ℹ️ Yuxarıdakı əsas kart 5v5 statistikasıdır — aşağıdakı əlavə panellər (qrafik, xəritə, tarixçə) hələ yalnız 2v2 məlumatını göstərir.
+        </div>
+        {% endif %}
         <div class="search-badge" id="searchBadge"></div>
         <div class="heat-badge" id="heatBadge"><span class="flame">🔥</span><span id="heatText"></span></div>
         <div class="time-travel-badge" id="timeTravelBadge">🕰️ <span id="timeTravelText"></span></div>

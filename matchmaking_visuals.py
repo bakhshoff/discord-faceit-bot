@@ -93,9 +93,10 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
     return output_path
 
 
-def generate_queue_status_card(players, output_path="queue_status.png", avg_wait_min=None):
+def generate_queue_status_card(players, output_path="queue_status.png", avg_wait_min=None, target=4):
     """Sıradakı oyunçu sayını/proqres barını göstərir, amma kimlərin sırada olduğunu QƏSDƏN
-    açmır (oyunçular güclü/zəif rəqibə görə sıraya girib-girməmək kimi davranışlar sərgiləməsin)."""
+    açmır (oyunçular güclü/zəif rəqibə görə sıraya girib-girməmək kimi davranışlar sərgiləməsin).
+    `target`: matçın başlaması üçün lazım olan oyunçu sayı (2v2 üçün 4, 5v5 üçün 10)."""
     size = len(players)
     header_height = 90
     body_height = 54
@@ -115,8 +116,8 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
     wait_txt = f"Real vaxtda yenilenir  |  Orta gozleme: ~{avg_wait_min} deq" if avg_wait_min else "Real vaxtda yenilenir"
     draw.text((30, 54), wait_txt, font=sub_font, fill=GRAY)
 
-    count_text = f"{size}/4"
-    count_color = GREEN if size >= 4 else GOLD
+    count_text = f"{size}/{target}"
+    count_color = GREEN if size >= target else GOLD
     bbox = draw.textbbox((0, 0), count_text, font=count_font)
     tw = bbox[2] - bbox[0]
     draw.text((WIDTH - 30 - tw, 28), count_text, font=count_font, fill=count_color)
@@ -124,7 +125,7 @@ def generate_queue_status_card(players, output_path="queue_status.png", avg_wait
     # Progress bar
     bar_x, bar_y, bar_w, bar_h = 30, 70, WIDTH - 60, 8
     draw.rounded_rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], radius=4, fill=PANEL_ALT)
-    fill_w = int(bar_w * min(size / 4, 1.0))
+    fill_w = int(bar_w * min(size / target, 1.0))
     if fill_w > 0:
         draw.rounded_rectangle([(bar_x, bar_y), (bar_x + fill_w, bar_y + bar_h)], radius=4, fill=count_color)
 
