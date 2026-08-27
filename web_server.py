@@ -26,6 +26,16 @@ _active_viewers = {}
 # bot restart olsa günün sayı sıfırlanır (məqbul, canlı statistika üçündür).
 _search_counts = {}
 
+# ── Kollektiv Piksel Kətan ("mini r/place") ───────────────────────────────────
+# Yaddaşda, 32x32 grid: {"x,y": "#rrggbb"}. DB-siz — bot restart olsa kətan
+# sıfırlanır, əyləncəli/keçici funksiya üçün məqbul tərəddüddür.
+_pixel_canvas = {}
+PIXEL_CANVAS_SIZE = 32
+PIXEL_ALLOWED_COLORS = {
+    "#8a5ce6", "#5fd07a", "#f0b429", "#d6453d", "#50a0dc", "#e65aaa",
+    "#ffffff", "#000000", "#ff8a3d", "#4dd0e1",
+}
+
 # ── Profil emoji reaksiyaları ("Emoji Reaksiya Buludu") ───────────────────────
 # Yaddaşda, qısa ömürlü: {discord_id: [{"id", "emoji", "ts"}, ...]}. DB-siz —
 # canlı, keçici effekt üçündür, tarixi məlumat saxlamağa ehtiyac yoxdur.
@@ -403,6 +413,55 @@ def api_active_matches():
             "is_lightning": m["is_lightning"],
         })
     return jsonify(result)
+
+
+@app.route("/api/pixel_canvas")
+def api_pixel_canvas_get():
+    return jsonify({"size": PIXEL_CANVAS_SIZE, "pixels": _pixel_canvas})
+
+
+@app.route("/api/pixel_canvas", methods=["POST"])
+def api_pixel_canvas_set():
+    data = request.json or {}
+    x, y, color = data.get("x"), data.get("y"), data.get("color")
+    if not isinstance(x, int) or not isinstance(y, int):
+        return jsonify({"ok": False}), 400
+    if not (0 <= x < PIXEL_CANVAS_SIZE and 0 <= y < PIXEL_CANVAS_SIZE):
+        return jsonify({"ok": False}), 400
+    if color not in PIXEL_ALLOWED_COLORS:
+        return jsonify({"ok": False}), 400
+    _pixel_canvas[f"{x},{y}"] = color
+    return jsonify({"ok": True})
+
+
+@app.route("/api/profile/<int:discord_id>/timecapsule")
+def api_timecapsule_list(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    return jsonify(database.get_time_capsule_letters(discord_id))
+
+
+@app.route("/api/profile/<int:discord_id>/timecapsule", methods=["POST"])
+def api_timecapsule_create(discord_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    data = request.json or {}
+    message = (data.get("message") or "").strip()[:500]
+    days = data.get("days")
+    if not message or not isinstance(days, (int, float)) or not (1 <= days <= 3650):
+        return jsonify({"ok": False}), 400
+    unlock_at = int(time.time() + days * 86400)
+    letter_id = database.create_time_capsule_letter(discord_id, message, unlock_at)
+    return jsonify({"ok": True, "id": letter_id, "unlock_at": unlock_at})
+
+
+@app.route("/api/profile/<int:discord_id>/timecapsule/<int:letter_id>/open", methods=["POST"])
+def api_timecapsule_open(discord_id, letter_id):
+    if not database.get_player(discord_id):
+        abort(404)
+    if not database.mark_time_capsule_letter_opened(letter_id, discord_id):
+        return jsonify({"ok": False}), 400
+    return jsonify({"ok": True})
 
 
 @app.route("/api/profile/<int:discord_id>/achievements")

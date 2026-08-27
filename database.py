@@ -435,6 +435,38 @@ def init_db():
         cursor.execute("ALTER TABLE match_history ADD COLUMN map TEXT DEFAULT NULL")
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS time_capsule_letters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            unlock_at INTEGER NOT NULL,
+            opened INTEGER DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS anniversary_greetings (
+            discord_id INTEGER NOT NULL,
+            year_number INTEGER NOT NULL,
+            greeted_at INTEGER NOT NULL,
+            UNIQUE(discord_id, year_number)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS teammate_ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rater_id INTEGER NOT NULL,
+            rated_id INTEGER NOT NULL,
+            match_number INTEGER NOT NULL,
+            stars INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            UNIQUE(rater_id, rated_id, match_number)
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS squads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             player1_id INTEGER NOT NULL,
@@ -2719,6 +2751,116 @@ def get_player_achievements(discord_id):
     rows = cursor.fetchall()
     conn.close()
     return [{"id": r[0], "name": r[1], "description": r[2], "icon": r[3], "earned_at": r[4]} for r in rows]
+
+
+def add_teammate_rating(rater_id, rated_id, match_number, stars):
+    """Matçdan sonra komanda yoldaşına 1-5 ulduz qiymətləndirməsi. Hər (rater, rated, matç)
+    üçbucağı yalnız 1 dəfə — UNIQUE constraint təkrar cəhdi False ilə səssizcə rədd edir."""
+    import time as _time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO teammate_ratings (rater_id, rated_id, match_number, stars, created_at) VALUES (?,?,?,?,?)",
+            (rater_id, rated_id, match_number, stars, int(_time.time()))
+        )
+        conn.commit()
+        result = True
+    except sqlite3.IntegrityError:
+        result = False
+    conn.close()
+    return result
+
+
+def get_teammate_rating_summary(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT AVG(stars), COUNT(*) FROM teammate_ratings WHERE rated_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    avg, count = row if row else (None, 0)
+    return {"avg_rating": round(avg, 1) if avg else None, "rating_count": count or 0}
+
+
+def mark_anniversary_greeted(discord_id, year_number):
+    """Bu (discord_id, year_number) üçün ildönümü təbriki artıq göndərilibsə False qaytarır
+    (UNIQUE constraint), əks halda qeydə alıb True qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO anniversary_greetings (discord_id, year_number, greeted_at) VALUES (?,?,?)",
+            (discord_id, year_number, int(__import__("time").time()))
+        )
+        conn.commit()
+        result = True
+    except sqlite3.IntegrityError:
+        result = False
+    conn.close()
+    return result
+
+
+def get_players_with_anniversary_today():
+    """Bu gün (AZ vaxtı ilə) qeydiyyat ildönümü olan oyunçuları qaytarır."""
+    import datetime as _dt
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT discord_id, so2_nick, created_at FROM players WHERE created_at IS NOT NULL")
+    rows = cursor.fetchall()
+    conn.close()
+    today = _dt.datetime.utcnow() + _dt.timedelta(hours=4)
+    results = []
+    for discord_id, nick, created_at in rows:
+        if not created_at:
+            continue
+        created_dt = _dt.datetime.utcfromtimestamp(created_at) + _dt.timedelta(hours=4)
+        years = today.year - created_dt.year
+        if years >= 1 and created_dt.month == today.month and created_dt.day == today.day:
+            results.append({"discord_id": discord_id, "nick": nick, "years": years})
+    return results
+
+
+def create_time_capsule_letter(discord_id, message, unlock_at):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO time_capsule_letters (discord_id, message, unlock_at, opened, created_at) VALUES (?,?,?,0,?)",
+        (discord_id, message, unlock_at, int(__import__("time").time()))
+    )
+    conn.commit()
+    letter_id = cursor.lastrowid
+    conn.close()
+    return letter_id
+
+
+def get_time_capsule_letters(discord_id):
+    """Oyunçunun bütün vaxt kapsulu məktublarını qaytarır (açıq/gözləyən/hazır)."""
+    now = int(__import__("time").time())
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, message, unlock_at, opened FROM time_capsule_letters WHERE discord_id=? ORDER BY unlock_at ASC",
+        (discord_id,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "message": r[1], "unlock_at": r[2], "opened": bool(r[3]), "ready": r[2] <= now and not r[3]}
+        for r in rows
+    ]
+
+
+def mark_time_capsule_letter_opened(letter_id, discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE time_capsule_letters SET opened=1 WHERE id=? AND discord_id=? AND unlock_at<=?",
+        (letter_id, discord_id, int(__import__("time").time()))
+    )
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
 
 
 def get_all_achievements():

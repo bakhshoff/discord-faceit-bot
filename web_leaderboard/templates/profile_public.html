@@ -755,12 +755,109 @@
     transition: transform 0.15s ease-out;
   }
   #parallaxLayer2 { background: radial-gradient(circle at 70% 60%, rgba(95,208,122,0.08), transparent 50%); }
+
+  /* ── Elastik "Jelly" Düymələr ── */
+  button { transition: transform 0.15s cubic-bezier(.34,1.56,.64,1); }
+  button.jelly-press { animation: jellyPress 0.4s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes jellyPress {
+    0% { transform: scale(1); }
+    30% { transform: scale(0.88, 1.12); }
+    55% { transform: scale(1.08, 0.92); }
+    75% { transform: scale(0.96, 1.04); }
+    100% { transform: scale(1); }
+  }
+
+  /* ── Canlı Kursor İzi ── */
+  #cursorTrailCanvas { position: fixed; inset: 0; z-index: 60; pointer-events: none; width: 100%; height: 100%; }
+
+  /* ── Skan Xətti Effekti ── */
+  #scanLine {
+    position: fixed; left: 0; right: 0; height: 2px; z-index: 4; pointer-events: none;
+    background: linear-gradient(90deg, transparent, var(--rank), transparent);
+    box-shadow: 0 0 12px 2px var(--rank-soft);
+    opacity: 0.7; transition: top 0.05s linear;
+  }
+
+  /* ── Ayrı-Ayrı Tilt Parallax Kartlar ── */
+  .chip { transition: transform 0.15s ease-out; transform-style: preserve-3d; }
+
+  /* ── Kollektiv Server Ürək Döyüntüsü ── */
+  @keyframes collectiveHeartbeat {
+    0%, 100% { transform: scale(1); }
+    15% { transform: scale(1.03); }
+    30% { transform: scale(1); }
+    45% { transform: scale(1.02); }
+  }
+  .scene.collective-pulse { animation: collectiveHeartbeat 1s ease-in-out infinite; }
+
+  /* ── Rütbəyə Uyğun Fərdi Kursor ── */
+  body.custom-cursor, body.custom-cursor * { cursor: none !important; }
+  #rankCursor {
+    position: fixed; width: 26px; height: 26px; pointer-events: none; z-index: 90;
+    transform: translate(-50%, -50%); display: none; transition: opacity 0.2s;
+  }
+  body.custom-cursor #rankCursor { display: block; }
+
+  /* ── İnteraktiv Bacarıq Ağacı ── */
+  #skillTreeSvg { width: 100%; height: 260px; }
+  .skill-node { cursor: pointer; transition: transform 0.15s ease; }
+  .skill-node:hover { transform: scale(1.15); }
+  .skill-node circle.earned { fill: var(--rank); }
+  .skill-node circle.locked { fill: #1a171e; stroke: var(--border); }
+  .skill-edge { stroke: var(--border); stroke-width: 1.5; }
+  .skill-edge.lit { stroke: var(--rank); }
+
+  /* ── 3D Fırlanan Xəritə İkonu ── */
+  .map-emblem-3d {
+    width: 56px; height: 56px; margin: 0 auto 8px; perspective: 300px;
+  }
+  .map-emblem-3d .face {
+    width: 100%; height: 100%; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    background: var(--rank-soft); border: 1px solid var(--rank); font-size: 22px;
+    animation: mapSpin3d 6s linear infinite;
+  }
+  @keyframes mapSpin3d {
+    0% { transform: rotateY(0deg); }
+    100% { transform: rotateY(360deg); }
+  }
+
+  /* ── Rəqəm Yağışı Fon Rejimi ── */
+  #matrixCanvas { position: fixed; inset: 0; z-index: -1; pointer-events: none; display: none; opacity: 0.25; }
+
+  /* ── Vaxt Kapsulu ── */
+  .capsule-form textarea {
+    width: 100%; background: #1a171e; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 10px; font-family: var(--font-body); font-size: 13px; resize: vertical; min-height: 60px;
+  }
+  .capsule-form input[type="number"] {
+    width: 80px; background: #1a171e; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); padding: 8px; font-family: var(--font-mono); font-size: 13px;
+  }
+  .capsule-form-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--text-dim); }
+  .capsule-letter { background: #1a171e; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; font-size: 12px; }
+  .capsule-letter.ready { border-color: var(--rank); cursor: pointer; }
+  .capsule-letter .cl-date { color: var(--text-dim); font-family: var(--font-mono); font-size: 10px; }
+
+  /* ── AR Kamera Maskası ── */
+  #arVideoWrap { display: none; position: relative; margin-top: 12px; border-radius: 12px; overflow: hidden; }
+  #arVideoWrap.show { display: block; }
+  #arVideo, #arCanvas { width: 100%; border-radius: 12px; display: block; }
+  #arCanvas { position: absolute; top: 0; left: 0; }
+
+  /* ── Kompas Vidjeti ── */
+  #compassWidget { display: none; flex-direction: column; align-items: center; gap: 6px; }
+  #compassWidget.show { display: flex; }
+  #compassNeedle { width: 70px; height: 70px; transition: transform 0.2s ease-out; }
 </style>
 </head>
 <body>
   <div id="loadingBar"></div>
   <div id="shatterOverlay"></div>
   <canvas id="gestureCanvas"></canvas>
+  <canvas id="cursorTrailCanvas"></canvas>
+  <canvas id="matrixCanvas"></canvas>
+  <div id="scanLine"></div>
+  <img id="rankCursor" src="" alt="">
   <div id="parallaxLayer1"></div>
   <div id="parallaxLayer2"></div>
   <div id="auroraBg"></div>
@@ -773,8 +870,20 @@
     <button id="themeToggle" type="button" title="Tema dəyiş">🌙</button>
     <button id="voiceBtn" type="button" title="Səs əmrləri">🎙️</button>
     <button id="micReactBtn" type="button" title="Səs-reaktiv fon">📡</button>
+    <button id="effectsBtn" type="button" title="Əlavə effektlər">✨</button>
   </div>
   <div id="colorSwatches"></div>
+  <div id="effectsPanel" class="extra-panel" style="display:none; position:fixed; top:62px; right:18px; z-index:6; width:230px; padding:14px;">
+    <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
+      <button id="rainToggle" type="button">🌧️ Rəqəm Yağışı</button>
+      <button id="ambientToggle" type="button">🎵 Ambient Musiqi</button>
+      <button id="cursorToggle" type="button">🎯 Rütbə Kursoru</button>
+      <button id="pulseToggle" type="button">💓 Kollektiv Nəbz</button>
+      <button id="arToggle" type="button">📷 AR Kamera</button>
+      <button id="compassToggle" type="button">🧭 Kompas</button>
+      <button id="clickCodeToggle" type="button">🔐 Klik-Kodu Təyin Et</button>
+    </div>
+  </div>
   <div id="viewerBadge"><span class="dot"></span><span id="viewerCount">1</span> baxır</div>
 
   <div class="scene">
@@ -812,6 +921,21 @@
             <circle id="eloScrubDot" r="3" fill="var(--rank)" style="display:none;"/>
           </svg>
           <div class="chart-lbl">Son matçlar — ELO trendi (üzərinə sürüşdürün)</div>
+          <button id="melodyBtn" type="button" style="margin-top:6px; width:100%; background:#1a171e; border:1px solid var(--border); color:var(--text); padding:8px; border-radius:8px; font-size:11px; cursor:pointer;">🎼 Karyera Melodiyasını Dinlə</button>
+        </div>
+
+        <div id="arVideoWrap">
+          <video id="arVideo" autoplay muted playsinline></video>
+          <canvas id="arCanvas"></canvas>
+        </div>
+
+        <div id="compassWidget">
+          <svg id="compassNeedle" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border)" stroke-width="2"/>
+            <text x="50" y="14" text-anchor="middle" font-size="10" fill="var(--text-dim)">Z</text>
+            <polygon points="50,15 44,55 50,50 56,55" fill="var(--rank)"/>
+          </svg>
+          <span style="font-size:10px; color:var(--text-dim);">Zenith Akademiyasının istiqaməti</span>
         </div>
 
         <div class="wl">
@@ -895,7 +1019,26 @@
 
   <div class="extra-panel reveal spotlight" id="radarPanel" style="display:none;">
     <h2>🗺️ Xəritə Performansı</h2>
+    <div class="map-emblem-3d" id="topMapEmblem" style="display:none;"><div class="face">🗺️</div></div>
     <svg id="radarChart" viewBox="0 0 220 220"></svg>
+  </div>
+
+  <div class="extra-panel reveal spotlight" id="skillTreePanel" style="display:none;">
+    <h2>🌳 Bacarıq Ağacı</h2>
+    <svg id="skillTreeSvg" viewBox="0 0 300 260"></svg>
+  </div>
+
+  <div class="extra-panel reveal spotlight" id="timeCapsulePanel">
+    <h2>⏳ Vaxt Kapsulu</h2>
+    <div class="capsule-form">
+      <textarea id="capsuleMessage" placeholder="Gələcək özünə bir mesaj yaz..." maxlength="500"></textarea>
+      <div class="capsule-form-row">
+        <span>Neçə gün sonra açılsın?</span>
+        <input type="number" id="capsuleDays" min="1" max="3650" value="30">
+        <button id="capsuleSendBtn" type="button" style="background:#1a171e;border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:8px;cursor:pointer;font-size:12px;">Göndər</button>
+      </div>
+    </div>
+    <div id="capsuleLetters"></div>
   </div>
 
   <div class="extra-panel reveal spotlight" id="heatmapPanel" style="display:none;">
@@ -1375,20 +1518,434 @@ async function sendHeartbeat() {
 sendHeartbeat();
 setInterval(sendHeartbeat, 12000);
 
-// ── Say-yuxarı animasiyası ────────────────────────────────────────────────
-function animateCount(el, duration = 1100) {
+// ── Slot-Machine Rəqəm Animasiyası ─────────────────────────────────────────
+function animateCount(el, duration = 1300) {
   const target = parseFloat(el.dataset.target || el.textContent) || 0;
   const start = performance.now();
   function tick(now) {
     const p = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = Math.round(target * eased);
+    if (p < 0.75) {
+      // ilk mərhələ: sürətli təsadüfi rəqəmlər "fırlanır" (slot-machine effekti)
+      const spread = Math.max(target * 1.5, 20);
+      el.textContent = Math.floor(Math.random() * spread);
+    } else {
+      const eased = 1 - Math.pow(1 - (p - 0.75) / 0.25, 3);
+      el.textContent = Math.round(target * eased);
+    }
     if (p < 1) requestAnimationFrame(tick);
     else el.textContent = target;
   }
   requestAnimationFrame(tick);
 }
 document.querySelectorAll('[data-target]').forEach(el => animateCount(el));
+
+// ── Elastik "Jelly" Düymələr ────────────────────────────────────────────────
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  btn.classList.remove('jelly-press');
+  void btn.offsetWidth;
+  btn.classList.add('jelly-press');
+});
+
+// ── Canlı Kursor İzi ────────────────────────────────────────────────────────
+(function cursorTrail() {
+  const canvas = document.getElementById('cursorTrailCanvas');
+  const ctx = canvas.getContext('2d');
+  function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+  window.addEventListener('resize', resize);
+  resize();
+  let particles = [];
+  document.addEventListener('mousemove', (e) => {
+    const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim();
+    particles.push({ x: e.clientX, y: e.clientY, life: 1, color: rankColor || '#8a5ce6' });
+    if (particles.length > 40) particles.shift();
+  });
+  function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.life -= 0.035;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4 * p.life, 0, Math.PI * 2);
+      ctx.fillStyle = p.color.startsWith('rgb') ? p.color.replace(')', `,${Math.max(p.life,0)})`).replace('rgb', 'rgba') : `rgba(138,92,230,${Math.max(p.life,0)})`;
+      ctx.fill();
+    });
+    particles = particles.filter(p => p.life > 0);
+    requestAnimationFrame(loop);
+  }
+  loop();
+})();
+
+// ── Skan Xətti Effekti (skrolla bağlı) ──────────────────────────────────────
+(function scanLineEffect() {
+  const line = document.getElementById('scanLine');
+  window.addEventListener('scroll', () => {
+    const maxScroll = document.body.scrollHeight - window.innerHeight;
+    const pct = maxScroll > 0 ? (window.scrollY / maxScroll) : 0;
+    line.style.top = (pct * 100) + '%';
+  });
+})();
+
+// ── Ayrı-Ayrı Tilt Parallax Kartlar ─────────────────────────────────────────
+document.querySelectorAll('.chip').forEach((chip, idx) => {
+  const speed = 8 + (idx % 3) * 4;
+  chip.addEventListener('mousemove', (e) => {
+    const rect = chip.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    chip.style.transform = `rotateY(${x * speed}deg) rotateX(${-y * speed}deg)`;
+  });
+  chip.addEventListener('mouseleave', () => { chip.style.transform = 'rotateY(0) rotateX(0)'; });
+});
+
+// ── Nəticəyə Görə Canlı Divar Kağızı ────────────────────────────────────────
+fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
+  if (!history || !history.length) return;
+  const last = history[history.length - 1];
+  const moodColor = last.won ? 'rgba(95,208,122,0.10)' : 'rgba(214,69,61,0.10)';
+  document.body.style.transition = 'background-image 1.5s ease';
+  document.body.style.backgroundImage =
+    `radial-gradient(ellipse 80% 50% at 50% -10%, ${moodColor}, transparent), ` +
+    getComputedStyle(document.body).backgroundImage.replace(/^none$/, '');
+}).catch(() => {});
+
+// ── Rütbəyə Uyğun Fərdi Kursor ──────────────────────────────────────────────
+(function customCursor() {
+  const cursorImg = document.getElementById('rankCursor');
+  const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim() || '#8a5ce6';
+  const rgb = rankColor.match(/\d+/g) || [138, 92, 230];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26"><polygon points="13,2 24,13 13,24 2,13" fill="rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.25)" stroke="rgb(${rgb[0]},${rgb[1]},${rgb[2]})" stroke-width="2"/></svg>`;
+  cursorImg.src = 'data:image/svg+xml;base64,' + btoa(svg);
+  let enabled = localStorage.getItem('zenith-custom-cursor') === '1';
+  function apply() { document.body.classList.toggle('custom-cursor', enabled); }
+  apply();
+  document.addEventListener('mousemove', (e) => {
+    cursorImg.style.left = e.clientX + 'px';
+    cursorImg.style.top = e.clientY + 'px';
+  });
+  document.getElementById('cursorToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    enabled = !enabled;
+    localStorage.setItem('zenith-custom-cursor', enabled ? '1' : '0');
+    apply();
+    showToast(enabled ? '🎯 Rütbə kursoru aktiv' : '🎯 Rütbə kursoru bağlandı');
+  });
+})();
+
+// ── Rəqəm Yağışı Fon Rejimi ─────────────────────────────────────────────────
+(function matrixRain() {
+  const canvas = document.getElementById('matrixCanvas');
+  const ctx = canvas.getContext('2d');
+  let active = localStorage.getItem('zenith-matrix-rain') === '1';
+  let cols = [];
+  function resize() {
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    cols = new Array(Math.floor(canvas.width / 16)).fill(0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+  function apply() { canvas.style.display = active ? 'block' : 'none'; }
+  apply();
+  function loop() {
+    if (active) {
+      const rankColor = getComputedStyle(document.documentElement).getPropertyValue('--rank').trim() || '#8a5ce6';
+      ctx.fillStyle = 'rgba(11,10,13,0.08)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = rankColor;
+      ctx.font = '14px monospace';
+      cols.forEach((y, i) => {
+        const char = String.fromCharCode(0x30A0 + Math.random() * 96);
+        ctx.fillText(char, i * 16, y);
+        cols[i] = (y > canvas.height && Math.random() > 0.975) ? 0 : y + 16;
+      });
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+  document.getElementById('rainToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    active = !active;
+    localStorage.setItem('zenith-matrix-rain', active ? '1' : '0');
+    apply();
+    showToast(active ? '🌧️ Rəqəm yağışı aktiv' : '🌧️ Rəqəm yağışı bağlandı');
+  });
+})();
+
+// ── Kollektiv Server Ürək Döyüntüsü (saat-sinxron, backend lazım deyil) ────
+(function collectivePulse() {
+  let enabled = localStorage.getItem('zenith-collective-pulse') === '1';
+  const scene = document.querySelector('.scene');
+  function loop() {
+    if (enabled) {
+      const phase = (Date.now() % 1000) / 1000;
+      const scale = 1 + Math.sin(phase * Math.PI * 2) * 0.015;
+      scene.style.transform = `scale(${scale})`;
+    } else {
+      scene.style.transform = '';
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+  document.getElementById('pulseToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    enabled = !enabled;
+    localStorage.setItem('zenith-collective-pulse', enabled ? '1' : '0');
+    showToast(enabled ? '💓 Kollektiv nəbz aktiv — bütün ziyarətçilər eyni anı hiss edir' : '💓 Kollektiv nəbz bağlandı');
+  });
+})();
+
+// ── Karyera Melodiyası (ELO Sonifikasiyası) ─────────────────────────────────
+document.getElementById('melodyBtn').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  try {
+    const r = await fetch(`/api/profile/${MY_ID}/history`);
+    const history = await r.json();
+    if (!history || history.length < 2) { showToast('❌ Kifayət qədər matç tarixçəsi yoxdur'); return; }
+    const elos = history.map(h => h.elo_after);
+    const min = Math.min(...elos), max = Math.max(...elos), range = (max - min) || 1;
+    showToast('🎼 Karyera melodiyası çalınır...');
+    elos.forEach((elo, i) => {
+      setTimeout(() => {
+        const freq = 220 + ((elo - min) / range) * 440;
+        playTone(freq, 0.25, 'sine', 0.04);
+      }, i * 260);
+    });
+  } catch (err) {}
+});
+
+// ── Generativ Ambient Musiqi Fonu ────────────────────────────────────────────
+(function ambientMusic() {
+  let ctxA = null, nodes = [], playing = false;
+  const seedBase = 180 + (WIN_RATE || 50) * 2;
+  function start() {
+    ctxA = ctxA || new (window.AudioContext || window.webkitAudioContext)();
+    playing = true;
+    function scheduleNote() {
+      if (!playing) return;
+      const osc = ctxA.createOscillator();
+      const gain = ctxA.createGain();
+      const freq = seedBase + Math.random() * 120;
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.value = 0;
+      osc.connect(gain).connect(ctxA.destination);
+      const now = ctxA.currentTime;
+      gain.gain.linearRampToValueAtTime(0.025, now + 1.5);
+      gain.gain.linearRampToValueAtTime(0, now + 4);
+      osc.start(now);
+      osc.stop(now + 4);
+      nodes.push(osc);
+      setTimeout(scheduleNote, 1800 + Math.random() * 1400);
+    }
+    scheduleNote();
+  }
+  function stop() { playing = false; nodes = []; }
+  document.getElementById('ambientToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (playing) { stop(); showToast('🎵 Ambient musiqi dayandırıldı'); }
+    else { start(); showToast('🎵 Ambient musiqi başladı'); }
+  });
+})();
+
+// ── AR Kamera Maskası (sadələşdirilmiş overlay, əsl üz-tanıma deyil) ────────
+(function arCameraMask() {
+  const btn = document.getElementById('arToggle');
+  const wrap = document.getElementById('arVideoWrap');
+  const video = document.getElementById('arVideo');
+  const canvas = document.getElementById('arCanvas');
+  const ctx = canvas.getContext('2d');
+  let stream = null, rafId = null;
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      video.srcObject = stream;
+      wrap.classList.add('show');
+      await video.play();
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      draw();
+    } catch (err) {
+      showToast('❌ Kameraya icazə verilmədi');
+    }
+  }
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `${Math.round(canvas.width / 4)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('{{ rank_emoji }}', canvas.width / 2, canvas.height / 2.6);
+    rafId = requestAnimationFrame(draw);
+  }
+  function stop() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (rafId) cancelAnimationFrame(rafId);
+    wrap.classList.remove('show');
+  }
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    wrap.classList.contains('show') ? stop() : start();
+  });
+})();
+
+// ── Xüsusi Klik-Kodu ilə Sirli Giriş ────────────────────────────────────────
+(function clickCodeSecret() {
+  const key = 'zenith-clickcode-' + MY_ID;
+  let recording = false;
+  let sequence = [];
+  const card = document.querySelector('.card.front');
+
+  function quadrantOf(e, rect) {
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const half_w = rect.width / 2, half_h = rect.height / 2;
+    return (x < half_w ? 'L' : 'R') + (y < half_h ? 'T' : 'B');
+  }
+
+  document.getElementById('clickCodeToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    recording = true;
+    sequence = [];
+    showToast('🔐 İndi kartın üzərində 4 nöqtəyə öz sıranızla klikləyin...');
+  });
+
+  card.addEventListener('click', (e) => {
+    if (recording) {
+      const rect = card.getBoundingClientRect();
+      sequence.push(quadrantOf(e, rect));
+      if (sequence.length >= 4) {
+        recording = false;
+        localStorage.setItem(key, JSON.stringify(sequence));
+        showToast('✅ Sirr kodunuz yadda saxlanıldı!');
+      }
+      return;
+    }
+    const saved = localStorage.getItem(key);
+    if (!saved) return;
+    const rect = card.getBoundingClientRect();
+    window._zenithClickBuffer = window._zenithClickBuffer || [];
+    window._zenithClickBuffer.push(quadrantOf(e, rect));
+    if (window._zenithClickBuffer.length > 4) window._zenithClickBuffer.shift();
+    if (window._zenithClickBuffer.length === 4 && JSON.stringify(window._zenithClickBuffer) === saved) {
+      window._zenithClickBuffer = [];
+      document.body.classList.add('konami-active');
+      showToast('🔓 Sirli giriş aşkarlandı!');
+      playTone(660, 0.15, 'triangle');
+      setTimeout(() => document.body.classList.remove('konami-active'), 2400);
+    }
+  });
+})();
+
+// ── Kompas Vidjeti ──────────────────────────────────────────────────────────
+(function compassWidget() {
+  const widget = document.getElementById('compassWidget');
+  const needle = document.getElementById('compassNeedle');
+  function handleOrientation(e) {
+    const heading = e.webkitCompassHeading !== undefined ? e.webkitCompassHeading : (360 - (e.alpha || 0));
+    needle.style.transform = `rotate(${heading}deg)`;
+  }
+  document.getElementById('compassToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!window.DeviceOrientationEvent) { showToast('❌ Bu cihaz kompası dəstəkləmir'); return; }
+    const shown = widget.classList.contains('show');
+    if (shown) { widget.classList.remove('show'); return; }
+    widget.classList.add('show');
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission().then(state => {
+        if (state === 'granted') window.addEventListener('deviceorientation', handleOrientation, true);
+        else showToast('❌ Sensor icazəsi verilmədi');
+      }).catch(() => {});
+    } else {
+      window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+      window.addEventListener('deviceorientation', handleOrientation, true);
+    }
+  });
+})();
+
+// ── Əlavə Effektlər Paneli açma/bağlama ─────────────────────────────────────
+document.getElementById('effectsBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById('effectsPanel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+document.addEventListener('click', (e) => {
+  const panel = document.getElementById('effectsPanel');
+  if (panel.style.display === 'block' && !panel.contains(e.target) && e.target.id !== 'effectsBtn') {
+    panel.style.display = 'none';
+  }
+});
+
+// ── İnteraktiv Bacarıq Ağacı (Skill Tree) ───────────────────────────────────
+fetch(`/api/profile/${MY_ID}/achievements`).then(r => r.json()).then(data => {
+  const earned = data.earned || [], locked = data.locked || [];
+  const all = [...earned.map(a => ({...a, isEarned: true})), ...locked.map(a => ({...a, isEarned: false}))];
+  if (!all.length) return;
+  document.getElementById('skillTreePanel').style.display = 'block';
+  const svg = document.getElementById('skillTreeSvg');
+  const cols = 4, spacing = 70, startX = 40, startY = 40;
+  let edges = '', nodes = '';
+  all.slice(0, 12).forEach((a, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * spacing, y = startY + row * 70;
+    if (i >= cols) {
+      const px = startX + (col) * spacing, py = startY + (row - 1) * 70;
+      edges += `<line class="skill-edge${a.isEarned ? ' lit' : ''}" x1="${x}" y1="${y}" x2="${px}" y2="${py}"/>`;
+    }
+    nodes += `<g class="skill-node" data-tip="${escapeHtmlP(a.name)}">
+      <circle cx="${x}" cy="${y}" r="18" class="${a.isEarned ? 'earned' : 'locked'}"/>
+      <text x="${x}" y="${y + 5}" text-anchor="middle" font-size="14">${a.isEarned ? (a.icon || '★') : '🔒'}</text>
+    </g>`;
+  });
+  svg.innerHTML = edges + nodes;
+  svg.querySelectorAll('.skill-node').forEach(node => {
+    node.addEventListener('click', () => showToast(node.dataset.tip));
+  });
+}).catch(() => {});
+
+// ── Vaxt Kapsulu ─────────────────────────────────────────────────────────────
+async function loadTimeCapsuleLetters() {
+  try {
+    const r = await fetch(`/api/profile/${MY_ID}/timecapsule`);
+    const letters = await r.json();
+    const container = document.getElementById('capsuleLetters');
+    if (!letters.length) { container.innerHTML = ''; return; }
+    container.innerHTML = letters.map(l => {
+      const date = new Date(l.unlock_at * 1000).toLocaleDateString('az-AZ', {day:'numeric', month:'short', year:'numeric'});
+      if (l.opened) {
+        return `<div class="capsule-letter"><div class="cl-date">Açıldı — ${date}</div>${escapeHtmlP(l.message)}</div>`;
+      } else if (l.ready) {
+        return `<div class="capsule-letter ready" data-id="${l.id}"><div class="cl-date">🎉 Açılmağa hazırdır! (${date}) — klikləyin</div></div>`;
+      } else {
+        return `<div class="capsule-letter"><div class="cl-date">🔒 ${date} tarixində açılacaq</div></div>`;
+      }
+    }).join('');
+    container.querySelectorAll('.capsule-letter.ready').forEach(el => {
+      el.addEventListener('click', async () => {
+        const id = el.dataset.id;
+        const r2 = await fetch(`/api/profile/${MY_ID}/timecapsule/${id}/open`, {method: 'POST'});
+        if (r2.ok) { showToast('⏳ Vaxt kapsulu açıldı!'); loadTimeCapsuleLetters(); }
+      });
+    });
+  } catch (e) {}
+}
+loadTimeCapsuleLetters();
+document.getElementById('capsuleSendBtn').addEventListener('click', async (e) => {
+  e.stopPropagation();
+  const message = document.getElementById('capsuleMessage').value.trim();
+  const days = parseInt(document.getElementById('capsuleDays').value, 10);
+  if (!message) { showToast('❌ Mesaj boş ola bilməz'); return; }
+  if (!days || days < 1) { showToast('❌ Düzgün gün sayı daxil edin'); return; }
+  try {
+    const r = await fetch(`/api/profile/${MY_ID}/timecapsule`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message, days})
+    });
+    if (r.ok) {
+      document.getElementById('capsuleMessage').value = '';
+      showToast('✅ Vaxt kapsulu yaradıldı!');
+      loadTimeCapsuleLetters();
+    } else {
+      showToast('❌ Xəta baş verdi');
+    }
+  } catch (err) {}
+});
 
 // ── 3D Tilt effekti ───────────────────────────────────────────────────────
 const flipContainer = document.getElementById('flipContainer');
@@ -1556,6 +2113,14 @@ fetch(`/api/profile/${MY_ID}/maps`).then(r => r.json()).then(maps => {
   if (!maps || maps.length < 3) return;
   const panel = document.getElementById('radarPanel');
   panel.style.display = 'block';
+
+  // ── 3D Fırlanan Xəritə İkonu — ən güclü xəritənin emblemi ──
+  const best = maps.reduce((a, b) => (b.win_rate > a.win_rate ? b : a), maps[0]);
+  const emblem = document.getElementById('topMapEmblem');
+  emblem.querySelector('.face').textContent = (best.map || '?').charAt(0).toUpperCase();
+  emblem.title = `${best.map} — ${best.win_rate}% qazanma`;
+  emblem.style.display = 'block';
+
   const svg = document.getElementById('radarChart');
   const cx = 110, cy = 110, maxR = 85;
   const n = maps.length;

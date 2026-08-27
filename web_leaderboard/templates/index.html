@@ -653,6 +653,13 @@
   .eq-bars.playing span:nth-child(2) { animation: eqBounce 0.4s ease-in-out infinite 0.1s; }
   .eq-bars.playing span:nth-child(3) { animation: eqBounce 0.4s ease-in-out infinite 0.2s; }
   @keyframes eqBounce { 0%, 100% { height: 3px; } 50% { height: 12px; } }
+
+  /* ── Kollektiv Piksel Kətan ── */
+  .pixel-canvas-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #pixelCanvas { image-rendering: pixelated; border: 1px solid var(--border); border-radius: 8px; cursor: crosshair; max-width: 100%; }
+  .pixel-palette { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .pixel-swatch { width: 24px; height: 24px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; }
+  .pixel-swatch.active { border-color: var(--gold); }
 </style>
 </head>
 <body>
@@ -703,6 +710,15 @@
   </div>
 
   <button class="capsule-toggle" id="capsuleToggleBtn" type="button">🕰️ Zaman Kapsulu — Keçmiş Sezonlara Bax</button>
+  <button class="capsule-toggle" id="pixelToggleBtn" type="button">🎨 Kollektiv Piksel Kətan — Birgə Rəsm Çək</button>
+  <div class="capsule-panel" id="pixelPanel" style="display:none;">
+    <h2>🎨 Kollektiv Piksel Kətan</h2>
+    <div class="pixel-canvas-wrap">
+      <canvas id="pixelCanvas" width="320" height="320"></canvas>
+      <div class="pixel-palette" id="pixelPalette"></div>
+      <span style="font-size:11px; color:var(--text-dim);">Bütün ziyarətçilər birgə çəkir — bir kvadrat seç, kətana klikləyib boya!</span>
+    </div>
+  </div>
   <div class="capsule-panel" id="capsulePanel" style="display:none;">
     <h2>🕰️ Zaman Kapsulu</h2>
     <div class="capsule-list" id="capsuleList"><span class="capsule-empty">Yüklənir...</span></div>
@@ -1546,6 +1562,75 @@ backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior:
     idx = 0;
     showStep();
   }, 1200);
+})();
+
+// ── Kollektiv Piksel Kətan ("mini r/place") ─────────────────────────────────
+(function pixelCanvasWidget() {
+  const toggleBtn = document.getElementById('pixelToggleBtn');
+  const panel = document.getElementById('pixelPanel');
+  const canvas = document.getElementById('pixelCanvas');
+  const ctx = canvas.getContext('2d');
+  const paletteEl = document.getElementById('pixelPalette');
+  const COLORS = ['#8a5ce6', '#5fd07a', '#f0b429', '#d6453d', '#50a0dc', '#e65aaa', '#ffffff', '#000000', '#ff8a3d', '#4dd0e1'];
+  const SIZE = 32, CELL = canvas.width / SIZE;
+  let selectedColor = COLORS[0];
+  let loaded = false;
+  let pollTimer = null;
+
+  paletteEl.innerHTML = COLORS.map((c, i) =>
+    `<div class="pixel-swatch${i === 0 ? ' active' : ''}" data-color="${c}" style="background:${c}"></div>`
+  ).join('');
+  paletteEl.querySelectorAll('.pixel-swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      selectedColor = sw.dataset.color;
+      paletteEl.querySelectorAll('.pixel-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+    });
+  });
+
+  function drawGrid(pixels) {
+    ctx.fillStyle = '#131116';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    Object.entries(pixels).forEach(([key, color]) => {
+      const [x, y] = key.split(',').map(Number);
+      ctx.fillStyle = color;
+      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+    });
+  }
+
+  async function loadCanvas() {
+    try {
+      const r = await fetch('/api/pixel_canvas');
+      const data = await r.json();
+      drawGrid(data.pixels || {});
+    } catch (e) {}
+  }
+
+  canvas.addEventListener('click', async (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+    const x = Math.floor(((e.clientX - rect.left) * scaleX) / CELL);
+    const y = Math.floor(((e.clientY - rect.top) * scaleY) / CELL);
+    ctx.fillStyle = selectedColor;
+    ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+    try {
+      await fetch('/api/pixel_canvas', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({x, y, color: selectedColor})
+      });
+    } catch (err) {}
+  });
+
+  toggleBtn.addEventListener('click', () => {
+    const showing = panel.style.display !== 'none';
+    panel.style.display = showing ? 'none' : 'block';
+    if (!showing) {
+      if (!loaded) { loaded = true; loadCanvas(); }
+      pollTimer = setInterval(loadCanvas, 3000);
+    } else if (pollTimer) {
+      clearInterval(pollTimer);
+    }
+  });
 })();
 
 fetchData();

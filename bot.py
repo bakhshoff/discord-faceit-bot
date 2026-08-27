@@ -72,6 +72,8 @@ from database import (
     get_or_create_current_season, get_season_by_number, add_season_stat,
     get_season_stat, get_season_leaderboard, close_season,
     get_completed_seasons, reset_all_players_for_new_season,
+    add_teammate_rating, get_teammate_rating_summary,
+    mark_anniversary_greeted, get_players_with_anniversary_today,
     get_dm_notifications, set_dm_notifications, use_free_nickname_change,
     check_and_grant_comeback_bonus, COMEBACK_BONUS_COINS,
     create_report, get_recent_reports_for,
@@ -626,6 +628,36 @@ async def _post_audit_log(action, target_id, field, old_val, new_val, reason, ad
 _last_season_rotation_month = None
 
 
+_last_anniversary_check_day = None
+
+
+@tasks.loop(minutes=30)
+async def anniversary_check_loop():
+    """Qeydiyyat ildönümü olan oyunçulara gündə 1 dəfə (AZ vaxtı ilə) DM təbrik göndərir."""
+    global _last_anniversary_check_day
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+    day_key = now.strftime("%Y-%m-%d")
+    if _last_anniversary_check_day == day_key:
+        return
+    _last_anniversary_check_day = day_key
+
+    for entry in get_players_with_anniversary_today():
+        if not mark_anniversary_greeted(entry["discord_id"], entry["years"]):
+            continue
+        for guild in bot.guilds:
+            member = guild.get_member(entry["discord_id"])
+            if member:
+                try:
+                    await member.send(
+                        f"🎉 **{entry['years']} illik ildönümün mübarək, {entry['nick']}!** "
+                        "Zenith's Academy icmasına qoşulmağının üstündən düz bu qədər vaxt keçdi. "
+                        "Uğurların davam etsin! 🏆"
+                    )
+                except discord.Forbidden:
+                    pass
+                break
+
+
 @tasks.loop(minutes=30)
 async def season_rotation_loop():
     """Ayın 1-ində (AZ vaxtı ilə) əvvəlki sezonu bağlayıb yeni sezon açır, keçən ayın
@@ -1003,6 +1035,9 @@ async def _send_tilt_warning_dm(guild, discord_id, nick, loss_streak):
         pass
 
 
+_intel_briefing_message_ids = set()  # 👍/👎 reaksiya-ilə faydalılıq rəyi izlənilən DM-lər
+
+
 async def _send_intel_briefing(guild, discord_id, nick, opponent_team, selected_map):
     """Matç başlamazdan əvvəl rəqib komandanın xəritə statistikasına əsaslanan qısa DM göndərir."""
     member = guild.get_member(discord_id) if guild else None
@@ -1034,7 +1069,10 @@ async def _send_intel_briefing(guild, discord_id, nick, opponent_team, selected_
     )
     embed.set_footer(text="Zenith's Academy")
     try:
-        await member.send(embed=embed)
+        briefing_msg = await member.send(embed=embed)
+        _intel_briefing_message_ids.add(briefing_msg.id)
+        for emoji in ("👍", "👎"):
+            await briefing_msg.add_reaction(emoji)
     except discord.Forbidden:
         pass
 
@@ -1085,6 +1123,39 @@ leaderboard_channel_id = None
 leaderboard_message_id = None
 queue_status_channel_id = None
 queue_status_message_id = None
+live_board_message_id = None
+
+
+async def _update_live_board_message(change_note=None):
+    """Leaderboard kanalında hər matçdan sonra (60 saniyəlik şəkil-yeniləməsindən daha sürətli)
+    yenilənən, mətn-əsaslı pinlənmiş "Top 10 + son dəyişiklik" mesajı."""
+    global live_board_message_id
+    if leaderboard_channel_id is None:
+        return
+    channel = bot.get_channel(leaderboard_channel_id)
+    if channel is None:
+        return
+    rows = get_leaderboard(10)
+    if not rows:
+        return
+    lines = [f"{i+1}. **{r[0]}** — {r[2]} ELO ({r[3]}Q/{r[4]}M)" for i, r in enumerate(rows)]
+    content = "📊 **Canlı Liderlik Lövhəsi — Top 10**\n" + "\n".join(lines)
+    if change_note:
+        content += f"\n\n🔄 {change_note}"
+    content += f"\n\n🕒 Son yeniləmə: <t:{int(datetime.datetime.utcnow().timestamp())}:R>"
+    if live_board_message_id:
+        try:
+            msg = await channel.fetch_message(live_board_message_id)
+            await msg.edit(content=content)
+            return
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            live_board_message_id = None
+    try:
+        msg = await channel.send(content)
+        live_board_message_id = msg.id
+        await msg.pin()
+    except discord.HTTPException:
+        pass
 
 
 LEADERBOARD_IMAGE_PATH = "leaderboard.png"
@@ -2271,6 +2342,10 @@ class MatchResultView(discord.ui.View):
         )
         if interaction.guild:
             await _check_community_goal(interaction.guild)
+        asyncio.create_task(_update_live_board_message(f"Matç No{self.match_number}: **{winner_label}** qalib gəldi"))
+        if interaction.guild:
+            asyncio.create_task(_send_teammate_rating_prompts(interaction.guild, winner_team, self.match_number))
+            asyncio.create_task(_send_teammate_rating_prompts(interaction.guild, loser_team, self.match_number))
 
         await interaction.edit_original_response(embed=embed, view=self)
         log_channel = await _get_log_channel()
@@ -2318,6 +2393,7 @@ class MatchResultView(discord.ui.View):
                             await thread.send("✅ Matç nəticəsi qeyd olundu.")
                         except discord.HTTPException:
                             pass
+                        await _post_thread_summary_and_archive(thread)
 
         await _start_match_if_ready(log_channel or interaction.channel, interaction.guild)
 
@@ -2531,6 +2607,31 @@ async def update_queue_status_message():
         pass
 
 
+async def _post_thread_summary_and_archive(thread):
+    """Matç bitəndə thread-ə avtomatik qısa xülasə yazır (mesaj sayı, ən aktiv iştirakçı)
+    və thread-i arxivləşdirir/kilidləyir ki, artıq lazımsız qalmasın."""
+    counts = {}
+    total = 0
+    try:
+        async for msg in thread.history(limit=200):
+            if msg.author.bot:
+                continue
+            counts[msg.author.display_name] = counts.get(msg.author.display_name, 0) + 1
+            total += 1
+    except discord.HTTPException:
+        return
+    if total == 0:
+        summary = "📋 **Thread Xülasəsi** — bu matçda əlavə mesajlaşma olmadı."
+    else:
+        top_name, top_count = max(counts.items(), key=lambda kv: kv[1])
+        summary = f"📋 **Thread Xülasəsi** — cəmi {total} mesaj. Ən aktiv: **{top_name}** ({top_count} mesaj)."
+    try:
+        await thread.send(summary)
+        await thread.edit(archived=True, locked=True)
+    except discord.HTTPException:
+        pass
+
+
 async def _cleanup_match_voice_channels(guild, active):
     """Matçın dinamik səs kanallarını (varsa) silir, içindəkiləri əvvəlcə lobbiyə köçürür.
     Bu funksiya HEÇ VAXT exception qaldırmamalıdır — çağıran yerlərdə (_finish/_on_select)
@@ -2575,6 +2676,22 @@ async def _start_match_if_ready(channel, guild):
                 break
 
 
+WARMUP_VOICE_CHANNEL_NAME = "🎤 İsınma Otağı"
+
+
+async def _get_or_create_warmup_channel(guild):
+    if not guild:
+        return None
+    existing = discord.utils.get(guild.voice_channels, name=WARMUP_VOICE_CHANNEL_NAME)
+    if existing:
+        return existing
+    category = discord.utils.get(guild.categories, name=FULL_SETUP_CATEGORY_NAME)
+    try:
+        return await guild.create_voice_channel(WARMUP_VOICE_CHANNEL_NAME, category=category)
+    except discord.Forbidden:
+        return None
+
+
 async def _start_one_match(channel, guild) -> bool:
     result = pop_4_and_balance()
     if result is None:
@@ -2595,11 +2712,31 @@ async def _start_one_match(channel, guild) -> bool:
         is_golden=is_golden, is_lightning=is_lightning
     )
 
+    # Kapitan seçimi animasiyası — matç kartından ƏVVƏL qısa "🎲 seçilir..." reveal effekti
+    captain_reveal_msg = None
+    try:
+        captain_reveal_msg = await channel.send(f"🎲 Matç No{match_number} — kapitanlar seçilir...")
+        await asyncio.sleep(1.0)
+        await captain_reveal_msg.edit(content=f"🔵 Komanda A Kapitanı: **{captain_a['nick']}** seçildi!")
+        await asyncio.sleep(0.8)
+        await captain_reveal_msg.edit(
+            content=f"🔵 Komanda A Kapitanı: **{captain_a['nick']}**\n🔴 Komanda B Kapitanı: **{captain_b['nick']}** seçildi!"
+        )
+        await asyncio.sleep(0.8)
+    except discord.HTTPException:
+        pass
+
     card_path = os.path.join(DATA_DIR or ".", f"match_{match_number}.png")
     await asyncio.to_thread(
         generate_match_card, match_number, selected_map, team_a, team_b,
         captain_a["discord_id"], captain_b["discord_id"], card_path
     )
+
+    if captain_reveal_msg:
+        try:
+            await captain_reveal_msg.delete()
+        except discord.HTTPException:
+            pass
 
     mentions = " ".join([f"<@{p['discord_id']}>" for p in team_a + team_b])
     if is_golden:
@@ -2772,6 +2909,19 @@ class MatchmakingView(discord.ui.View):
 
         await interaction.response.send_message(f"✅ {nick} sıraya qoşuldu! ({size}/4){comeback_line}", ephemeral=True)
         await update_queue_status_message()
+
+        # İsınma Otağı — artıq səsdə olan oyunçular sıraya qoşulanda ortaq gözləmə
+        # kanalına köçürülür ki, matç tapılanda komanda kanalına köçmək təbii olsun.
+        if interaction.guild:
+            member = interaction.guild.get_member(discord_id)
+            if member and member.voice and member.voice.channel:
+                warmup = await _get_or_create_warmup_channel(interaction.guild)
+                if warmup and member.voice.channel.id != warmup.id:
+                    try:
+                        await member.move_to(warmup)
+                    except discord.Forbidden:
+                        pass
+
         await _start_match_if_ready(interaction.channel, interaction.guild)
 
     @discord.ui.button(label="2v2", style=discord.ButtonStyle.danger, emoji="🔥", custom_id="mm_join")
@@ -2868,6 +3018,8 @@ async def on_ready():
         weekly_mvp_loop.start()
     if not season_rotation_loop.is_running():
         season_rotation_loop.start()
+    if not anniversary_check_loop.is_running():
+        anniversary_check_loop.start()
     if not flash_sale_loop.is_running():
         flash_sale_loop.start()
     if not suspicious_activity_loop.is_running():
@@ -3245,6 +3397,10 @@ class RewardsMenuView(_ProfileSubMenuBase):
             embed.add_field(name="📅 Qeydiyyat tarixi", value=f"<t:{created_at}:D>", inline=True)
         embed.add_field(name="⛰️ Ən yüksək ELO", value=str(player[18]) if player and len(player) > 18 else "?", inline=True)
         embed.add_field(name="🎮 Cəmi matç", value=str((player[4] or 0) + (player[5] or 0)) if player else "0", inline=True)
+        rating_summary = get_teammate_rating_summary(self.discord_id)
+        rating_value = (f"{'⭐' * round(rating_summary['avg_rating'])} {rating_summary['avg_rating']}/5 "
+                        f"({rating_summary['rating_count']} rəy)") if rating_summary["avg_rating"] else "Hələ rəy yoxdur"
+        embed.add_field(name="🤝 İşbirliyi reytinqi", value=rating_value, inline=True)
         embed.add_field(
             name=f"🛤️ Sezon #{current['season_number']} (davam edir)",
             value=(f"{'+' if season_stat['elo_gained'] >= 0 else ''}{season_stat['elo_gained']} ELO — "
@@ -3260,6 +3416,68 @@ class RewardsMenuView(_ProfileSubMenuBase):
         if completed:
             embed.set_footer(text="Aşağıdan keçmiş bir ELO sezonunu seçib final sıralamasına baxa bilərsiniz.")
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+class TeammateRatingView(discord.ui.View):
+    """Matçdan sonra DM-ə göndərilən 1-5 ulduzlu komanda yoldaşı qiymətləndirməsi —
+    2v2 formatında hər oyunçunun cəmi 1 komanda yoldaşı olduğu üçün UI sadələşir."""
+    def __init__(self, rater_id, rated_id, rated_nick, match_number):
+        super().__init__(timeout=3600)
+        self.rater_id = rater_id
+        self.rated_id = rated_id
+        self.rated_nick = rated_nick
+        self.match_number = match_number
+
+    async def _rate(self, interaction: discord.Interaction, stars: int):
+        if interaction.user.id != self.rater_id:
+            await interaction.response.send_message("❌ Bu qiymətləndirmə sizin üçün deyil.", ephemeral=True)
+            return
+        if not add_teammate_rating(self.rater_id, self.rated_id, self.match_number, stars):
+            await interaction.response.send_message("⚠️ Bu matç üçün artıq qiymətləndirmisiniz.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content=f"✅ **{self.rated_nick}** — {'⭐' * stars} qiymətləndirildi. Təşəkkürlər!", view=self
+        )
+
+    @discord.ui.button(label="⭐", style=discord.ButtonStyle.secondary)
+    async def s1(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rate(interaction, 1)
+
+    @discord.ui.button(label="⭐⭐", style=discord.ButtonStyle.secondary)
+    async def s2(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rate(interaction, 2)
+
+    @discord.ui.button(label="⭐⭐⭐", style=discord.ButtonStyle.secondary)
+    async def s3(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rate(interaction, 3)
+
+    @discord.ui.button(label="⭐⭐⭐⭐", style=discord.ButtonStyle.secondary)
+    async def s4(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rate(interaction, 4)
+
+    @discord.ui.button(label="⭐⭐⭐⭐⭐", style=discord.ButtonStyle.primary)
+    async def s5(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._rate(interaction, 5)
+
+
+async def _send_teammate_rating_prompts(guild, team, match_number):
+    if not guild or len(team) != 2:
+        return
+    for rater, rated in ((team[0], team[1]), (team[1], team[0])):
+        member = guild.get_member(rater["discord_id"])
+        if not member:
+            continue
+        view = TeammateRatingView(rater["discord_id"], rated["discord_id"], rated["nick"], match_number)
+        try:
+            await member.send(
+                f"🤝 Matç No{match_number} bitdi! Komanda yoldaşınız **{rated['nick']}** ilə "
+                "əməkdaşlığınızı necə qiymətləndirərdiniz?",
+                view=view
+            )
+        except discord.Forbidden:
+            pass
 
 
 class SeasonHistoryView(discord.ui.View):
@@ -3769,6 +3987,8 @@ async def full_setup(interaction: discord.Interaction):
                 await stale.delete(reason="full_setup: statik komanda kanalları artıq istifadə olunmur")
             except discord.Forbidden:
                 pass
+
+    await _get_or_create_warmup_channel(guild)
 
     LOG_CHANNEL_ID = ch_log.id
     set_meta("log_channel_id", ch_log.id)
@@ -5210,6 +5430,19 @@ async def _handle_race_reaction(payload):
     _active_reaction_races.pop(payload.message_id, None)
 
 
+async def _handle_intel_feedback(payload):
+    if str(payload.emoji) not in ("👍", "👎"):
+        return
+    _intel_briefing_message_ids.discard(payload.message_id)  # hər DM üçün cəmi 1 rəy sayılır
+    rating = "faydalı 👍" if str(payload.emoji) == "👍" else "faydasız 👎"
+    audit_channel = await _get_audit_log_channel()
+    if audit_channel:
+        try:
+            await audit_channel.send(f"🧭 Kəşfiyyat briefinqi rəyi: <@{payload.user_id}> — {rating}")
+        except discord.HTTPException:
+            pass
+
+
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     if bot.user and payload.user_id == bot.user.id:
@@ -5218,6 +5451,8 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
         await _refresh_poll(payload)
     elif payload.message_id in _active_reaction_races:
         await _handle_race_reaction(payload)
+    elif payload.message_id in _intel_briefing_message_ids:
+        await _handle_intel_feedback(payload)
 
 
 @bot.event
@@ -5241,6 +5476,28 @@ async def sorgu_cmd(interaction: discord.Interaction, sual: str, seçimlər: str
             await message.add_reaction(POLL_NUMBER_EMOJIS[i])
         except discord.HTTPException:
             pass
+
+
+class FeedbackModal(discord.ui.Modal, title="Rəy Bildir"):
+    mesaj = discord.ui.TextInput(
+        label="Rəyiniz / təklifiniz", style=discord.TextStyle.paragraph, max_length=1000
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        reports_channel = await _get_reports_channel()
+        if reports_channel:
+            embed = discord.Embed(title="📝 Yeni Rəy/Təklif", description=self.mesaj.value, color=discord.Color.blurple())
+            embed.set_footer(text=f"{interaction.user} · {interaction.user.id}")
+            try:
+                await reports_channel.send(embed=embed)
+            except discord.HTTPException:
+                pass
+        await interaction.response.send_message("✅ Rəyiniz göndərildi — təşəkkürlər!", ephemeral=True)
+
+
+@bot.tree.command(name="feedback", description="Bot və ya server haqqında rəy/təklif bildirin")
+async def feedback_cmd(interaction: discord.Interaction):
+    await interaction.response.send_modal(FeedbackModal())
 
 
 @bot.tree.command(name="reaksiya_yarisi", description="Reaksiya sürəti mini-oyunu — ilk düzgün reaksiya verən udur!")
@@ -5888,6 +6145,7 @@ async def admin_matc_elave_et_cmd(
 
     winner_label = "Komanda A" if qalib.value == "A" else "Komanda B"
     loser_label = "Komanda B" if qalib.value == "A" else "Komanda A"
+    asyncio.create_task(_update_live_board_message(f"Matç No{match_number}: **{winner_label}** qalib gəldi"))
 
     def _fmt(p, r):
         k, a, d = kad_by_id[p["discord_id"]]
