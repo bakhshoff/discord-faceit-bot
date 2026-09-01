@@ -105,11 +105,11 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
     col    = _reward_color(reward)
     body_h = h - 20  # Label üçün alt boşluq
 
-    # ── SKİN (AWM BOOM və s.) — real şəkil ────────────────────────────────────
+    # ── SKİN (hər sezonun VIP final skini) — real şəkil ───────────────────────
     if rtype == "skin":
-        boom = os.path.join(BASE_DIR2, "assets", "awm_boom.png")
+        skin_img_path = os.path.join(BASE_DIR2, "assets", reward.get("image", "awm_boom.png"))
         try:
-            sk = Image.open(boom).convert("RGBA")
+            sk = Image.open(skin_img_path).convert("RGBA")
             sk.thumbnail((w - 4, body_h - 4), Image.LANCZOS)
             ox = (w - sk.width) // 2
             oy = (body_h - sk.height) // 2
@@ -338,7 +338,20 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         R = min(body_h - 24, w - 24) // 2
         cx2, cy2 = w//2, body_h//2 - 4
         draw.ellipse([(cx2-R,cy2-R),(cx2+R,cy2+R)], fill=(20,60,35), outline=green, width=2)
-        draw.text((cx2, cy2), "₼", font=_f(int(R*1.1), True), fill=green, anchor="mm")
+        azn_icon_path = os.path.join(BASE_DIR2, "assets", "azn_icon.png")
+        azn_loaded = False
+        try:
+            ai = Image.open(azn_icon_path).convert("RGBA")
+            ai_size = int(R * 1.3)
+            ai.thumbnail((ai_size, ai_size), Image.LANCZOS)
+            tinted = Image.new("RGBA", ai.size, (*green, 0))
+            tinted.putalpha(ai.split()[3])
+            img.paste(tinted, (cx2 - tinted.width // 2, cy2 - tinted.height // 2), tinted)
+            azn_loaded = True
+        except Exception:
+            azn_loaded = False
+        if not azn_loaded:
+            draw.text((cx2, cy2), "₼", font=_f(int(R*1.1), True), fill=green, anchor="mm")
         draw.text((w//2, body_h - 6), f"{amount:g} AZN", font=_f(10, True), fill=green, anchor="mm")
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=green, anchor="mm")
         return img
@@ -734,7 +747,7 @@ def generate_pass_missions_card(missions: list, output_path: str):
 
 
 def generate_pass_announcement(output_path: str):
-    """Genesis (Yaranış) Battle Pass tanıtım elan kartı — kanal elanı üçün."""
+    """Cari sezon (BP_SEASON_NAME) Battle Pass tanıtım elan kartı — kanal elanı üçün."""
     W, H = 900, 580
     img  = Image.new("RGBA", (W, H), (0,0,0,255))
     draw = ImageDraw.Draw(img)
@@ -763,7 +776,7 @@ def generate_pass_announcement(output_path: str):
 
     # ── Mərkəz başlıq ─────────────────────────────────────────────────────────
     draw.text((W//2, 52),  "BATTLE PASS",  font=_f(52,True), fill=WHITE2, anchor="mm")
-    draw.text((W//2, 100), "G E N E S I S",  font=_f(20,True), fill=PASS_PURPLE,  anchor="mm")
+    draw.text((W//2, 100), " ".join(BP_SEASON_NAME.upper()),  font=_f(20,True), fill=PASS_PURPLE,  anchor="mm")
     draw.text((W//2, 122), f"( {BP_SEASON_NAME_AZ} )",  font=_f(13,True), fill=PASS_TEAL,  anchor="mm")
 
     # Başlıq altı xətt
@@ -771,10 +784,12 @@ def generate_pass_announcement(output_path: str):
 
     # ── 3 əsas mükafat kartı ─────────────────────────────────────────────────
     CARD_W, CARD_H = 220, 200
+    _skin_name = str(PASS_PREM_REWARDS.get(BP_MAX_LEVEL, {}).get("value", "")).replace("|", "").upper()
+    _skin_name = " ".join(_skin_name.split())
     cards = [
         (5,  False, "LVL 5 — FREE",   "50% Boost Kartı",   PASS_TEAL),
         (15, True,  "LVL 15 — VIP",   "Genesis Çərçivəsi", PASS_TEAL),
-        (35, True,  "LVL 35 — VIP",   "AWM BOOM SKIN",     PASS_GOLD),
+        (35, True,  "LVL 35 — VIP",   f"{_skin_name} SKIN", PASS_GOLD),
     ]
     total_cards = len(cards)
     spacing = (W - total_cards * CARD_W) // (total_cards + 1)
@@ -820,7 +835,7 @@ def generate_pass_announcement(output_path: str):
                            radius=6, fill=(28,18,42), outline=PASS_PURPLE, width=2)
     draw.text((VX+PW//2, PY+12), f"VIP PASS — {BP_PRICE_AZN} AZN", font=_f(13,True), fill=PASS_PURPLE, anchor="mm")
     for ri, row in enumerate(["Bütün FREE + AZN/Coin/ELO kart bonusu",
-                               f"Çərçivə(15) · Banner(20) · AWM Boom(Lv.{BP_MAX_LEVEL})"]):
+                               f"Çərçivə(15) · Banner(20) · {_skin_name}(Lv.{BP_MAX_LEVEL})"]):
         draw.text((VX+14, PY+28+ri*16), f"• {row}", font=_f(9), fill=WHITE2)
 
     # ── Alt CTA şeridi ────────────────────────────────────────────────────────

@@ -4159,59 +4159,63 @@ def clear_expired_discounts():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Season konfiqurasiyası
-BP_SEASON_ID    = 1
-BP_SEASON_NAME  = "Genesis"
-BP_SEASON_NAME_AZ = "Yaranış"
+BP_SEASON_ID    = 2
+BP_SEASON_NAME  = "Phantom"
+BP_SEASON_NAME_AZ = "Kabus"
 BP_PRICE_AZN    = 7
 BP_MAX_LEVEL    = 35
 BP_XP_PER_LEVEL = 500
 
-# FREE track — hər oyunçu (pass alıb-almamasından asılı olmayaraq) alır. Adi levellərdə
-# yalnız coin, milestone levellərdə (5/10/15/20/25/30/35) əvəzinə ELO Boost/Qoruma kart
-# paketi (1/3/5/10/15/20/30 ədəd) verilir.
+# Əvvəlki (arxivləşdirilmiş) sezon — startup-da bir dəfəlik tarixi arxivləşdirmə üçün istifadə olunur.
+BP_PREVIOUS_SEASON_ID   = 1
+BP_PREVIOUS_SEASON_NAME = "Genesis"
+
+# FREE track — hər oyunçu (pass alıb-almamasından asılı olmayaraq) alır. QƏSDƏN VIP (Premium)
+# cığırından hər leveldə QAT-QAT ZƏİFDİR (~1/5 miqdar, kart paketlərində minimum 1 ədədə qədər) —
+# Premium Pass-ın dəyərini qorumaq üçün.
 BP_LEVEL_REWARDS = {
-    1:  {"type": "coins",  "value": 50,   "label": "50 coin"},
-    2:  {"type": "coins",  "value": 25,   "label": "25 coin"},
-    3:  {"type": "coins",  "value": 25,   "label": "25 coin"},
-    4:  {"type": "coins",  "value": 25,   "label": "25 coin"},
+    1:  {"type": "coins",  "value": 10,   "label": "10 coin"},
+    2:  {"type": "coins",  "value": 5,    "label": "5 coin"},
+    3:  {"type": "coins",  "value": 5,    "label": "5 coin"},
+    4:  {"type": "coins",  "value": 5,    "label": "5 coin"},
     5:  {"type": "elo_card", "value": {"card_type": "boost50", "qty": 1},
          "label": "1x 50% Boost Kartı"},
-    6:  {"type": "coins",  "value": 50,   "label": "50 coin"},
-    7:  {"type": "coins",  "value": 50,   "label": "50 coin"},
-    8:  {"type": "coins",  "value": 50,   "label": "50 coin"},
-    9:  {"type": "coins",  "value": 50,   "label": "50 coin"},
-    10: {"type": "elo_card", "value": {"card_type": "protect", "qty": 3},
-         "label": "3x ELO Qoruma Kartı"},
-    11: {"type": "coins",  "value": 75,   "label": "75 coin"},
-    12: {"type": "coins",  "value": 75,   "label": "75 coin"},
-    13: {"type": "coins",  "value": 75,   "label": "75 coin"},
-    14: {"type": "coins",  "value": 75,   "label": "75 coin"},
-    15: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 5},
-         "label": "5x 50% Boost Kartı"},
-    16: {"type": "coins",  "value": 100,  "label": "100 coin"},
-    17: {"type": "coins",  "value": 100,  "label": "100 coin"},
-    18: {"type": "coins",  "value": 100,  "label": "100 coin"},
-    19: {"type": "coins",  "value": 100,  "label": "100 coin"},
-    20: {"type": "elo_card", "value": {"card_type": "protect", "qty": 10},
-         "label": "10x ELO Qoruma Kartı"},
-    21: {"type": "coins",  "value": 150,  "label": "150 coin"},
-    22: {"type": "coins",  "value": 150,  "label": "150 coin"},
-    23: {"type": "coins",  "value": 150,  "label": "150 coin"},
-    24: {"type": "coins",  "value": 150,  "label": "150 coin"},
-    25: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 15},
-         "label": "15x 50% Boost Kartı"},
-    26: {"type": "coins",  "value": 200,  "label": "200 coin"},
-    27: {"type": "coins",  "value": 200,  "label": "200 coin"},
-    28: {"type": "coins",  "value": 200,  "label": "200 coin"},
-    29: {"type": "coins",  "value": 200,  "label": "200 coin"},
-    30: {"type": "elo_card", "value": {"card_type": "protect", "qty": 20},
-         "label": "20x ELO Qoruma Kartı"},
-    31: {"type": "coins",  "value": 250,  "label": "250 coin"},
-    32: {"type": "coins",  "value": 250,  "label": "250 coin"},
+    6:  {"type": "coins",  "value": 10,   "label": "10 coin"},
+    7:  {"type": "coins",  "value": 10,   "label": "10 coin"},
+    8:  {"type": "coins",  "value": 10,   "label": "10 coin"},
+    9:  {"type": "coins",  "value": 10,   "label": "10 coin"},
+    10: {"type": "elo_card", "value": {"card_type": "protect", "qty": 1},
+         "label": "1x ELO Qoruma Kartı"},
+    11: {"type": "coins",  "value": 15,   "label": "15 coin"},
+    12: {"type": "coins",  "value": 15,   "label": "15 coin"},
+    13: {"type": "coins",  "value": 15,   "label": "15 coin"},
+    14: {"type": "coins",  "value": 15,   "label": "15 coin"},
+    15: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 1},
+         "label": "1x 50% Boost Kartı"},
+    16: {"type": "coins",  "value": 20,   "label": "20 coin"},
+    17: {"type": "coins",  "value": 20,   "label": "20 coin"},
+    18: {"type": "coins",  "value": 20,   "label": "20 coin"},
+    19: {"type": "coins",  "value": 20,   "label": "20 coin"},
+    20: {"type": "elo_card", "value": {"card_type": "protect", "qty": 2},
+         "label": "2x ELO Qoruma Kartı"},
+    21: {"type": "coins",  "value": 30,   "label": "30 coin"},
+    22: {"type": "coins",  "value": 30,   "label": "30 coin"},
+    23: {"type": "coins",  "value": 30,   "label": "30 coin"},
+    24: {"type": "coins",  "value": 30,   "label": "30 coin"},
+    25: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 3},
+         "label": "3x 50% Boost Kartı"},
+    26: {"type": "coins",  "value": 40,   "label": "40 coin"},
+    27: {"type": "coins",  "value": 40,   "label": "40 coin"},
+    28: {"type": "coins",  "value": 40,   "label": "40 coin"},
+    29: {"type": "coins",  "value": 40,   "label": "40 coin"},
+    30: {"type": "elo_card", "value": {"card_type": "protect", "qty": 4},
+         "label": "4x ELO Qoruma Kartı"},
+    31: {"type": "coins",  "value": 50,   "label": "50 coin"},
+    32: {"type": "coins",  "value": 50,   "label": "50 coin"},
     33: {"type": "mystery", "label": "🎁 Sirli Mükafat"},
-    34: {"type": "coins",  "value": 250,  "label": "250 coin"},
-    35: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 30},
-         "label": "30x 50% Boost Kartı — Sezon Finalı"},
+    34: {"type": "coins",  "value": 50,   "label": "50 coin"},
+    35: {"type": "elo_card", "value": {"card_type": "boost50", "qty": 6},
+         "label": "6x 50% Boost Kartı — Sezon Finalı"},
 }
 
 # Level 33-ün "sirli mükafat"ı tələb edilən anda bu hovuzdan TƏSADÜFİ seçilir
@@ -4263,7 +4267,8 @@ BP_PREMIUM_REWARDS = {
     32: {"type": "azn",   "value": 0.3,  "label": "0.3 AZN"},
     33: {"type": "coins", "value": 250,  "label": "250 coin"},
     34: {"type": "elo_card", "value": {"card_type": "protect", "qty": 5}, "label": "5x ELO Qoruma Kartı"},
-    35: {"type": "skin",  "value": "AWM | Boom", "label": "AWM Boom — Genesis Finalı"},
+    35: {"type": "skin",  "value": "AKR12 | Haunt", "image": "akr12_haunt.jpg",
+         "label": f"AKR12 Haunt — {BP_SEASON_NAME} Finalı"},
 }
 
 BP_MISSIONS_SEED = [
@@ -5138,18 +5143,23 @@ def get_activity_heatmap_grid(discord_id, days=90):
 # FAZA 2 — BATTLE PASS SEZON ARXİVİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def archive_bp_season(season_name):
+def archive_bp_season(season_name, season_id=None):
     """Cari Battle Pass sıralamasının anlıq görüntüsünü arxivləşdirir (tərəqqi SIFIRLANMIR —
-    yalnız tarixi rekord üçün "dondurulmuş" sıralama saxlanılır)."""
+    yalnız tarixi rekord üçün "dondurulmuş" sıralama saxlanılır). `season_id` verilməsə
+    cari BP_SEASON_ID istifadə olunur — köhnə (arxivləşdirilməmiş) sezonu arxivləşdirmək üçün
+    açıq şəkildə köhnə season_id ötürülməlidir."""
     import time, json as _json
+    if season_id is None:
+        season_id = BP_SEASON_ID
     conn = _get_conn(); cur = conn.cursor()
     cur.execute("""
         SELECT p.so2_nick, bp.level, bp.is_premium
         FROM battle_pass bp JOIN players p ON p.discord_id = bp.discord_id
+        WHERE bp.season_id = ?
         ORDER BY bp.level DESC LIMIT 10
-    """)
+    """, (season_id,))
     top = [{"nick": r[0], "level": r[1], "premium": bool(r[2])} for r in cur.fetchall()]
-    cur.execute("SELECT COUNT(*) FROM battle_pass WHERE level > 0")
+    cur.execute("SELECT COUNT(*) FROM battle_pass WHERE level > 0 AND season_id = ?", (season_id,))
     total = cur.fetchone()[0]
     cur.execute(
         "INSERT OR REPLACE INTO bp_season_archive (season_name, archived_at, top_players, total_participants) "

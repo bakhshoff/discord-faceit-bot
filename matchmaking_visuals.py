@@ -61,7 +61,10 @@ def _vertical_gradient(width, height, top_color, bottom_color):
     return base
 
 
-def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_path="matchmaking_banner.png"):
+def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_path="matchmaking_banner.png", mode="2v2"):
+    """`mode`: "2v2" (defolt, mövcud davranış dəyişməz) və ya "5v5" — başlıq, format və
+    lazımi oyunçu sayı mətnləri buna görə uyğunlaşır."""
+    team_size = 10 if mode == "5v5" else 4
     height = 280
     img = _vertical_gradient(WIDTH, height, BG_TOP, BG_BOTTOM)
     draw = ImageDraw.Draw(img)
@@ -75,13 +78,13 @@ def generate_matchmaking_banner(open_hour, close_hour, logo_path=None, output_pa
 
     draw.text((36, 28), "Zenith's Academy", font=brand_font, fill=GOLD)
     draw.text((36, 50), "FACEIT MATCHMAKING", font=title_font, fill=WHITE)
-    draw.text((36, 98), "Standoff 2 · Competitive 2v2", font=sub_font, fill=GRAY)
+    draw.text((36, 98), f"Standoff 2 · Competitive {mode}", font=sub_font, fill=GRAY)
 
     draw.line([(36, 140), (WIDTH - 36, 140)], fill=BORDER, width=1)
 
     info_y = 160
     draw.ellipse([(36, info_y + 4), (46, info_y + 14)], fill=GOLD)
-    draw.text((58, info_y), "Format: 2v2  ·  4 oyunçu lazımdır", font=value_font, fill=WHITE)
+    draw.text((58, info_y), f"Format: {mode}  ·  {team_size} oyunçu lazımdır", font=value_font, fill=WHITE)
 
     draw.ellipse([(36, info_y + 34), (46, info_y + 44)], fill=GOLD)
     draw.text((58, info_y + 30), "7/24 açıq  ·  istənilən vaxt qoşula bilərsən", font=value_font, fill=WHITE)

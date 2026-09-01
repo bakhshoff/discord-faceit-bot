@@ -66,7 +66,7 @@ from database import (
     update_bp_mission, add_bp_xp, get_pass_data, has_battle_pass, is_premium_pass,
     buy_battle_pass, get_active_bp_missions, claim_bp_rewards, get_pending_bp_reward_count,
     BP_XP_PER_LEVEL, BP_MAX_LEVEL, BP_PRICE_AZN, BP_LEVEL_REWARDS, BP_PREMIUM_REWARDS,
-    BP_SEASON_NAME, BP_SEASON_NAME_AZ,
+    BP_SEASON_NAME, BP_SEASON_NAME_AZ, BP_PREVIOUS_SEASON_ID, BP_PREVIOUS_SEASON_NAME,
     transfer_coins, set_discount, get_discount, get_all_discounts, clear_expired_discounts,
     add_boost, get_active_boost, get_all_active_boosts,
     get_or_create_current_season, get_season_by_number, add_season_stat,
@@ -3967,6 +3967,14 @@ async def on_ready():
     global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5
     init_db()
 
+    if not get_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}"):
+        try:
+            archived = archive_bp_season(BP_PREVIOUS_SEASON_NAME, season_id=BP_PREVIOUS_SEASON_ID)
+            print(f"[BP] Köhnə sezon arxivləşdirildi: {BP_PREVIOUS_SEASON_NAME} ({archived['total_participants']} iştirakçı)")
+        except Exception as e:
+            print(f"[BP] Köhnə sezon arxivləşdirilə bilmədi: {e}")
+        set_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}", "1")
+
     saved_log = get_meta("log_channel_id")
     if saved_log:
         LOG_CHANNEL_ID = int(saved_log)
@@ -4939,7 +4947,7 @@ async def _post_matchmaking_5v5(channel):
     global queue_status_channel_id_5v5, queue_status_message_id_5v5
 
     banner_path = os.path.join(DATA_DIR or ".", "matchmaking_banner_5v5.png")
-    await asyncio.to_thread(generate_matchmaking_banner, QUEUE_OPEN_HOUR, QUEUE_CLOSE_HOUR, LOGO_PATH, banner_path)
+    await asyncio.to_thread(generate_matchmaking_banner, QUEUE_OPEN_HOUR, QUEUE_CLOSE_HOUR, LOGO_PATH, banner_path, "5v5")
     view = MatchmakingView5v5()
     await channel.send(
         content="🎯 **FACEIT 5v5** — bu kanaldan yalnız 5v5 sırasına qoşulun.",
