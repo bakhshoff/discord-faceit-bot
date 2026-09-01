@@ -2460,6 +2460,58 @@ def get_combined_elo_snapshot(limit=1):
     ]
 
 
+def collapse_erroneous_season_rotations(mode="2v2"):
+    """2026-09-01 tarixli bir dəfəlik düzəliş: `season_rotation_loop`-un "bu ay artıq
+    rotasiya edildi" bayrağı əvvəllər yalnız yaddaşda saxlanıldığı üçün, ayın 1-ində bot bir
+    neçə dəfə restart olanda (deploy və s.) hər restart sezon nömrəsini YENİDƏN artırırdı —
+    admin təsdiqləyib ki, əslində YALNIZ season_number=1 həqiqətən bitib, sonrakı bütün
+    sezonlar (2, 3, 4...) bu bagın nəticəsidir. Bu funksiya season_number=1-dən sonrakı BÜTÜN
+    sezon sətirlərini (və onlara aid season_stats-ı) silir və düzgün season_number=2 aktiv
+    sezonu yaradır. `season_rotation_loop`-dakı bayraq artıq DB-də saxlanıldığı üçün (bax:
+    get_meta/set_meta) bu problem BİR DAHA baş verə bilməz."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM seasons WHERE mode=? AND season_number=1", (mode,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return None
+    cursor.execute("SELECT id FROM seasons WHERE mode=? AND season_number != 1", (mode,))
+    erroneous_ids = [r[0] for r in cursor.fetchall()]
+    if erroneous_ids:
+        placeholders = ",".join("?" * len(erroneous_ids))
+        cursor.execute(f"DELETE FROM season_stats WHERE season_id IN ({placeholders})", erroneous_ids)
+        cursor.execute(f"DELETE FROM seasons WHERE id IN ({placeholders})", erroneous_ids)
+    import datetime as dt
+    now = dt.date.today()
+    start = now.replace(day=1).isoformat()
+    if now.month == 12:
+        end = now.replace(year=now.year + 1, month=1, day=1).isoformat()
+    else:
+        end = now.replace(month=now.month + 1, day=1).isoformat()
+    cursor.execute(
+        "INSERT INTO seasons (season_number, mode, start_date, end_date, status) VALUES (2,?,?,?,'active')",
+        (mode, start, end)
+    )
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+
+def revoke_skin_grants(skin_name):
+    """Verilmiş adlı skinin BÜTÜN envanter sətirlərini silir — 2026-09-01 sezon-baqı
+    zamanı yanlışlıqla verilmiş 'Ümumi Şampion' mükafatını geri almaq üçün (bax:
+    collapse_erroneous_season_rotations)."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM skin_inventory WHERE skin_name=?", (skin_name,))
+    n = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return n
+
+
 def close_season(season_id):
     conn = _get_conn()
     cursor = conn.cursor()

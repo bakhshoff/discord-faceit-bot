@@ -72,7 +72,7 @@ from database import (
     get_or_create_current_season, get_season_by_number, add_season_stat,
     get_season_stat, get_season_leaderboard, close_season,
     get_completed_seasons, reset_all_players_for_new_season,
-    get_combined_elo_snapshot,
+    get_combined_elo_snapshot, collapse_erroneous_season_rotations, revoke_skin_grants,
     add_teammate_rating, get_teammate_rating_summary,
     mark_anniversary_greeted, get_players_with_anniversary_today,
     ensure_5v5_stats_row, get_player_5v5, get_player_stats_dict_5v5, update_team_elo_5v5,
@@ -4017,7 +4017,8 @@ class MatchmakingView5v5(discord.ui.View):
 async def on_ready():
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
     global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
-    global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5
+    global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5, leaderboard_message_id_5v5
+    global leaderboard_channel_id, leaderboard_message_id
     init_db()
 
     if not get_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}"):
@@ -4028,15 +4029,45 @@ async def on_ready():
             print(f"[BP] Köhnə sezon arxivləşdirilə bilmədi: {e}")
         set_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}", "1")
 
+    if not get_meta("season_correction_2026_09_01"):
+        try:
+            for _m, _prefix in (("2v2", "leaderboard-sezon-"), ("5v5", "leaderboard-5v5-sezon-")):
+                new_id = collapse_erroneous_season_rotations(_m)
+                if new_id is None:
+                    continue
+                for guild in bot.guilds:
+                    for ch in guild.text_channels:
+                        if ch.name.startswith(_prefix):
+                            try:
+                                await ch.edit(name=f"{_prefix}2")
+                            except discord.Forbidden:
+                                pass
+                print(f"[SEASON-FIX] {_m}: yanlış təkrarlanan sezonlar silindi, season_number=2 (id={new_id}) aktiv edildi")
+            revoked = revoke_skin_grants(SEASON_CHAMPION_SKIN["name"])
+            if revoked:
+                print(f"[SEASON-FIX] Bagli rotasiya zamanı yanlışlıqla verilmiş {revoked}x '{SEASON_CHAMPION_SKIN['name']}' skini geri alındı")
+        except Exception as e:
+            print(f"[SEASON-FIX] Xəta: {e}")
+        set_meta("season_correction_2026_09_01", "1")
+
     saved_log = get_meta("log_channel_id")
     if saved_log:
         LOG_CHANNEL_ID = int(saved_log)
     saved_log_5v5 = get_meta("log_channel_id_5v5")
     if saved_log_5v5:
         LOG_CHANNEL_ID_5V5 = int(saved_log_5v5)
+    saved_lb = get_meta("leaderboard_channel_id")
+    if saved_lb:
+        leaderboard_channel_id = int(saved_lb)
+    saved_lb_msg = get_meta("leaderboard_message_id")
+    if saved_lb_msg:
+        leaderboard_message_id = int(saved_lb_msg)
     saved_lb_5v5 = get_meta("leaderboard_channel_id_5v5")
     if saved_lb_5v5:
         leaderboard_channel_id_5v5 = int(saved_lb_5v5)
+    saved_lb_msg_5v5 = get_meta("leaderboard_message_id_5v5")
+    if saved_lb_msg_5v5:
+        leaderboard_message_id_5v5 = int(saved_lb_msg_5v5)
     saved_reward = get_meta("reward_channel_id")
     if saved_reward:
         REWARD_CHANNEL_ID = int(saved_reward)
@@ -4101,6 +4132,10 @@ async def on_ready():
         weekly_mvp_loop.start()
     if not season_rotation_loop.is_running():
         season_rotation_loop.start()
+    if not refresh_leaderboard.is_running():
+        refresh_leaderboard.start()
+    if not refresh_leaderboard_5v5.is_running():
+        refresh_leaderboard_5v5.start()
     if not anniversary_check_loop.is_running():
         anniversary_check_loop.start()
     if not flash_sale_loop.is_running():
@@ -4941,6 +4976,8 @@ async def _post_leaderboard(channel):
 
     leaderboard_channel_id = channel.id
     leaderboard_message_id = message.id
+    set_meta("leaderboard_channel_id", str(channel.id))
+    set_meta("leaderboard_message_id", str(message.id))
 
     if not refresh_leaderboard.is_running():
         refresh_leaderboard.start()
@@ -4969,6 +5006,8 @@ async def _post_leaderboard_5v5(channel):
 
     leaderboard_channel_id_5v5 = channel.id
     leaderboard_message_id_5v5 = message.id
+    set_meta("leaderboard_channel_id_5v5", str(channel.id))
+    set_meta("leaderboard_message_id_5v5", str(message.id))
 
     if not refresh_leaderboard_5v5.is_running():
         refresh_leaderboard_5v5.start()
