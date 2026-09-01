@@ -114,6 +114,7 @@ from visual_cards import (
     generate_activity_card, generate_elo_chart_card, generate_quest_card, generate_synergy_card,
     generate_elo_cards_market_card, generate_monthly_reward_card, generate_weekly_mvp_card,
     generate_boss_event_card, generate_map_masters_card,
+    generate_announcement_card,
     RANKS, get_rank
 )
 from referral_visual import generate_item_preview_card
@@ -5626,6 +5627,46 @@ async def admin_pass_sezon_bitir(interaction: discord.Interaction):
 
 @admin_pass_sezon_bitir.error
 async def admin_pass_sezon_bitir_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+class AnnouncementModal(discord.ui.Modal, title="Yeni Elan"):
+    baslik = discord.ui.TextInput(
+        label="Başlıq", placeholder="məs: Yeni Battle Pass Sezonu!",
+        max_length=100
+    )
+    metn = discord.ui.TextInput(
+        label="Elan mətni", style=discord.TextStyle.paragraph,
+        placeholder="Elanın tam mətnini buraya yazın...", max_length=1800
+    )
+
+    def __init__(self, channel: discord.TextChannel):
+        super().__init__()
+        self.channel = channel
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        card_path = os.path.join(DATA_DIR or ".", f"announcement_{interaction.id}.png")
+        await asyncio.to_thread(generate_announcement_card, str(self.baslik), str(self.metn), card_path)
+        try:
+            await self.channel.send(file=discord.File(card_path, filename="elan.png"))
+        finally:
+            if os.path.exists(card_path):
+                os.remove(card_path)
+        await interaction.followup.send(f"✅ Elan {self.channel.mention} kanalına göndərildi.", ephemeral=True)
+
+
+@bot.tree.command(name="elan", description="[Admin] Sərbəst mətndən vizual, peşəkar elan kartı yaradıb kanala göndərir")
+@app_commands.describe(kanal="Elanın göndəriləcəyi kanal (boş buraxsanız bu kanala göndərilir)")
+@staff_check()
+async def elan(interaction: discord.Interaction, kanal: discord.TextChannel = None):
+    target = kanal or interaction.channel
+    await interaction.response.send_modal(AnnouncementModal(target))
+
+
+@elan.error
+async def elan_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 

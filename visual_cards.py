@@ -1322,6 +1322,82 @@ def generate_monthly_reward_card(knife_image_path, top_players, output_path,
     return output_path
 
 
+# ── SƏRBƏST ELAN KARTI (/elan) ───────────────────────────────────────────────
+
+def _wrap_text(draw, text, font, max_width):
+    """Admin-in yazdığı sərbəst mətni (manual sətir keçidləri saxlanılır) verilmiş enə uyğun
+    sözlərə görə sətirlərə bölür."""
+    lines = []
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            lines.append("")
+            continue
+        words = paragraph.split(" ")
+        cur = ""
+        for w in words:
+            trial = (cur + " " + w).strip()
+            if not cur or _tw(draw, trial, font) <= max_width:
+                cur = trial
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+    return lines
+
+
+def generate_announcement_card(title, body, output_path):
+    """/elan admin komandası ilə yaradılan sərbəst mətnli, vizual server elanı kartı.
+    Hündürlük mətnin uzunluğuna görə dinamik hesablanır (digər kartlarla eyni prinsip)."""
+    PAD = 36
+    title_font = _font(30, True)
+    body_font = _font(16)
+    brand_font = _font(13, True)
+    footer_font = _font(11)
+
+    dummy = Image.new("RGB", (WIDTH, 10))
+    dd = ImageDraw.Draw(dummy)
+    max_text_width = WIDTH - PAD * 2
+    title_lines = _wrap_text(dd, title, title_font, max_text_width) or [""]
+    body_lines = _wrap_text(dd, body, body_font, max_text_width) or [""]
+
+    HEADER_H = 64
+    TITLE_LINE_H = 40
+    BODY_LINE_H = 26
+    FOOTER_H = 40
+    content_h = (HEADER_H + len(title_lines) * TITLE_LINE_H + 32
+                 + len(body_lines) * BODY_LINE_H + FOOTER_H + PAD)
+    H = max(content_h, 260)
+
+    img = _bg(H)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(0, 0), (WIDTH - 1, H - 1)], outline=GOLD, width=2)
+    draw.rectangle([(0, 0), (WIDTH - 1, 6)], fill=GOLD)
+
+    draw.ellipse([(PAD, 26), (PAD + 8, 34)], fill=GOLD)
+    draw.text((PAD + 18, 22), "Zenith's Academy — ELAN", font=brand_font, fill=GOLD)
+    draw.line([(PAD, HEADER_H - 16), (WIDTH - PAD, HEADER_H - 16)], fill=BORDER, width=1)
+
+    y = HEADER_H
+    for line in title_lines:
+        draw.text((PAD, y), line, font=title_font, fill=WHITE)
+        y += TITLE_LINE_H
+    y += 12
+    draw.line([(PAD, y), (WIDTH - PAD, y)], fill=BORDER, width=1)
+    y += 20
+
+    for line in body_lines:
+        draw.text((PAD, y), line, font=body_font, fill=SILVER)
+        y += BODY_LINE_H
+
+    footer_y = H - FOOTER_H + 8
+    draw.line([(PAD, footer_y - 12), (WIDTH - PAD, footer_y - 12)], fill=BORDER, width=1)
+    draw.text((PAD, footer_y), "Zenith's Academy — FACEIT Standoff 2", font=footer_font, fill=GRAY)
+
+    _finalize(img).save(output_path)
+    return output_path
+
+
 # ── MERC KARTI ──────────────────────────────────────────────────────────────
 
 def generate_bet_card(match_number, balance, output_path,
