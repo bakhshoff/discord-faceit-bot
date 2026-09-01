@@ -1242,9 +1242,12 @@ def generate_weekly_mvp_card(mvp_data, output_path):
 
 # ── AYIN ELO ÇEMPİONU MÜKAFAT KARTI ──────────────────────────────────────────
 
-def generate_monthly_reward_card(knife_image_path, top_players, output_path):
+def generate_monthly_reward_card(knife_image_path, top_players, output_path,
+                                  skin_name="Butterfly \"Legacy\"",
+                                  skin_subtitle="Arcane · Fable Collection",
+                                  leaderboard_label="CANLI SIRALAMA — ÜMUMI ELO (2v2+5v5)"):
     """
-    knife_image_path: mükafat bıçağının şəkil faylı (jpg/png/webp)
+    knife_image_path: mükafat skininin şəkil faylı (jpg/png/webp)
     top_players: [{"nick": str, "elo": int}, ...] ELO-ya görə azalan sırada (məs. top 5)
     """
     PAD = 28
@@ -1266,7 +1269,7 @@ def generate_monthly_reward_card(knife_image_path, top_players, output_path):
 
     draw.text((PAD, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
     draw.text((PAD, 32), "AYIN ELO ÇEMPİONU MÜKAFATI", font=_font(22, True), fill=WHITE)
-    draw.text((PAD, 64), "Hər ayın son günü ən yüksək ELO-ya sahib oyunçu bu bıçağı qazanır",
+    draw.text((PAD, 64), "Hər ayın son günü 2v2+5v5 ELO cəmi ən yüksək olan oyunçu bu skini qazanır",
               font=_font(12), fill=GRAY)
     draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)
 
@@ -1277,17 +1280,17 @@ def generate_monthly_reward_card(knife_image_path, top_players, output_path):
         img.paste(knife, (PAD, y))
     except Exception:
         draw.rectangle([(PAD, y), (PAD + IMG_W, y + IMG_H)], fill=PANEL)
-        draw.text((WIDTH // 2, y + IMG_H // 2), "Dual Daggers \"Grunge\"",
+        draw.text((WIDTH // 2, y + IMG_H // 2), skin_name,
                   font=_font(16, True), fill=GRAY, anchor="mm")
     draw.rectangle([(PAD, y), (PAD + IMG_W, y + IMG_H)], outline=GOLD, width=2)
     y += IMG_H
 
-    draw.text((WIDTH // 2, y + CAPTION_H // 2), "Dual Daggers \"Grunge\"  ·  Arcane  ·  Sharp Collection",
+    draw.text((WIDTH // 2, y + CAPTION_H // 2), f"{skin_name}  ·  {skin_subtitle}",
               font=_font(14, True), fill=SILVER, anchor="mm")
     y += CAPTION_H
 
     draw.rectangle([(2, y), (WIDTH - 2, y + LB_HEADER_H - 1)], fill=PANEL)
-    draw.text((PAD, y + LB_HEADER_H // 2), "CANLI SIRALAMA — ƏN YÜKSƏK ELO",
+    draw.text((PAD, y + LB_HEADER_H // 2), leaderboard_label,
               font=_font(12, True), fill=GOLD, anchor="lm")
     y += LB_HEADER_H
 

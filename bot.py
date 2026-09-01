@@ -58,7 +58,7 @@ from database import (
     update_quest_progress, get_player_quests,
     ensure_daily_challenge, get_daily_challenge, claim_daily_challenge,
     get_best_duo,
-    get_inactive_unplayed_players, delete_player, get_top_elo_player,
+    get_inactive_unplayed_players, delete_player,
     add_skin_to_inventory,
     get_zm_balance, spend_zm, add_zm,
     add_boost_cards, get_boost_card_counts,
@@ -213,7 +213,8 @@ CATEGORY_5V5_NAME = "🎯 FACEIT 5v5"
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
 LOGO_PATH = "logo.jpg"
-DUAL_DAGGERS_IMAGE_PATH = os.path.join("assets", "dual_daggers_grunge.webp")
+MONTHLY_CHAMPION_IMAGE_PATH = os.path.join("assets", "butterfly_legacy.jpg")
+MONTHLY_CHAMPION_SKIN_NAME = "Butterfly | Legacy"
 INACTIVE_REGISTRATION_DAYS = 3
 REWARD_CHANNEL_ID = None
 HALL_OF_FAME_CHANNEL_ID = None
@@ -711,44 +712,6 @@ async def anniversary_check_loop():
 
 REWARDS_5V5_TOP3 = [250, 125, 50]  # 2v2-dən fərqli (daha böyük komanda formatı) sezon-sonu mükafatı
 
-# Hər ay sezon rotasiyasında 2v2 + 5v5 ELO-larının CƏMİNƏ görə #1 olan oyunçuya verilən xüsusi
-# "Ümumi Şampion" bıçaq skini (bax: _award_combined_season_champion).
-SEASON_CHAMPION_SKIN = {"name": "Butterfly | Legacy", "image": "butterfly_legacy.jpg"}
-
-
-async def _award_combined_season_champion(champion):
-    """Sezon rotasiyasından ƏVVƏL çəkilmiş combined-ELO snapshot-a əsasən #1 oyunçuya
-    Butterfly | Legacy skinini verir və Hall of Fame-də elan edir. `champion` None-dursa
-    (heç bir oyunçu yoxdursa) və ya combined ELO 0-dırsa (heç kim rəqabətə girməyib) heç nə
-    etmir."""
-    if not champion or champion["combined"] <= 0:
-        return
-    add_skin_to_inventory(
-        champion["discord_id"], 0, SEASON_CHAMPION_SKIN["name"], 0,
-        image_url=os.path.join("assets", SEASON_CHAMPION_SKIN["image"])
-    )
-    channel = await _get_hall_of_fame_channel()
-    if channel is None:
-        return
-    embed = discord.Embed(
-        title="👑 Sezonun Ümumi Şampionu!",
-        description=(
-            f"**{champion['nick']}** bu sezon 2v2 və 5v5 ELO-larının CƏMİNƏ görə #1 oldu!\n\n"
-            f"🛤️ 2v2 ELO: **{champion['elo_2v2']}**\n"
-            f"🎯 5v5 ELO: **{champion['elo_5v5']}**\n"
-            f"🏆 Ümumi: **{champion['combined']}**\n\n"
-            f"🎁 Mükafat: **{SEASON_CHAMPION_SKIN['name']}** skini"
-        ),
-        color=discord.Color.gold()
-    )
-    skin_path = os.path.join("assets", SEASON_CHAMPION_SKIN["image"])
-    try:
-        file = discord.File(skin_path, filename=SEASON_CHAMPION_SKIN["image"])
-        embed.set_image(url=f"attachment://{SEASON_CHAMPION_SKIN['image']}")
-        await channel.send(content=f"<@{champion['discord_id']}>", embed=embed, file=file)
-    except (FileNotFoundError, discord.HTTPException):
-        await channel.send(content=f"<@{champion['discord_id']}>", embed=embed)
-
 
 async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_prefix):
     """`season_rotation_loop`-un hər format üçün ortaq işi — sezonu bağlayır, top-3-ə mükafat
@@ -818,15 +781,8 @@ async def season_rotation_loop():
     _last_season_rotation_month = month_key
     set_meta("last_season_rotation_month", month_key)
 
-    # ELO-ları HƏR İKİ formatın rotasiyası (aşağıda) sıfırlamazdan ƏVVƏL çəkilir — combined
-    # şampion snapshot-u yalnız bu anda düzgündür.
-    combined_snapshot = get_combined_elo_snapshot(limit=1)
-    champion = combined_snapshot[0] if combined_snapshot else None
-
     await _rotate_season_for_mode("2v2", [150, 75, 30], leaderboard_channel_id, "leaderboard-sezon")
     await _rotate_season_for_mode("5v5", REWARDS_5V5_TOP3, leaderboard_channel_id_5v5, "leaderboard-5v5-sezon")
-
-    await _award_combined_season_champion(champion)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1004,10 +960,9 @@ async def _post_monthly_reward_card(channel):
     əvvəlki bot mesajlarının pinini götürür. Bu mesajı refresh_reward_card loop-u yerində redaktə
     edərək canlı saxlayır (yeni mesaj yox, mövcud mesaj yenilənir)."""
     global reward_message_id
-    rows = get_leaderboard(5)
-    top_players = [{"nick": r[0], "elo": r[2]} for r in rows]
+    top_players = [{"nick": r["nick"], "elo": r["combined"]} for r in get_combined_elo_snapshot(5)]
     card_path = os.path.join(DATA_DIR or ".", "monthly_reward_card.png")
-    await asyncio.to_thread(generate_monthly_reward_card, DUAL_DAGGERS_IMAGE_PATH, top_players, card_path)
+    await asyncio.to_thread(generate_monthly_reward_card, MONTHLY_CHAMPION_IMAGE_PATH, top_players, card_path)
     message = await channel.send(file=discord.File(card_path, filename="monthly_reward.png"))
     try:
         pins = await channel.pins()
@@ -1045,10 +1000,9 @@ async def refresh_reward_card():
             return
         reward_message_id = mine.id
 
-    rows = get_leaderboard(5)
-    top_players = [{"nick": r[0], "elo": r[2]} for r in rows]
+    top_players = [{"nick": r["nick"], "elo": r["combined"]} for r in get_combined_elo_snapshot(5)]
     card_path = os.path.join(DATA_DIR or ".", "monthly_reward_card.png")
-    await asyncio.to_thread(generate_monthly_reward_card, DUAL_DAGGERS_IMAGE_PATH, top_players, card_path)
+    await asyncio.to_thread(generate_monthly_reward_card, MONTHLY_CHAMPION_IMAGE_PATH, top_players, card_path)
     try:
         message = await channel.fetch_message(reward_message_id)
         await message.edit(attachments=[discord.File(card_path, filename="monthly_reward.png")])
@@ -1731,26 +1685,28 @@ async def daily_report_loop():
                         )
                     await log_channel.send(embed=awards_embed)
 
-                    # ── Ayın ELO çempionuna bıçaq mükafatı ───────────────────
-                    top_elo = get_top_elo_player()
+                    # ── Ayın ELO çempionuna (2v2+5v5 ELO cəmi) bıçaq mükafatı ────
+                    top_combined = get_combined_elo_snapshot(limit=1)
+                    top_elo = top_combined[0] if top_combined and top_combined[0]["combined"] > 0 else None
                     if top_elo:
                         add_skin_to_inventory(
-                            top_elo["discord_id"], 0, "Dual Daggers | Grunge", 0,
-                            image_url=DUAL_DAGGERS_IMAGE_PATH
+                            top_elo["discord_id"], 0, MONTHLY_CHAMPION_SKIN_NAME, 0,
+                            image_url=MONTHLY_CHAMPION_IMAGE_PATH
                         )
                         knife_embed = discord.Embed(
-                            title="🔪 Ayın ELO Çempionu — Dual Daggers \"Grunge\"",
+                            title=f"🔪 Ayın ELO Çempionu — {MONTHLY_CHAMPION_SKIN_NAME}",
                             description=(
                                 f"**{top_elo['nick']}** {ended_az_date.strftime('%m.%Y')} ayının son günündə "
-                                f"ən yüksək ELO-ya (**{top_elo['elo']}**) sahib oyunçu oldu və mükafat olaraq "
-                                f"**Dual Daggers \"Grunge\"** bıçağını qazandı! 🎉\n\n"
+                                f"2v2+5v5 ELO cəminə görə (**{top_elo['combined']}** = {top_elo['elo_2v2']} + "
+                                f"{top_elo['elo_5v5']}) ən yüksək nəticəyə sahib oyunçu oldu və mükafat olaraq "
+                                f"**{MONTHLY_CHAMPION_SKIN_NAME}** skinini qazandı! 🎉\n\n"
                                 f"Rəhbərlik tezliklə oyun daxilində təhvil verəcək."
                             ),
                             color=discord.Color.from_rgb(138, 92, 230)
                         )
-                        if os.path.exists(DUAL_DAGGERS_IMAGE_PATH):
-                            knife_file = discord.File(DUAL_DAGGERS_IMAGE_PATH, filename="dual_daggers_grunge.webp")
-                            knife_embed.set_image(url="attachment://dual_daggers_grunge.webp")
+                        if os.path.exists(MONTHLY_CHAMPION_IMAGE_PATH):
+                            knife_file = discord.File(MONTHLY_CHAMPION_IMAGE_PATH, filename="butterfly_legacy.jpg")
+                            knife_embed.set_image(url="attachment://butterfly_legacy.jpg")
                             await log_channel.send(embed=knife_embed, file=knife_file)
                         else:
                             await log_channel.send(embed=knife_embed)
@@ -7547,7 +7503,7 @@ PANEL_CATEGORIES = {
              f"Qeydiyyatdan {INACTIVE_REGISTRATION_DAYS} gün keçməsinə baxmayaraq heç bir matç oynamayan "
              "oyunçunun qeydiyyatı avtomatik silinir (istəsə yenidən qeydiyyatdan keçə bilər)"),
             ("🔪 Ayın ELO Çempionu",
-             "Hər ayın son günü ən yüksək ELO-ya sahib oyunçu Dual Daggers \"Grunge\" bıçağını qazanır"),
+             f"Hər ayın son günü 2v2+5v5 ELO cəmi ən yüksək olan oyunçu {MONTHLY_CHAMPION_SKIN_NAME} skinini qazanır"),
             ("🔪 Ay sonu mükafatı kanalı",
              "Serverin ən üstündəki kanalda mükafatın şəkli/qaydaları pinlənir, Top-5 sıralama "
              "həmin mesajda hər 5 dəqiqədən bir avtomatik yenilənir (yeni mesaj yox)"),
