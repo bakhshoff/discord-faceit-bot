@@ -331,7 +331,10 @@ def api_profile_heatmap(discord_id):
 
 @app.route("/api/seasons")
 def api_seasons():
-    return jsonify(database.get_completed_seasons())
+    mode = request.args.get("mode", "2v2")
+    if mode not in ("2v2", "5v5"):
+        mode = "2v2"
+    return jsonify(database.get_completed_seasons(mode))
 
 
 @app.route("/api/season/<int:season_id>")

@@ -72,6 +72,7 @@ from database import (
     get_or_create_current_season, get_season_by_number, add_season_stat,
     get_season_stat, get_season_leaderboard, close_season,
     get_completed_seasons, reset_all_players_for_new_season,
+    get_combined_elo_snapshot,
     add_teammate_rating, get_teammate_rating_summary,
     mark_anniversary_greeted, get_players_with_anniversary_today,
     ensure_5v5_stats_row, get_player_5v5, get_player_stats_dict_5v5, update_team_elo_5v5,
@@ -710,6 +711,44 @@ async def anniversary_check_loop():
 
 REWARDS_5V5_TOP3 = [250, 125, 50]  # 2v2-dən fərqli (daha böyük komanda formatı) sezon-sonu mükafatı
 
+# Hər ay sezon rotasiyasında 2v2 + 5v5 ELO-larının CƏMİNƏ görə #1 olan oyunçuya verilən xüsusi
+# "Ümumi Şampion" bıçaq skini (bax: _award_combined_season_champion).
+SEASON_CHAMPION_SKIN = {"name": "Butterfly | Legacy", "image": "butterfly_legacy.jpg"}
+
+
+async def _award_combined_season_champion(champion):
+    """Sezon rotasiyasından ƏVVƏL çəkilmiş combined-ELO snapshot-a əsasən #1 oyunçuya
+    Butterfly | Legacy skinini verir və Hall of Fame-də elan edir. `champion` None-dursa
+    (heç bir oyunçu yoxdursa) və ya combined ELO 0-dırsa (heç kim rəqabətə girməyib) heç nə
+    etmir."""
+    if not champion or champion["combined"] <= 0:
+        return
+    add_skin_to_inventory(
+        champion["discord_id"], 0, SEASON_CHAMPION_SKIN["name"], 0,
+        image_url=os.path.join("assets", SEASON_CHAMPION_SKIN["image"])
+    )
+    channel = await _get_hall_of_fame_channel()
+    if channel is None:
+        return
+    embed = discord.Embed(
+        title="👑 Sezonun Ümumi Şampionu!",
+        description=(
+            f"**{champion['nick']}** bu sezon 2v2 və 5v5 ELO-larının CƏMİNƏ görə #1 oldu!\n\n"
+            f"🛤️ 2v2 ELO: **{champion['elo_2v2']}**\n"
+            f"🎯 5v5 ELO: **{champion['elo_5v5']}**\n"
+            f"🏆 Ümumi: **{champion['combined']}**\n\n"
+            f"🎁 Mükafat: **{SEASON_CHAMPION_SKIN['name']}** skini"
+        ),
+        color=discord.Color.gold()
+    )
+    skin_path = os.path.join("assets", SEASON_CHAMPION_SKIN["image"])
+    try:
+        file = discord.File(skin_path, filename=SEASON_CHAMPION_SKIN["image"])
+        embed.set_image(url=f"attachment://{SEASON_CHAMPION_SKIN['image']}")
+        await channel.send(content=f"<@{champion['discord_id']}>", embed=embed, file=file)
+    except (FileNotFoundError, discord.HTTPException):
+        await channel.send(content=f"<@{champion['discord_id']}>", embed=embed)
+
 
 async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_prefix):
     """`season_rotation_loop`-un hər format üçün ortaq işi — sezonu bağlayır, top-3-ə mükafat
@@ -762,7 +801,10 @@ async def season_rotation_loop():
     bağlayıb yeni sezon açır — hər biri öz mükafat cədvəli və öz statistika cədvəli ilə,
     biri digərinə TOXUNMUR (bax: _rotate_season_for_mode, reset_all_players_for_new_season).
     30 dəqiqəlik interval (bax: weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından
-    asılı olmadan ayın 1-i başlayan kimi tezliklə aşkarlanmasını təmin edir."""
+    asılı olmadan ayın 1-i başlayan kimi tezliklə aşkarlanmasını təmin edir. Bayraq DB-də
+    (get_meta/set_meta) saxlanılır — YALNIZ yaddaşda saxlansaydı, ayın 1-ində bot bir neçə dəfə
+    restart olduqda (deploy və s.) hər restart eyni günü YENİDƏN rotasiya edərdi (sezon nömrəsi
+    lazımsız yerə bir neçə dəfə artardı)."""
     global _last_season_rotation_month
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
     if now.day != 1:
@@ -770,10 +812,21 @@ async def season_rotation_loop():
     month_key = now.strftime("%Y-%m")
     if _last_season_rotation_month == month_key:
         return
+    if get_meta("last_season_rotation_month") == month_key:
+        _last_season_rotation_month = month_key
+        return
     _last_season_rotation_month = month_key
+    set_meta("last_season_rotation_month", month_key)
+
+    # ELO-ları HƏR İKİ formatın rotasiyası (aşağıda) sıfırlamazdan ƏVVƏL çəkilir — combined
+    # şampion snapshot-u yalnız bu anda düzgündür.
+    combined_snapshot = get_combined_elo_snapshot(limit=1)
+    champion = combined_snapshot[0] if combined_snapshot else None
 
     await _rotate_season_for_mode("2v2", [150, 75, 30], leaderboard_channel_id, "leaderboard-sezon")
     await _rotate_season_for_mode("5v5", REWARDS_5V5_TOP3, leaderboard_channel_id_5v5, "leaderboard-5v5-sezon")
+
+    await _award_combined_season_champion(champion)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -6076,10 +6129,12 @@ class PassView(discord.ui.View):
 
 
 async def _post_pass_showcase(channel):
-    """Sezonun (Genesis) tanıtım kartını kanala göndərib pinləyir — statik məzmun,
+    """Cari sezonun (BP_SEASON_NAME) tanıtım kartını kanala göndərib pinləyir — statik məzmun,
     canlı yenilənən deyil (yalnız full_setup hər işə düşdükdə təzələnir)."""
     card_path = os.path.join(DATA_DIR or ".", "pass_announcement.png")
     await asyncio.to_thread(generate_pass_announcement, card_path)
+    finale_skin = str(BP_PREMIUM_REWARDS.get(BP_MAX_LEVEL, {}).get("value", "")).replace("|", "").strip()
+    finale_skin = " ".join(finale_skin.split())
     embed = discord.Embed(
         title=f"🎫 Battle Pass — {BP_SEASON_NAME} ({BP_SEASON_NAME_AZ})",
         description=(
@@ -6088,7 +6143,7 @@ async def _post_pass_showcase(channel):
             "və **35 levelə qədər** mükafatlar qazanın.\n\n"
             f"🆓 **FREE Pass** — hər leveldə coin, milestone-larda (5-35) ELO kartları\n"
             f"💎 **VIP Pass** ({BP_PRICE_AZN} AZN) — Çərçivə (Lv.15), Banner (Lv.20), "
-            f"AWM Boom skini (Lv.{BP_MAX_LEVEL}) + AZN/Coin/ELO kart bonusları\n\n"
+            f"{finale_skin} skini (Lv.{BP_MAX_LEVEL}) + AZN/Coin/ELO kart bonusları\n\n"
             "`/pass` komandası ilə öz statusunuzu görüb VIP Pass ala bilərsiniz."
         ),
         color=discord.Color.from_rgb(138, 92, 230)

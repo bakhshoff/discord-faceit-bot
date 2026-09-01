@@ -877,7 +877,7 @@ def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(
     glow_col = (gl_int, gl_int//2, 0)
     draw.rectangle([(PAD, rew_y+16), (W-PAD, rew_y+52)],
                    fill=(25,15,5), outline=glow_col, width=2)
-    draw.text(((W)//2, rew_y+34), "AWM | Boom  —  Standoff 2 Skin  (Real AZN deyeri)",
+    draw.text(((W)//2, rew_y+34), "AKR12 | Haunt  —  Standoff 2 Skin  (Real AZN deyeri)",
               font=fm, fill=PASS_GOLD, anchor="mm")
 
     # Footer

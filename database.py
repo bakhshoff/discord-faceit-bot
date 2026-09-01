@@ -2437,6 +2437,29 @@ def get_season_leaderboard(season_id, limit=20):
     return rows
 
 
+def get_combined_elo_snapshot(limit=1):
+    """2v2 (players.elo) + 5v5 (players_5v5.elo) ELO-larının CƏMİNƏ görə sıralanmış oyunçular —
+    sezon-sonu 'Ümumi Şampion' mükafatı üçün. Oyunçu 5v5 heç oynamayıbsa 5v5 elo-su 0 sayılır
+    (1000 baza ilə süni şəkildə köməklənmir) — mükafatı qazanmaq üçün real HƏR İKİ formatda
+    güclü olmaq lazımdır. Bu, mütləq MODE rotasiyalarından (reset_all_players_for_new_season)
+    ƏVVƏL çağırılmalıdır, yoxsa ELO-lar artıq 1000-ə sıfırlanmış olar."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.discord_id, p.so2_nick, p.elo, COALESCE(p5.elo, 0), p.elo + COALESCE(p5.elo, 0) AS combined
+        FROM players p
+        LEFT JOIN players_5v5 p5 ON p5.discord_id = p.discord_id
+        ORDER BY combined DESC
+        LIMIT ?
+    """, (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"discord_id": r[0], "nick": r[1], "elo_2v2": r[2], "elo_5v5": r[3], "combined": r[4]}
+        for r in rows
+    ]
+
+
 def close_season(season_id):
     conn = _get_conn()
     cursor = conn.cursor()
@@ -4449,7 +4472,7 @@ def _grant_bp_item_reward(discord_id, reward):
     elif rtype == "xp_boost":
         add_boost(discord_id, "bp_xp", reward["value"]["multiplier"], reward["value"]["duration_seconds"])
     elif rtype == "skin":
-        img = os.path.join("assets", "awm_boom.png") if "AWM" in reward.get("label", "") else None
+        img = os.path.join("assets", reward["image"]) if reward.get("image") else None
         add_skin_to_inventory(discord_id, 0, reward.get("label") or str(reward["value"]), 0, image_url=img)
 
 
