@@ -1524,61 +1524,6 @@ backToTopBtn.addEventListener('click', () => window.scrollTo({ top: 0, behavior:
   }, { passive: true });
 })();
 
-// ── İlk Dəfə Gələnlər üçün Tur ──────────────────────────────────────────────
-(function firstVisitTour() {
-  if (localStorage.getItem('zenith-tour-done')) return;
-  const steps = [
-    { sel: '#searchInput', title: '🔍 Axtarış', text: 'Oyunçu adı və ya SO2 ID ilə axtarış edin. "/" düyməsi ilə birbaşa fokuslana bilərsiniz.' },
-    { sel: '#sortSelect', title: '↕️ Sıralama', text: 'Cədvəli ELO, qalib, win rate və ya matç sayına görə sıralayın.' },
-    { sel: '#rankFilterChips', title: '🏷️ Rütbə Filtri', text: 'Yalnız müəyyən rütbədəki oyunçuları görmək üçün çipə klikləyin.' },
-    { sel: '#capsuleToggleBtn', title: '🕰️ Zaman Kapsulu', text: 'Keçmiş sezonların yekun sıralamasına buradan baxa bilərsiniz.' },
-    { sel: '#paletteBtn', title: '⌘ Sürətli Axtarış', text: 'Ctrl+K (və ya bu düymə) ilə sürətli oyunçu axtarış paneli açılır.' },
-  ];
-  let idx = 0;
-  const overlay = document.getElementById('tourOverlay');
-  function cleanup() {
-    document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
-    overlay.querySelectorAll('.tour-tip').forEach(el => el.remove());
-  }
-  function endTour() {
-    cleanup();
-    overlay.classList.remove('show');
-    localStorage.setItem('zenith-tour-done', '1');
-  }
-  function showStep() {
-    cleanup();
-    const step = steps[idx];
-    const target = document.querySelector(step.sel);
-    if (!target) { idx++; if (idx < steps.length) showStep(); else endTour(); return; }
-    target.classList.add('tour-highlight');
-    const rect = target.getBoundingClientRect();
-    const tip = document.createElement('div');
-    tip.className = 'tour-tip';
-    tip.style.top = (rect.bottom + window.scrollY + 12) + 'px';
-    tip.style.left = Math.min(rect.left + window.scrollX, window.innerWidth - 280) + 'px';
-    tip.innerHTML = `
-      <div class="tt-title">${step.title}</div>
-      <div>${step.text}</div>
-      <div class="tt-actions">
-        <button type="button" class="tt-skip">Keç</button>
-        <button type="button" class="tt-next">${idx === steps.length - 1 ? 'Bitir' : 'Növbəti →'}</button>
-      </div>
-    `;
-    overlay.appendChild(tip);
-    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    tip.querySelector('.tt-skip').addEventListener('click', endTour);
-    tip.querySelector('.tt-next').addEventListener('click', () => {
-      idx++;
-      if (idx < steps.length) showStep(); else endTour();
-    });
-  }
-  setTimeout(() => {
-    overlay.classList.add('show');
-    idx = 0;
-    showStep();
-  }, 1200);
-})();
-
 // ── Kollektiv Piksel Kətan ("mini r/place") ─────────────────────────────────
 (function pixelCanvasWidget() {
   const toggleBtn = document.getElementById('pixelToggleBtn');
