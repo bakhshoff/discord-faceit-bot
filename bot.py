@@ -91,6 +91,11 @@ from database import (
     get_or_create_boss_event, set_boss_message, apply_boss_damage,
     get_boss_leaderboard, get_all_boss_contributors,
     add_voice_seconds, get_voice_leaderboard,
+    create_tournament, get_tournament, get_active_tournament, list_tournaments,
+    join_tournament, leave_tournament, get_tournament_signup_count, get_tournament_participants,
+    start_tournament, record_tournament_match_winner, get_tournament_match, get_tournament_bracket,
+    get_tournament_team_members, get_open_tournament_matches, cancel_tournament,
+    set_tournament_meta, set_tournament_match_message,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_match_coach_tip, generate_daily_news, generate_intel_briefing, generate_personal_coach_report
@@ -114,11 +119,13 @@ from visual_cards import (
     generate_activity_card, generate_elo_chart_card, generate_quest_card, generate_synergy_card,
     generate_elo_cards_market_card, generate_monthly_reward_card, generate_weekly_mvp_card,
     generate_boss_event_card, generate_map_masters_card,
-    generate_announcement_card,
+    generate_announcement_card, generate_sticker_card,
     RANKS, get_rank
 )
+from sticker_config import STICKER_ITEMS, get_sticker_by_achievement, get_sticker_by_id
 from referral_visual import generate_item_preview_card
 from pass_visual import generate_pass_card, generate_pass_levels_card, generate_pass_announcement, generate_pass_missions_card
+from tournament_card import generate_tournament_bracket_image, generate_tournament_signup_card
 import requests
 
 load_dotenv()
@@ -210,6 +217,7 @@ SOCIAL_LINKS = {
 FULL_SETUP_CATEGORY_NAME = "🏆 FACEIT 2v2"
 CATEGORY_GENERAL_NAME = "📌 Ümumi"
 CATEGORY_5V5_NAME = "🎯 FACEIT 5v5"
+CATEGORY_TOURNAMENT_NAME = "🏆 Turnirlər"
 
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
@@ -508,6 +516,74 @@ async def _post_wall_announcement(guild, discord_id, nick, name, icon, kind):
         await channel.send(embed=embed)
     except discord.HTTPException:
         pass
+
+
+async def _maybe_grant_sticker(guild, discord_id, nick, achievement_id):
+    """Qazanılan nailiyyət `sticker_config.STICKER_ITEMS`-də qeyd olunubsa, mövcud generik
+    `inventory`/`add_to_inventory` mexanizmi ilə (bax: market_config.py-dəki eyni idiom) sticker-i
+    açır və Nailiyyət Divarında elan edir. Adi `add_to_inventory` UNIQUE constraint-ə görə
+    təkrar-qazanılanda səssizcə no-op edir, ona görə xüsusi yoxlama lazım deyil."""
+    sticker = get_sticker_by_achievement(achievement_id)
+    if not sticker:
+        return
+    if owns_item(discord_id, sticker["id"]):
+        return
+    add_to_inventory(discord_id, sticker["id"])
+    if guild:
+        await _post_wall_announcement(guild, discord_id, nick, sticker["name"], "🔓", "sticker")
+
+
+class StickerShareView(discord.ui.View):
+    def __init__(self, discord_id, owned_stickers):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.select_menu = discord.ui.Select(
+            placeholder="Paylaşmaq üçün sticker seçin...",
+            options=[discord.SelectOption(label=s["name"], value=s["id"], description=s["label"])
+                     for s in owned_stickers]
+        )
+        self.select_menu.callback = self.share_selected
+        self.add_item(self.select_menu)
+
+    async def share_selected(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu yalnız sizin panelinizdir.", ephemeral=True)
+            return
+        sticker_id = self.select_menu.values[0]
+        sticker = get_sticker_by_id(sticker_id)
+        if not sticker:
+            await interaction.response.send_message("❌ Sticker tapılmadı.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        card_path = os.path.join(DATA_DIR or ".", f"sticker_{sticker_id}_{interaction.user.id}.png")
+        await asyncio.to_thread(generate_sticker_card, sticker["name"], sticker["label"], card_path)
+        await interaction.channel.send(
+            content=f"🔓 **{interaction.user.display_name}** stikerini paylaşdı!",
+            file=discord.File(card_path, filename="sticker.png")
+        )
+
+
+@bot.tree.command(name="stickerlerim", description="Açdığınız nailiyyət stikerlərini görüb paylaşın")
+async def stickerlerim(interaction: discord.Interaction):
+    player = get_player(interaction.user.id)
+    if not player:
+        await interaction.response.send_message("❌ Əvvəlcə qeydiyyatdan keçməlisiniz.", ephemeral=True)
+        return
+    owned_ids = set(get_inventory(interaction.user.id))
+    owned_stickers = [s for s in STICKER_ITEMS if s["id"] in owned_ids]
+    if not owned_stickers:
+        await interaction.response.send_message(
+            "😔 Hələ heç bir sticker açmamısınız. Xüsusi nailiyyətlər qazanaraq "
+            "(50 qələbə, 500 kill, 10x MVP, 10 seriya, 1500 ELO və s.) sticker qazana bilərsiniz.",
+            ephemeral=True
+        )
+        return
+    lines = "\n".join(f"• **{s['name']}** — {s['label']}" for s in owned_stickers)
+    await interaction.response.send_message(
+        f"🎖️ Sizin stikerləriniz:\n{lines}\n\nAşağıdan paylaşmaq istədiyinizi seçin:",
+        view=StickerShareView(interaction.user.id, owned_stickers),
+        ephemeral=True
+    )
 
 
 async def _post_map_masters(channel):
@@ -1192,6 +1268,8 @@ leaderboard_channel_id = None
 leaderboard_message_id = None
 leaderboard_channel_id_5v5 = None
 leaderboard_message_id_5v5 = None
+tournament_signup_channel_id = None
+tournament_bracket_channel_id = None
 queue_status_channel_id = None
 queue_status_message_id = None
 queue_status_channel_id_5v5 = None
@@ -2587,6 +2665,7 @@ class MatchResultView(discord.ui.View):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
                     asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+                asyncio.create_task(_maybe_grant_sticker(interaction.guild, did, p["nick"], ach["id"]))
             for ti in check_and_grant_titles(did):
                 new_titles.append((p["nick"], ti))
                 if interaction.guild:
@@ -2641,6 +2720,7 @@ class MatchResultView(discord.ui.View):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
                     asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+                asyncio.create_task(_maybe_grant_sticker(interaction.guild, did, p["nick"], ach["id"]))
             for ti in check_and_grant_titles(did):
                 new_titles.append((p["nick"], ti))
                 if interaction.guild:
@@ -2940,6 +3020,7 @@ class MatchResultView5v5(discord.ui.View):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
                     asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+                asyncio.create_task(_maybe_grant_sticker(interaction.guild, did, p["nick"], ach["id"]))
             for ti in check_and_grant_titles(did):
                 new_titles.append((p["nick"], ti))
                 if interaction.guild:
@@ -2994,6 +3075,7 @@ class MatchResultView5v5(discord.ui.View):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
                     asyncio.create_task(_post_wall_announcement(interaction.guild, did, p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+                asyncio.create_task(_maybe_grant_sticker(interaction.guild, did, p["nick"], ach["id"]))
             for ti in check_and_grant_titles(did):
                 new_titles.append((p["nick"], ti))
                 if interaction.guild:
@@ -3976,6 +4058,7 @@ async def on_ready():
     global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5, leaderboard_message_id_5v5
     global leaderboard_channel_id, leaderboard_message_id
+    global tournament_signup_channel_id, tournament_bracket_channel_id
     init_db()
 
     if not get_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}"):
@@ -4025,6 +4108,12 @@ async def on_ready():
     saved_lb_msg_5v5 = get_meta("leaderboard_message_id_5v5")
     if saved_lb_msg_5v5:
         leaderboard_message_id_5v5 = int(saved_lb_msg_5v5)
+    saved_tourn_signup = get_meta("tournament_signup_channel_id")
+    if saved_tourn_signup:
+        tournament_signup_channel_id = int(saved_tourn_signup)
+    saved_tourn_bracket = get_meta("tournament_bracket_channel_id")
+    if saved_tourn_bracket:
+        tournament_bracket_channel_id = int(saved_tourn_bracket)
     saved_reward = get_meta("reward_channel_id")
     if saved_reward:
         REWARD_CHANNEL_ID = int(saved_reward)
@@ -4068,6 +4157,11 @@ async def on_ready():
     bot.add_view(SquadInviteView())
     for aid in get_open_auction_ids():
         bot.add_view(AuctionBidView(aid))
+    active_tournament = get_active_tournament()
+    if active_tournament and active_tournament["status"] == "signup":
+        bot.add_view(TournamentSignupView(active_tournament["id"]))
+    for open_match_id in get_open_tournament_matches():
+        bot.add_view(TournamentMatchView(open_match_id))
     if not check_giveaways.is_running():
         check_giveaways.start()
     refresh_daily_tasks()
@@ -5072,6 +5166,7 @@ async def full_setup(interaction: discord.Interaction):
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
     global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5
+    global tournament_signup_channel_id, tournament_bracket_channel_id
 
     if not interaction.guild:
         await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
@@ -5092,6 +5187,9 @@ async def full_setup(interaction: discord.Interaction):
     category_5v5 = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
     if category_5v5 is None:
         category_5v5 = await guild.create_category(CATEGORY_5V5_NAME)
+    category_tournament = discord.utils.get(guild.categories, name=CATEGORY_TOURNAMENT_NAME)
+    if category_tournament is None:
+        category_tournament = await guild.create_category(CATEGORY_TOURNAMENT_NAME)
     await _progress_step(progress_msg, 1, 5, "Kataqoriyalar hazırlanır...")
 
     announce_overwrites = {
@@ -5139,6 +5237,10 @@ async def full_setup(interaction: discord.Interaction):
         f"leaderboard-5v5-sezon-{current_season_5v5['season_number']}", category_5v5, announce_overwrites
     )
     ch_log_5v5 = await _recreate_text("faceit-log-5v5", category_5v5)
+
+    # ── Turnirlər (FACEIT ELO/2v2/5v5-dən müstəqil) ─────────────────────────────
+    ch_tournament_signup = await _recreate_text("turnir-qeydiyyat", category_tournament, announce_overwrites)
+    ch_tournament_bracket = await _recreate_text("turnir-cetveli", category_tournament, announce_overwrites)
     await _progress_step(progress_msg, 2, 5, "Kanallar yaradılır...")
 
     # Köhnə statik "Komanda A/B" səs kanalları artıq lazım deyil — hər matç
@@ -5176,6 +5278,10 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("map_masters_channel_id", ch_masters.id)
     STANDOFF2_NEWS_CHANNEL_ID = ch_news.id
     set_meta("standoff2_news_channel_id", ch_news.id)
+    tournament_signup_channel_id = ch_tournament_signup.id
+    set_meta("tournament_signup_channel_id", ch_tournament_signup.id)
+    tournament_bracket_channel_id = ch_tournament_bracket.id
+    set_meta("tournament_bracket_channel_id", ch_tournament_bracket.id)
     await _progress_step(progress_msg, 3, 5, "İcazələr və köhnə kanallar təmizlənir...")
 
     await _post_register(ch_register)
@@ -5202,11 +5308,21 @@ async def full_setup(interaction: discord.Interaction):
         "məqalələri aşkarlanan kimi bura Azərbaycan dilinə tərcümə edilib avtomatik göndəriləcək "
         "(hər 6 saatdan bir yoxlanılır)."
     )
+    await ch_tournament_signup.send(
+        "🏆 **Turnirlər** — FACEIT ELO/2v2/5v5 sistemindən TAM MÜSTƏQİL, ayrı bracket turnirlər "
+        "burada elan olunacaq. Admin `/turnir_yarat` ilə yeni turnir başladanda qeydiyyat kartı "
+        "bura göndəriləcək — qoşulmaq üçün FACEIT-də qeydiyyatdan keçmiş olmaq kifayətdir."
+    )
+    await ch_tournament_bracket.send(
+        "🗂️ **Turnir Cədvəli** — aktiv turnirin canlı bracket şəkli və hər matçın nəticə düymələri "
+        "burada göstəriləcək."
+    )
     await _progress_step(progress_msg, 4, 5, "Tanıtım mesajları göndərilir...")
     await _progress_step(progress_msg, 5, 5, "Tamamlandı!")
 
     await interaction.followup.send(
-        "✅ Server yenidən quruldu! Kanallar 3 kataqoriyaya bölünüb: **📌 Ümumi**, **🏆 FACEIT 2v2**, **🎯 FACEIT 5v5**.\n\n"
+        "✅ Server yenidən quruldu! Kanallar 4 kataqoriyaya bölünüb: **📌 Ümumi**, **🏆 FACEIT 2v2**, "
+        "**🎯 FACEIT 5v5**, **🏆 Turnirlər**.\n\n"
         f"**📌 Ümumi**\n"
         f"🔪 Ay sonu mükafatı: {ch_reward.mention}\n"
         f"📋 Qeydiyyat: {ch_register.mention}\n"
@@ -5227,6 +5343,10 @@ async def full_setup(interaction: discord.Interaction):
         f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
         f"🏆 Leaderboard: {ch_leaderboard_5v5.mention}\n"
         f"📰 Faceit log: {ch_log_5v5.mention}\n\n"
+        f"**🏆 Turnirlər** (FACEIT ELO-dan müstəqil)\n"
+        f"📋 Qeydiyyat: {ch_tournament_signup.mention}\n"
+        f"🗂️ Cədvəl: {ch_tournament_bracket.mention}\n"
+        f"➡️ Yeni turnir üçün: `/turnir_yarat`\n\n"
         f"🔊 Səs kanalları (isınma otağı daxil) hər format üçün öz kataqoriyasında avtomatik yaradılır/silinir.\n\n"
         "Elan kanallarında adi üzvlər yazı yaza bilmir, yalnız düymələrlə əməliyyat edə bilirlər.\n"
         "⚠️ Diqqət: bu komanda hər işə düşdükdə mövcud FACEIT kanallarını silib təzədən qurur "
@@ -5436,6 +5556,302 @@ async def admin_herrac_baslat(
 
 @admin_herrac_baslat.error
 async def admin_herrac_baslat_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TURNIR BRACKET SİSTEMİ (FACEIT ELO/2v2/5v5-dən TAM MÜSTƏQİL)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _post_tournament_signup(tournament_id, channel):
+    t = get_tournament(tournament_id)
+    participants = get_tournament_participants(tournament_id)
+    card_path = os.path.join(DATA_DIR or ".", f"tournament_signup_{tournament_id}.png")
+    await asyncio.to_thread(generate_tournament_signup_card, t, participants, card_path)
+    message = await channel.send(file=discord.File(card_path, filename="signup.png"),
+                                  view=TournamentSignupView(tournament_id))
+    set_tournament_meta(tournament_id, signup_channel_id=str(channel.id), signup_message_id=str(message.id))
+    return message
+
+
+async def _refresh_tournament_signup_message(tournament_id):
+    t = get_tournament(tournament_id)
+    if not t or not t.get("signup_channel_id") or not t.get("signup_message_id"):
+        return
+    channel = bot.get_channel(int(t["signup_channel_id"]))
+    if not channel:
+        return
+    participants = get_tournament_participants(tournament_id)
+    card_path = os.path.join(DATA_DIR or ".", f"tournament_signup_{tournament_id}.png")
+    await asyncio.to_thread(generate_tournament_signup_card, t, participants, card_path)
+    try:
+        message = await channel.fetch_message(int(t["signup_message_id"]))
+        await message.edit(attachments=[discord.File(card_path, filename="signup.png")])
+    except (discord.NotFound, discord.HTTPException):
+        pass
+
+
+async def _post_tournament_match_view(match, channel=None):
+    if channel is None:
+        channel = bot.get_channel(tournament_bracket_channel_id) if tournament_bracket_channel_id else None
+    if not channel:
+        return
+    a_members = get_tournament_team_members(match["team_a_id"])
+    b_members = get_tournament_team_members(match["team_b_id"])
+    a_label = " / ".join(m["nick"] for m in a_members) or "?"
+    b_label = " / ".join(m["nick"] for m in b_members) or "?"
+    embed = discord.Embed(
+        title=f"⚔️ Raund {match['round_number']} — Matç",
+        description=f"**A:** {a_label}\n**B:** {b_label}\n\nAdmin qalibi elan etsin:",
+        color=discord.Color.from_rgb(138, 92, 230)
+    )
+    message = await channel.send(embed=embed, view=TournamentMatchView(match["id"]))
+    set_tournament_match_message(match["id"], channel.id, message.id)
+
+
+async def _post_tournament_bracket(tournament_id):
+    channel = bot.get_channel(tournament_bracket_channel_id) if tournament_bracket_channel_id else None
+    if not channel:
+        return
+    bracket = get_tournament_bracket(tournament_id)
+    card_path = os.path.join(DATA_DIR or ".", f"tournament_bracket_{tournament_id}.png")
+    await asyncio.to_thread(generate_tournament_bracket_image, bracket, card_path)
+    message = await channel.send(file=discord.File(card_path, filename="bracket.png"))
+    set_tournament_meta(tournament_id, bracket_channel_id=str(channel.id), bracket_message_id=str(message.id))
+    for rnd in bracket["rounds"]:
+        for m in rnd:
+            if m["status"] != "completed" and m["team_a_id"] and m["team_b_id"]:
+                await _post_tournament_match_view(m, channel=channel)
+
+
+async def _refresh_tournament_bracket_image(tournament_id):
+    t = get_tournament(tournament_id)
+    if not t or not t.get("bracket_channel_id") or not t.get("bracket_message_id"):
+        return
+    channel = bot.get_channel(int(t["bracket_channel_id"]))
+    if not channel:
+        return
+    bracket = get_tournament_bracket(tournament_id)
+    card_path = os.path.join(DATA_DIR or ".", f"tournament_bracket_{tournament_id}.png")
+    await asyncio.to_thread(generate_tournament_bracket_image, bracket, card_path)
+    try:
+        message = await channel.fetch_message(int(t["bracket_message_id"]))
+        await message.edit(attachments=[discord.File(card_path, filename="bracket.png")])
+    except (discord.NotFound, discord.HTTPException):
+        pass
+
+
+async def _finish_tournament(tournament_id, winner_team_id, loser_team_id):
+    t = get_tournament(tournament_id)
+    winners = get_tournament_team_members(winner_team_id)
+    prize_winner = t.get("prize_winner") or 0
+    prize_runner_up = t.get("prize_runner_up") or 0
+    for m in winners:
+        if prize_winner > 0:
+            new_bal = add_coins(m["discord_id"], prize_winner)
+            add_coin_log(m["discord_id"], prize_winner, f"Turnir #{tournament_id} Qalibi", "earn", new_bal)
+    if prize_runner_up > 0:
+        for m in get_tournament_team_members(loser_team_id):
+            new_bal = add_coins(m["discord_id"], prize_runner_up)
+            add_coin_log(m["discord_id"], prize_runner_up, f"Turnir #{tournament_id} Finalisti", "earn", new_bal)
+
+    channel = bot.get_channel(tournament_bracket_channel_id) if tournament_bracket_channel_id else None
+    if channel:
+        winner_label = " / ".join(m["nick"] for m in winners)
+        embed = discord.Embed(
+            title="🏆 Turnir Qalibi!",
+            description=(f"**{t['name']}** turnirinin qalibi: **{winner_label}**"
+                         + (f"\n🎁 Mükafat: {prize_winner} coin (hər üzvə)" if prize_winner else "")),
+            color=discord.Color.gold()
+        )
+        await channel.send(content=" ".join(f"<@{m['discord_id']}>" for m in winners), embed=embed)
+
+
+class TournamentSignupView(discord.ui.View):
+    """custom_id tournament_id-ni özündə saxlayır (bax: AuctionBidView) — hər turnir üçün
+    ayrı persistent view, bot restart olsa belə funksional qalır (bax: on_ready-dəki
+    yenidən-qeydiyyat)."""
+    def __init__(self, tournament_id):
+        super().__init__(timeout=None)
+        self.tournament_id = tournament_id
+        join_btn = discord.ui.Button(label="Qatıl", style=discord.ButtonStyle.success, emoji="✅",
+                                      custom_id=f"tourn_join_{tournament_id}")
+        join_btn.callback = self.join_btn_cb
+        leave_btn = discord.ui.Button(label="Ayrıl", style=discord.ButtonStyle.secondary, emoji="🚪",
+                                       custom_id=f"tourn_leave_{tournament_id}")
+        leave_btn.callback = self.leave_btn_cb
+        start_btn = discord.ui.Button(label="Turniri Başlat (Admin)", style=discord.ButtonStyle.danger, emoji="🚀",
+                                       custom_id=f"tourn_start_{tournament_id}")
+        start_btn.callback = self.start_btn_cb
+        self.add_item(join_btn)
+        self.add_item(leave_btn)
+        self.add_item(start_btn)
+
+    async def join_btn_cb(self, interaction: discord.Interaction):
+        t = get_tournament(self.tournament_id)
+        if not t or t["status"] != "signup":
+            await interaction.response.send_message("❌ Bu turnirə artıq qoşulmaq mümkün deyil.", ephemeral=True)
+            return
+        player = get_player(interaction.user.id)
+        if not player:
+            await interaction.response.send_message(
+                "❌ Əvvəlcə qeydiyyatdan keçməlisiniz. `#faceit-qeydiyyat` kanalına keçin.",
+                ephemeral=True
+            )
+            return
+        ok, msg = join_tournament(self.tournament_id, interaction.user.id)
+        await interaction.response.send_message(("✅ " if ok else "⚠️ ") + msg, ephemeral=True)
+        if ok:
+            await _refresh_tournament_signup_message(self.tournament_id)
+
+    async def leave_btn_cb(self, interaction: discord.Interaction):
+        ok, msg = leave_tournament(self.tournament_id, interaction.user.id)
+        await interaction.response.send_message(("✅ " if ok else "⚠️ ") + msg, ephemeral=True)
+        if ok:
+            await _refresh_tournament_signup_message(self.tournament_id)
+
+    async def start_btn_cb(self, interaction: discord.Interaction):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
+            return
+        t = get_tournament(self.tournament_id)
+        if not t or t["status"] != "signup":
+            await interaction.response.send_message("❌ Bu turnir artıq başlayıb.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        result = start_tournament(self.tournament_id)
+        if result is None:
+            await interaction.followup.send(
+                f"❌ Turniri başlatmaq üçün ən azı 2 tam komanda lazımdır (komanda ölçüsü: {t['team_size']}).",
+                ephemeral=True
+            )
+            return
+        for item in self.children:
+            item.disabled = True
+        try:
+            await interaction.message.edit(view=self)
+        except discord.HTTPException:
+            pass
+        await _post_tournament_bracket(self.tournament_id)
+        await interaction.followup.send(
+            f"✅ Turnir başladı! {result['team_count']} komanda, {result['bracket_size']}-lik bracket.",
+            ephemeral=True
+        )
+
+
+class TournamentMatchView(discord.ui.View):
+    """custom_id match_id-ni saxlayır (bax: AuctionBidView). Hər klikdə DB-dən matçı
+    YENİDƏN oxuyur (bax: TeamReadyView-dəki restart-safe idiom) — instansiya vəziyyətinə
+    etibar etmir."""
+    def __init__(self, match_id):
+        super().__init__(timeout=None)
+        self.match_id = match_id
+        a_btn = discord.ui.Button(label="A Qalib", style=discord.ButtonStyle.primary,
+                                   custom_id=f"tourn_win_a_{match_id}")
+        a_btn.callback = self.declare_a
+        b_btn = discord.ui.Button(label="B Qalib", style=discord.ButtonStyle.primary,
+                                   custom_id=f"tourn_win_b_{match_id}")
+        b_btn.callback = self.declare_b
+        self.add_item(a_btn)
+        self.add_item(b_btn)
+
+    async def _declare(self, interaction: discord.Interaction, side):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
+            return
+        match = get_tournament_match(self.match_id)
+        if not match or match["status"] == "completed":
+            await interaction.response.send_message("⚠️ Bu matç artıq həll olunub.", ephemeral=True)
+            return
+        winner_team_id = match["team_a_id"] if side == "a" else match["team_b_id"]
+        await interaction.response.defer(ephemeral=True)
+        result = record_tournament_match_winner(self.match_id, winner_team_id)
+        if result is None:
+            await interaction.followup.send("⚠️ Bu matç artıq həll olunub.", ephemeral=True)
+            return
+
+        for item in self.children:
+            item.disabled = True
+        try:
+            await interaction.message.edit(view=self)
+        except discord.HTTPException:
+            pass
+
+        await _refresh_tournament_bracket_image(match["tournament_id"])
+
+        if result["is_final"]:
+            await _finish_tournament(match["tournament_id"], result["winner_team_id"], result["loser_team_id"])
+        elif result["next_match_id"] is not None:
+            next_match = get_tournament_match(result["next_match_id"])
+            if next_match and next_match["team_a_id"] and next_match["team_b_id"]:
+                await _post_tournament_match_view(next_match)
+
+        await interaction.followup.send("✅ Nəticə qeydə alındı.", ephemeral=True)
+
+    async def declare_a(self, interaction: discord.Interaction):
+        await self._declare(interaction, "a")
+
+    async def declare_b(self, interaction: discord.Interaction):
+        await self._declare(interaction, "b")
+
+
+@bot.tree.command(name="turnir_yarat", description="[Admin] Yeni turnir yaradır (bracket sistemi, FACEIT ELO-dan tam müstəqil)")
+@app_commands.describe(
+    ad="Turnirin adı",
+    komanda_olcusu="Komanda ölçüsü: 1 (solo/1v1), 2 (2v2) və ya 5 (5v5)",
+    mukafat_qalib="Qalib komandanın hər üzvünə veriləcək coin (defolt 0)",
+    mukafat_finalist="Finalist (2-ci yer) komandanın hər üzvünə veriləcək coin (defolt 0)"
+)
+@staff_check()
+async def turnir_yarat(interaction: discord.Interaction, ad: str, komanda_olcusu: int,
+                        mukafat_qalib: int = 0, mukafat_finalist: int = 0):
+    if komanda_olcusu not in (1, 2, 5):
+        await interaction.response.send_message("❌ Komanda ölçüsü 1, 2 və ya 5 olmalıdır.", ephemeral=True)
+        return
+    if tournament_signup_channel_id is None:
+        await interaction.response.send_message(
+            "❌ Turnir kanalları hələ qurulmayıb. Əvvəlcə `/full_setup` işə salın.", ephemeral=True
+        )
+        return
+    existing = get_active_tournament()
+    if existing:
+        await interaction.response.send_message(
+            f"❌ Artıq aktiv bir turnir var: **{existing['name']}** (status: {existing['status']}). "
+            "Yeni turnir yaratmazdan əvvəl onu bitirin/ləğv edin (`/turnir_legv_et`).", ephemeral=True
+        )
+        return
+    await interaction.response.defer(ephemeral=True)
+    tid = create_tournament(ad, komanda_olcusu, interaction.user.id)
+    if mukafat_qalib or mukafat_finalist:
+        set_tournament_meta(tid, prize_winner=mukafat_qalib, prize_runner_up=mukafat_finalist)
+    channel = bot.get_channel(tournament_signup_channel_id)
+    if channel:
+        await _post_tournament_signup(tid, channel)
+    await interaction.followup.send(
+        f"✅ Turnir yaradıldı: **{ad}** (#{tid}). Qeydiyyat: <#{tournament_signup_channel_id}>", ephemeral=True
+    )
+
+
+@turnir_yarat.error
+async def turnir_yarat_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="turnir_legv_et", description="[Admin] Cari aktiv turniri ləğv edir")
+@staff_check()
+async def turnir_legv_et(interaction: discord.Interaction):
+    t = get_active_tournament()
+    if not t:
+        await interaction.response.send_message("ℹ️ Aktiv turnir yoxdur.", ephemeral=True)
+        return
+    cancel_tournament(t["id"])
+    await interaction.response.send_message(f"✅ **{t['name']}** turniri ləğv edildi.", ephemeral=True)
+
+
+@turnir_legv_et.error
+async def turnir_legv_et_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
@@ -7282,6 +7698,7 @@ async def admin_matc_elave_et_cmd(
             new_achievements.append((p["nick"], ach))
             if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
                 asyncio.create_task(_post_wall_announcement(interaction.guild, p["discord_id"], p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+            asyncio.create_task(_maybe_grant_sticker(interaction.guild, p["discord_id"], p["nick"], ach["id"]))
         for ti in check_and_grant_titles(p["discord_id"]):
             new_titles.append((p["nick"], ti))
             if interaction.guild:
@@ -7324,6 +7741,7 @@ async def admin_matc_elave_et_cmd(
             new_achievements.append((p["nick"], ach))
             if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
                 asyncio.create_task(_post_wall_announcement(interaction.guild, p["discord_id"], p["nick"], ach["name"], ach["icon"], "nailiyyət"))
+            asyncio.create_task(_maybe_grant_sticker(interaction.guild, p["discord_id"], p["nick"], ach["id"]))
         for ti in check_and_grant_titles(p["discord_id"]):
             new_titles.append((p["nick"], ti))
             if interaction.guild:

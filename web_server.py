@@ -561,11 +561,16 @@ def admin_dashboard():
     hourly = database.get_hourly_activity(days=7)
     matches = database.get_recent_matches(limit=20)
     players = get_players()
+    economy = database.get_economy_trend(days=30)
+    growth = database.get_growth_stats(days=30)
+    match_volume = database.get_match_volume_trend(days=30)
+    moderation = database.get_moderation_summary(days=30)
 
     return render_template(
         "admin.html",
         stats=stats, hourly=hourly, matches=matches,
-        players=players, total_matches=get_total_matches()
+        players=players, total_matches=get_total_matches(),
+        economy=economy, growth=growth, match_volume=match_volume, moderation=moderation
     )
 
 

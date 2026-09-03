@@ -1821,3 +1821,37 @@ def generate_map_masters_card(masters: dict, output_path):
     draw.text((28, height - FOOTER + 6), "Zenith's Academy", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
+
+
+# ── NAİLİYYƏT STİKERİ (/stickerlerim) ────────────────────────────────────────
+
+def generate_sticker_card(name, label, output_path):
+    """Nailiyyətlə açılan "sticker" — dairəvi qızılı nişan + ad + qısa mətn etiketi. Real
+    emoji ehtiyacı olmadan tam PIL-lə çəkilir (PIL emoji render etmir qaydasına uyğun)."""
+    W, H = 320, 340
+    img = Image.new("RGB", (W, H), BG_TOP)
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y / H
+        draw.line([(0, y), (W, y)],
+                  fill=tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * t) for i in range(3)))
+    draw.rectangle([(0, 0), (W - 1, H - 1)], outline=GOLD, width=3)
+
+    cx, cy, R = W // 2, 140, 90
+    rgba = img.convert("RGBA")
+    for rr, alpha in [(R + 10, 40), (R + 4, 90)]:
+        ring = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        rd = ImageDraw.Draw(ring)
+        rd.ellipse([(cx - rr, cy - rr), (cx + rr, cy + rr)], outline=(*GOLD, alpha), width=3)
+        rgba = Image.alpha_composite(rgba, ring)
+    img = rgba.convert("RGB")
+    draw = ImageDraw.Draw(img)
+    draw.ellipse([(cx - R, cy - R), (cx + R, cy + R)], fill=PANEL, outline=GOLD, width=4)
+    draw.text((cx, cy), label, font=_font(20, True), fill=GOLD, anchor="mm")
+
+    draw.text((W // 2, 262), name, font=_font(22, True), fill=WHITE, anchor="mm")
+    draw.line([(40, 292), (W - 40, 292)], fill=BORDER, width=1)
+    draw.text((W // 2, 312), "Zenith's Academy", font=_font(11), fill=GRAY, anchor="mm")
+
+    _finalize(img).save(output_path)
+    return output_path
