@@ -53,7 +53,7 @@ HOLIDAY_DATES = {
 }
 
 
-def get_players(mode="2v2"):
+def get_players(mode="5v5"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     if mode == "5v5":
@@ -91,7 +91,7 @@ def get_players(mode="2v2"):
     return players
 
 
-def get_total_matches(mode="2v2"):
+def get_total_matches(mode="5v5"):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -106,7 +106,7 @@ def get_total_matches(mode="2v2"):
 
 @app.route("/")
 def index():
-    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    mode = "5v5"
     return render_template("index.html", mode=mode)
 
 
@@ -115,7 +115,7 @@ def manifest():
     return jsonify({
         "name": "Nextlevelaz",
         "short_name": "Nextlevelaz",
-        "description": "Standoff 2 FACEIT 2v2 leaderboard və profil paneli",
+        "description": "Standoff 2 FACEIT 5v5 leaderboard və profil paneli",
         "start_url": "/",
         "display": "standalone",
         "background_color": "#0b0a0d",
@@ -156,14 +156,14 @@ def service_worker():
 
 @app.route("/api/leaderboard")
 def api_leaderboard():
-    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    mode = "5v5"
     return jsonify({
         "players": get_players(mode),
         "total_matches": get_total_matches(mode)
     })
 
 
-def _profile_dict(discord_id, mode="2v2"):
+def _profile_dict(discord_id, mode="5v5"):
     player = database.get_player(discord_id)
     if not player:
         return None
@@ -274,7 +274,7 @@ def api_profile_story(discord_id):
 
 @app.route("/u/<int:discord_id>")
 def public_profile(discord_id):
-    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    mode = "5v5"
     profile = _profile_dict(discord_id, mode)
     if not profile:
         abort(404)
@@ -291,7 +291,7 @@ def embed_profile(discord_id):
 
 @app.route("/api/profile/<int:discord_id>")
 def api_profile(discord_id):
-    mode = "5v5" if request.args.get("mode") == "5v5" else "2v2"
+    mode = "5v5"
     profile = _profile_dict(discord_id, mode)
     if not profile:
         abort(404)
@@ -331,10 +331,7 @@ def api_profile_heatmap(discord_id):
 
 @app.route("/api/seasons")
 def api_seasons():
-    mode = request.args.get("mode", "2v2")
-    if mode not in ("2v2", "5v5"):
-        mode = "2v2"
-    return jsonify(database.get_completed_seasons(mode))
+    return jsonify(database.get_completed_seasons("5v5"))
 
 
 @app.route("/api/season/<int:season_id>")

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ nick }} — Nextlevelaz</title>
 <meta property="og:title" content="{{ nick }} — Nextlevelaz">
-<meta property="og:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ wins }}Q/{{ losses }}M ({{ win_rate }}% qazanma) — Standoff 2 FACEIT 2v2 profili.">
+<meta property="og:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ wins }}Q/{{ losses }}M ({{ win_rate }}% qazanma) — Standoff 2 FACEIT 5v5 profili.">
 <meta property="og:type" content="profile">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="{{ nick }} — Nextlevelaz">
@@ -901,15 +901,9 @@
     <div class="flip-container" id="flipContainer">
       <div class="card front spotlight">
         <div class="eyebrow">Nextlevelaz — Oyunçu Profili</div>
-        <div class="mode-toggle">
-          <a href="/u/{{ discord_id }}?mode=2v2" class="mode-toggle-btn{{ ' active' if mode == '2v2' else '' }}">🏆 2v2</a>
-          <a href="/u/{{ discord_id }}?mode=5v5" class="mode-toggle-btn{{ ' active' if mode == '5v5' else '' }}">🎯 5v5</a>
-        </div>
-        {% if mode == '5v5' %}
         <div style="font-size:10px; color:var(--text-dim); margin-bottom:8px;">
-          ℹ️ Yuxarıdakı əsas kart 5v5 statistikasıdır — aşağıdakı əlavə panellər (qrafik, xəritə, tarixçə) hələ yalnız 2v2 məlumatını göstərir.
+          ℹ️ Əlavə panellər (qrafik, xəritə, tarixçə) hazırda köhnə formatın datasını göstərə bilər — tezliklə tam 5v5-ə keçiriləcək.
         </div>
-        {% endif %}
         <div class="search-badge" id="searchBadge"></div>
         <div class="heat-badge" id="heatBadge"><span class="flame">🔥</span><span id="heatText"></span></div>
         <div class="time-travel-badge" id="timeTravelBadge">🕰️ <span id="timeTravelText"></span></div>
