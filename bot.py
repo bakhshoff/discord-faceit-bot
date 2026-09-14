@@ -5913,6 +5913,40 @@ async def rank_rollari_qur_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
+@bot.tree.command(name="hamisina_rol_ver", description="[Admin] Seçilmiş rolu serverdəki bütün üzvlərə (botlar xaric) tək dəfəyə verir")
+@app_commands.describe(rol="Hər kəsə veriləcək rol")
+@staff_check()
+async def hamisina_rol_ver_cmd(interaction: discord.Interaction, rol: discord.Role):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
+        return
+    await interaction.response.defer(ephemeral=True)
+    given = 0
+    skipped = 0
+    failed = 0
+    for member in interaction.guild.members:
+        if member.bot:
+            continue
+        if rol in member.roles:
+            skipped += 1
+            continue
+        try:
+            await member.add_roles(rol, reason=f"/hamisina_rol_ver — {interaction.user}")
+            given += 1
+        except (discord.Forbidden, discord.HTTPException):
+            failed += 1
+    msg = f"✅ **{rol.name}** rolu **{given}** üzvə verildi ({skipped} nəfərdə artıq var idi)."
+    if failed:
+        msg += f"\n⚠️ {failed} üzvə verilə bilmədi (icazə/roluğu yerləşdirmə problemi ola bilər)."
+    await interaction.followup.send(msg, ephemeral=True)
+
+
+@hamisina_rol_ver_cmd.error
+async def hamisina_rol_ver_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # KOMANDA PANELİ
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -6013,6 +6047,7 @@ PANEL_CATEGORIES = {
             ("/admin_matc_netice", f"Aktiv matç üçün nəticə düymələrini yenidən göstərir (2 matç paralel gedirsə `matc_no` göstərin)"),
             ("🎮 Paralel matçlar", f"Eyni anda {MAX_PARALLEL_MATCHES} matça qədər paralel oynanıla bilər, hər biri öz thread/səs kanalları ilə"),
             ("/rank_rollari_qur", "ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir"),
+            ("/hamisina_rol_ver", "Seçilmiş rolu serverdəki bütün üzvlərə (botlar xaric) tək dəfəyə verir"),
             ("📊 Aktivlik (aşağıdakı düymə)", "Son 7 günün aktivlik statistikasını göstərir"),
             ("📋 Günlük hesabat", "Bot hər gün AZ vaxtı ilə 00:00-da avtomatik günlük statistikanı bu kanala göndərir"),
             ("📰 Nextlevelaz Xəbərləri", "Gündəlik hesabatın ardınca AI (Claude) yazılmış qısa icmal göndərilir"),
