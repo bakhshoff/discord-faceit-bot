@@ -5983,6 +5983,295 @@ async def kanallari_yenile_error(interaction: discord.Interaction, error):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# ADMIN PANELİ (VİZUAL) — bütün admin komandalarını tək /admin_panel altında
+# birləşdirən düymə/select-əsaslı interfeys. Hər addım MÖVCUD slash komandanın
+# `.callback(interaction, ...)` metodunu birbaşa çağırır (məntiq TƏKRARLANMIR,
+# panel yalnız parametr toplayan nazik bir təbəqədir).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class AdminUserPickView(discord.ui.View):
+    def __init__(self, admin_id, mode):
+        super().__init__(timeout=120)
+        self.admin_id = admin_id
+        self.mode = mode  # "info" | "edit"
+        self.select = discord.ui.UserSelect(placeholder="Oyunçu seçin...")
+        self.select.callback = self._on_select
+        self.add_item(self.select)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return
+        member = self.select.values[0]
+        if self.mode == "info":
+            await admin_oyuncu_cmd.callback(interaction, member)
+        else:
+            await interaction.response.send_message(
+                f"✏️ **{member.display_name}** üçün dəyişəcəyiniz sahəni seçin:",
+                view=AdminPlayerFieldSelectView(self.admin_id, member),
+                ephemeral=True
+            )
+
+
+class AdminFieldValueModal(discord.ui.Modal, title="Yeni dəyər"):
+    deyer = discord.ui.TextInput(label="Yeni dəyər", max_length=50)
+
+    def __init__(self, member, choice):
+        super().__init__(title=f"Yeni dəyər — {choice.name}")
+        self.member = member
+        self.choice = choice
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await admin_duzelt_cmd.callback(interaction, self.member, self.choice, str(self.deyer))
+
+
+class AdminPlayerFieldSelectView(discord.ui.View):
+    def __init__(self, admin_id, member):
+        super().__init__(timeout=120)
+        self.admin_id = admin_id
+        self.member = member
+        options = [discord.SelectOption(label=c.name, value=c.value) for c in ADMIN_FIELD_CHOICES]
+        sel = discord.ui.Select(placeholder="Dəyişəcəyiniz sahəni seçin...", options=options)
+        sel.callback = self._on_select
+        self.select = sel
+        self.add_item(sel)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return
+        field_value = self.select.values[0]
+        choice = next(c for c in ADMIN_FIELD_CHOICES if c.value == field_value)
+        await interaction.response.send_modal(AdminFieldValueModal(self.member, choice))
+
+
+class AdminPlayerMenuView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=180)
+        self.admin_id = admin_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Oyunçu məlumatı", style=discord.ButtonStyle.primary, emoji="🔍")
+    async def info_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("Oyunçu seçin:", view=AdminUserPickView(self.admin_id, "info"), ephemeral=True)
+
+    @discord.ui.button(label="Sahə dəyiş", style=discord.ButtonStyle.secondary, emoji="✏️")
+    async def edit_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("Oyunçu seçin:", view=AdminUserPickView(self.admin_id, "edit"), ephemeral=True)
+
+
+class AdminMatchNumberModal(discord.ui.Modal):
+    matc_no = discord.ui.TextInput(label="Matç nömrəsi", placeholder="məs: 42", max_length=10, required=True)
+
+    def __init__(self, title, action):
+        super().__init__(title=title)
+        self.action = action  # "sil" | "qalib_deyis" | "netice"
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            no = int(str(self.matc_no))
+        except ValueError:
+            await interaction.response.send_message("❌ Rəqəm daxil edin.", ephemeral=True)
+            return
+        if self.action == "sil":
+            await admin_matc_sil_cmd.callback(interaction, no)
+        elif self.action == "qalib_deyis":
+            await admin_matc_qalib_deyis_cmd.callback(interaction, no)
+        elif self.action == "netice":
+            await admin_matc_netice_cmd.callback(interaction, no)
+
+
+class AdminMatchMenuView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=180)
+        self.admin_id = admin_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Son matçlar", style=discord.ButtonStyle.primary, emoji="📋")
+    async def list_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await admin_matclar_cmd.callback(interaction)
+
+    @discord.ui.button(label="Matç sil", style=discord.ButtonStyle.danger, emoji="🗑️")
+    async def del_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_modal(AdminMatchNumberModal("Matçı sil", "sil"))
+
+    @discord.ui.button(label="Qalibi dəyiş", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def swap_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_modal(AdminMatchNumberModal("Qalibi dəyiş", "qalib_deyis"))
+
+    @discord.ui.button(label="Nəticə düymələrini yenilə", style=discord.ButtonStyle.secondary, emoji="🔁")
+    async def redisplay_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_modal(AdminMatchNumberModal("Nəticə düymələrini yenilə", "netice"))
+
+
+class AdminRolePickView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=120)
+        self.admin_id = admin_id
+        self.select = discord.ui.RoleSelect(placeholder="Hər kəsə veriləcək rolu seçin...")
+        self.select.callback = self._on_select
+        self.add_item(self.select)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return
+        role = self.select.values[0]
+        await hamisina_rol_ver_cmd.callback(interaction, role)
+
+
+class AdminServerMenuView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=180)
+        self.admin_id = admin_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Kanalları yenilə", style=discord.ButtonStyle.primary, emoji="🔄")
+    async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await kanallari_yenile_cmd.callback(interaction)
+
+    @discord.ui.button(label="Rütbə rollarını qur", style=discord.ButtonStyle.primary, emoji="🏅")
+    async def ranks_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await rank_rollari_qur_cmd.callback(interaction)
+
+    @discord.ui.button(label="Hamısına rol ver", style=discord.ButtonStyle.secondary, emoji="👥")
+    async def giveall_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("Rolu seçin:", view=AdminRolePickView(self.admin_id), ephemeral=True)
+
+    @discord.ui.button(label="⚠️ Server sıfırla", style=discord.ButtonStyle.danger, emoji="🧨", row=1)
+    async def server_reset_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await server_sifirla_cmd.callback(interaction)
+
+    @discord.ui.button(label="⚠️ Bütün datanı sıfırla", style=discord.ButtonStyle.danger, emoji="🗑️", row=1)
+    async def full_reset_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await admin_full_reset_cmd.callback(interaction)
+
+
+class AdminMiscMenuView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=180)
+        self.admin_id = admin_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Elan et (bu kanala)", style=discord.ButtonStyle.primary, emoji="📢")
+    async def announce_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await elan.callback(interaction, None)
+
+    @discord.ui.button(label="Giveaway / Hərrac", style=discord.ButtonStyle.secondary, emoji="🎉")
+    async def info_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message(
+            "🎉 Giveaway: `/giveaway_create`\n🔨 Hərrac: `/admin_herrac_baslat`\n\n"
+            "ℹ️ Bu ikisi elan kanalı seçimi tələb etdiyi üçün birbaşa slash komandası kimi işlədilir.",
+            ephemeral=True
+        )
+
+
+class AdminPanelHubView(discord.ui.View):
+    def __init__(self, admin_id):
+        super().__init__(timeout=300)
+        self.admin_id = admin_id
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Oyunçu", style=discord.ButtonStyle.primary, emoji="👤")
+    async def player_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("👤 **Oyunçu İdarəetməsi**", view=AdminPlayerMenuView(self.admin_id), ephemeral=True)
+
+    @discord.ui.button(label="Matçlar", style=discord.ButtonStyle.primary, emoji="⚔️")
+    async def match_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("⚔️ **Matç İdarəetməsi**", view=AdminMatchMenuView(self.admin_id), ephemeral=True)
+
+    @discord.ui.button(label="Server", style=discord.ButtonStyle.primary, emoji="🖥️")
+    async def server_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("🖥️ **Server İdarəetməsi**", view=AdminServerMenuView(self.admin_id), ephemeral=True)
+
+    @discord.ui.button(label="Digər", style=discord.ButtonStyle.primary, emoji="🎁")
+    async def misc_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message("🎁 **Digər**", view=AdminMiscMenuView(self.admin_id), ephemeral=True)
+
+
+@bot.tree.command(name="admin_panel", description="[Admin] Bütün admin əməliyyatlarına vizual panel")
+@staff_check()
+async def admin_panel_cmd(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🛠️ Nextlevelaz Admin Paneli",
+        description=(
+            "Aşağıdan kateqoriya seçin:\n\n"
+            "👤 **Oyunçu** — məlumata bax, sahə dəyiş\n"
+            "⚔️ **Matçlar** — siyahı, sil, qalib dəyiş, nəticə düymələrini yenilə\n"
+            "🖥️ **Server** — kanalları yenilə, rütbə rolları, rol ver, sıfırlama\n"
+            "🎁 **Digər** — elan et, giveaway/hərrac bələdçisi"
+        ),
+        color=discord.Color.from_rgb(138, 92, 230)
+    )
+    await interaction.response.send_message(embed=embed, view=AdminPanelHubView(interaction.user.id), ephemeral=True)
+
+
+@admin_panel_cmd.error
+async def admin_panel_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # KOMANDA PANELİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -6072,8 +6361,8 @@ PANEL_CATEGORIES = {
         "label": "Admin",
         "title": "🔧 Admin (Founder / Co-Founder / Head Admin / Admin)",
         "items": [
+            ("/admin_panel", "🛠️ Bütün admin əməliyyatlarına vizual, düymə-əsaslı panel (tövsiyə olunur)"),
             ("/scan", "Skor ekranı şəklindən K/A/D oxuyur"),
-            ("/matchresult", "Manual 1v1 nəticə qeydi"),
             ("/admin_oyuncu", "Oyunçunun tam profil məlumatını göstərir"),
             ("/admin_duzelt", "Oyunçunun ELO/coin/stat və s. sahəsini dəyişir"),
             ("/admin_matclar", "Son matçların siyahısı"),
