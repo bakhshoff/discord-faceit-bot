@@ -9,7 +9,7 @@
 
 MARKET_ITEMS = [
     # Xüsusi — yalnız referral sistemi ilə əldə edilə bilər, marketdə satılmır
-    {"id": "banner_ambassador", "name": "Zenith's Academy Ambassador",
+    {"id": "banner_ambassador", "name": "Nextlevelaz Ambassador",
      "type": "banner", "price": 0, "file": "banner_ambassador.png", "exclusive": True},
     # Xüsusi — yalnız Genesis Battle Pass (VIP) ilə əldə edilə bilər, marketdə satılmır
     {"id": "banner_genesis", "name": "Genesis Banneri",

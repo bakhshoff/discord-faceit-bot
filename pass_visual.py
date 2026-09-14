@@ -184,7 +184,7 @@ def _reward_img(level: int, is_premium: bool, size=(130, 100)):
         # Aşağı band: oyunçu adı yer saxlayıcısı
         nby = BY + BH - 18
         draw.rectangle([(BX+4, nby), (BX+BW-4, BY+BH-3)], fill=(0, 30, 28, 200))
-        draw.text((BX + 10, nby + 6), "[ Zenith's Academy — Genesis ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
+        draw.text((BX + 10, nby + 6), "[ Nextlevelaz — Genesis ]", font=_f(7, True), fill=(0,200,160), anchor="lm")
 
         draw.text((w//2, h-8), lbl, font=_f(9, True), fill=PASS_TEAL, anchor="mm")
         return img
@@ -412,7 +412,7 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
     # Header
     draw.rectangle([(0, 0), (W, 62)], fill=PASS_HEADER)
     draw.line([(0, 60), (W, 60)], fill=PASS_GOLD, width=2)
-    draw.text((14, 8),  "Zenith's Academy",       font=_f(11, True), fill=PASS_GOLD)
+    draw.text((14, 8),  "Nextlevelaz",       font=_f(11, True), fill=PASS_GOLD)
     draw.text((14, 24), SEASON_LABEL,   font=_f(18, True), fill=WHITE2)
     tier     = "VIP PASS" if is_premium else "FREE PASS"
     tier_col = PASS_PURPLE  if is_premium else (140, 140, 160)
@@ -539,7 +539,7 @@ def _draw_frame(pass_data: dict, missions: list, glow: float):
 
     # Footer
     draw.rectangle([(0, H - FOOT_H), (W, H)], fill=PASS_HEADER)
-    draw.text((14, H - FOOT_H + 8), f"Zenith's Academy  •  {BP_SEASON_NAME}", font=_f(9), fill=GRAY2)
+    draw.text((14, H - FOOT_H + 8), f"Nextlevelaz  •  {BP_SEASON_NAME}", font=_f(9), fill=GRAY2)
     if not is_premium:
         draw.text((W - 14, H - FOOT_H + 8), f"\"VIP Pass Al\" düyməsi — {BP_PRICE_AZN} AZN",
                   font=_f(9, True), fill=PASS_PURPLE, anchor="rm")
@@ -590,7 +590,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
     # Header
     draw.rectangle([(0, 0), (W, HEAD)], fill=PASS_HEADER)
     draw.line([(0, HEAD - 2), (W, HEAD - 2)], fill=PASS_PURPLE, width=2)
-    draw.text((PAD, 12), "Zenith's Academy", font=_f(12, True), fill=PASS_PURPLE)
+    draw.text((PAD, 12), "Nextlevelaz", font=_f(12, True), fill=PASS_PURPLE)
     draw.text((PAD, 30), f"{SEASON_LABEL} — BÜTÜN LEVELLƏR (1-{BP_MAX_LEVEL})", font=_f(14, True), fill=WHITE2)
     tier = "VIP PASS" if is_premium else "FREE PASS"
     tier_col = PASS_PURPLE if is_premium else GRAY2
@@ -664,7 +664,7 @@ def generate_pass_levels_card(pass_data: dict, output_path: str):
 
     draw.rectangle([(0, H - FOOT), (W, H)], fill=PASS_HEADER)
     draw.text((PAD, H - FOOT + 6),
-              f"Zenith's Academy {BP_SEASON_NAME} Pass  •  \"VIP Pass Al\" — {BP_PRICE_AZN} AZN  •  "
+              f"Nextlevelaz {BP_SEASON_NAME} Pass  •  \"VIP Pass Al\" — {BP_PRICE_AZN} AZN  •  "
               "! = tələb edilməli, ✓ = artıq tələb edilib",
               font=_f(9), fill=GRAY2)
     draw.text((W - PAD, H - FOOT + 6), "ÜSTDƏ VIP  •  ALTDA FREE",
@@ -702,7 +702,7 @@ def generate_pass_missions_card(missions: list, output_path: str):
 
     draw.rectangle([(0, 0), (W, HEAD)], fill=PASS_HEADER)
     draw.line([(0, HEAD - 2), (W, HEAD - 2)], fill=PASS_PURPLE, width=2)
-    draw.text((PAD, 12), "Zenith's Academy", font=_f(12, True), fill=PASS_PURPLE)
+    draw.text((PAD, 12), "Nextlevelaz", font=_f(12, True), fill=PASS_PURPLE)
     draw.text((PAD, 30), f"{SEASON_LABEL} — MİSSİYALAR", font=_f(14, True), fill=WHITE2)
 
     y = HEAD + 12
@@ -737,7 +737,7 @@ def generate_pass_missions_card(missions: list, output_path: str):
         y += SEC_GAP - 22
 
     draw.rectangle([(0, H - FOOT), (W, H)], fill=PASS_HEADER)
-    draw.text((PAD, H - FOOT + 6), f"Zenith's Academy {BP_SEASON_NAME} Pass",
+    draw.text((PAD, H - FOOT + 6), f"Nextlevelaz {BP_SEASON_NAME} Pass",
               font=_f(9), fill=GRAY2)
     draw.text((W - PAD, H - FOOT + 6), "Günlük 00:00 UTC-də, həftəlik həftə başında yenilənir",
               font=_f(9), fill=GRAY2, anchor="ra")
@@ -772,7 +772,7 @@ def generate_pass_announcement(output_path: str):
 
     # ── Sol üst logo şeridi ───────────────────────────────────────────────────
     draw.rectangle([(0,0),(W,5)], fill=PASS_PURPLE)
-    draw.text((28,14), "Zenith's Academy  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_PURPLE)
+    draw.text((28,14), "Nextlevelaz  •  FACEIT  •  STANDOFF 2", font=_f(10,True), fill=PASS_PURPLE)
 
     # ── Mərkəz başlıq ─────────────────────────────────────────────────────────
     draw.text((W//2, 52),  "BATTLE PASS",  font=_f(52,True), fill=WHITE2, anchor="mm")

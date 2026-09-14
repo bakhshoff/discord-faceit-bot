@@ -76,7 +76,7 @@ def generate_match_history_card(history, output_path):
     f_row   = _font(16, True)
     f_sm    = _font(13)
 
-    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=f_brand, fill=GOLD)
     draw.text((28, 30), "MATÇ TARİXÇƏSİ", font=f_title, fill=WHITE)
     cnt = f"{len(history)} matç"
     draw.text((WIDTH - 28 - _tw(draw, cnt, f_sub), 40), cnt, font=f_sub, fill=GRAY)
@@ -116,7 +116,7 @@ def generate_match_history_card(history, output_path):
             if i < len(history) - 1:
                 draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
 
-    draw.text((28, height - FOOTER_H + 4), "Zenith's Academy", font=_font(11), fill=GRAY)
+    draw.text((28, height - FOOTER_H + 4), "Nextlevelaz", font=_font(11), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -148,7 +148,7 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path,
     else:
         flbl, fcol = "HAMISI",    GOLD
 
-    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=f_brand, fill=GOLD)
     draw.text((28, 30), "COİN LOGLARI", font=f_title, fill=WHITE)
 
     bw = _tw(draw, flbl, f_sub) + 16
@@ -197,7 +197,7 @@ def generate_coin_logs_card(logs, current_balance, log_type_filter, output_path,
             if i < len(logs)-1:
                 draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
 
-    draw.text((28, height-FOOTER_H+4), "Zenith's Academy", font=_font(11), fill=GRAY)
+    draw.text((28, height-FOOTER_H+4), "Nextlevelaz", font=_font(11), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -239,7 +239,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
     fs = _font(12)
     fx = _font(11)
 
-    draw.text((PAD, 12), "Zenith's Academy", font=fb, fill=GOLD)
+    draw.text((PAD, 12), "Nextlevelaz", font=fb, fill=GOLD)
     draw.text((PAD, 28), "GÜNDƏLİK TAPŞIRIQLAR", font=ft, fill=WHITE)
     draw.line([(0, HEADER), (WIDTH, HEADER)], fill=BORDER, width=1)
 
@@ -318,7 +318,7 @@ def generate_tasks_card(active_task, available_tasks, output_path):
     else:
         draw.text((PAD, y+16), "Bu gün üçün aktiv tapşırıq yoxdur.", font=fm, fill=GRAY)
 
-    draw.text((PAD, height-FOOTER+6), "Zenith's Academy  ·  Profil → Gündəlik", font=fx, fill=GRAY)
+    draw.text((PAD, height-FOOTER+6), "Nextlevelaz  ·  Profil → Gündəlik", font=fx, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -382,7 +382,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
     rank_name, rank_color, rank_emoji = get_rank(elo)
 
     # Header
-    draw.text((PAD, 14), "Zenith's Academy", font=fb, fill=GOLD)
+    draw.text((PAD, 14), "Nextlevelaz", font=fb, fill=GOLD)
     draw.text((PAD, 30), "OYUNÇU STATİSTİKASI", font=ft, fill=WHITE)
     draw.line([(0,72),(W,72)], fill=BORDER, width=1)
 
@@ -433,7 +433,7 @@ def generate_stats_card(player_data: dict, achievements: list, output_path: str)
     else:
         draw.text((PAD+120, ay+22), "Hələ yoxdur", font=fxi, fill=GRAY)
 
-    draw.text((PAD, H-24), "Zenith's Academy", font=fxi, fill=GRAY)
+    draw.text((PAD, H-24), "Nextlevelaz", font=fxi, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -460,7 +460,7 @@ def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_pa
     fx = _font(12)
 
     status = "[BANLANDI]" if is_banned else f"{len(warnings)} Xeberdarliq"
-    draw.text((20, 12), "Zenith's Academy  ·  ADMIN PANEL", font=fb, fill=GOLD)
+    draw.text((20, 12), "Nextlevelaz  ·  ADMIN PANEL", font=fb, fill=GOLD)
     draw.text((20, 28), f"{nick} — {status}", font=ft, fill=RED if is_banned else (255,180,0))
     draw.line([(0,72),(800,72)], fill=BORDER, width=1)
 
@@ -476,7 +476,7 @@ def generate_warnings_card(nick: str, warnings: list, is_banned: bool, output_pa
             draw.text((20, y+28), dt.strftime("%d.%m.%Y %H:%M"), font=fx, fill=GRAY)
             y += ROW_H
 
-    draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
+    draw.text((20, H-24), "Nextlevelaz", font=fx, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -504,7 +504,7 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str, 
     fs = _font(13)
     fx = _font(11)
 
-    draw.text((20, 12), "Zenith's Academy", font=fb, fill=GOLD)
+    draw.text((20, 12), "Nextlevelaz", font=fb, fill=GOLD)
     draw.text((20, 28), f"{nick} — Nailiyyətlər ({len(achievements)})", font=ft, fill=WHITE)
     draw.line([(0,68),(W,68)], fill=BORDER, width=1)
 
@@ -525,7 +525,7 @@ def generate_achievements_card(nick: str, achievements: list, output_path: str, 
     if not achievements:
         draw.text((20, HEADER+10), "Hələ heç bir nailiyyət yoxdur.", font=fs, fill=GRAY)
 
-    draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
+    draw.text((20, H-24), "Nextlevelaz", font=fx, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -546,7 +546,7 @@ def generate_compare_card(p1: dict, p2: dict, output_path: str):
     fb = _font(13, True); ft = _font(22, True)
     fm = _font(15, True); fs = _font(13); fx = _font(11)
 
-    draw.text((PAD, 12), "Zenith's Academy", font=fb, fill=GOLD)
+    draw.text((PAD, 12), "Nextlevelaz", font=fb, fill=GOLD)
     draw.text((PAD, 28), "OYUNCU MUQAYİSƏSİ", font=ft, fill=WHITE)
     draw.line([(0,70),(W,70)], fill=BORDER, width=1)
 
@@ -597,7 +597,7 @@ def generate_compare_card(p1: dict, p2: dict, output_path: str):
         draw.line([(PAD, y+12),(W-PAD, y+12)], fill=(35,33,42), width=1)
         y += 28
 
-    draw.text((PAD, H-24), "Zenith's Academy", font=fx, fill=GRAY)
+    draw.text((PAD, H-24), "Nextlevelaz", font=fx, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -622,7 +622,7 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
 
     fb = _font(13, True); ft = _font(20, True); fx = _font(10)
 
-    draw.text((PAD, 12), "Zenith's Academy", font=fb, fill=GOLD)
+    draw.text((PAD, 12), "Nextlevelaz", font=fb, fill=GOLD)
     draw.text((PAD, 28), f"{nick} — ELO Tarixi  |  Pik: {peak_elo}", font=ft, fill=WHITE)
 
     if len(history) < 2:
@@ -663,7 +663,7 @@ def generate_elo_graph(nick: str, history: list, peak_elo: int, output_path: str
     draw.ellipse([(pts[-1][0]-5, pts[-1][1]-5),(pts[-1][0]+5, pts[-1][1]+5)], fill=GOLD)
     draw.text((pts[-1][0]+8, pts[-1][1]), str(elos[-1]), font=fx, fill=GOLD)
 
-    draw.text((PAD, H-24), "Zenith's Academy", font=fx, fill=GRAY)
+    draw.text((PAD, H-24), "Nextlevelaz", font=fx, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -682,7 +682,7 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
     fb = _font(13, True); ft = _font(22, True); fm = _font(15); fs = _font(13); fx = _font(11)
 
     days = stats["days"]
-    draw.text((20, 12), "Zenith's Academy", font=fb, fill=GOLD)
+    draw.text((20, 12), "Nextlevelaz", font=fb, fill=GOLD)
     draw.text((20, 28), f"FƏALİYYƏT PANELİ — Son {days} Gün", font=ft, fill=WHITE)
     draw.line([(0,70),(W,70)], fill=BORDER, width=1)
 
@@ -722,7 +722,7 @@ def generate_activity_card(stats: dict, output_path: str, hourly: dict = None):
             if hour % 4 == 0:
                 draw.text((bx, gy+54), str(hour), font=_font(9), fill=GRAY)
 
-    draw.text((20, H-24), "Zenith's Academy", font=fx, fill=GRAY)
+    draw.text((20, H-24), "Nextlevelaz", font=fx, fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -766,7 +766,7 @@ def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(
     draw.rectangle([(0, 0), (W, 56)], fill=PASS_PANEL)
     hdr_col = PASS_GOLD if is_premium else (120, 120, 140)
     draw.rectangle([(0, 54), (W, 57)], fill=hdr_col)
-    draw.text((20, 10), "Zenith's Academy", font=fb, fill=PASS_GOLD)
+    draw.text((20, 10), "Nextlevelaz", font=fb, fill=PASS_GOLD)
     draw.text((20, 24), "SEASON 1 PASS", font=ft, fill=WHITE)
     # Pass tipi + Level badge
     tier_txt = "PREMIUM" if is_premium else "FREE"
@@ -882,7 +882,7 @@ def _draw_pass_frame(pass_data: dict, missions: list, glow: float, output_size=(
 
     # Footer
     prog_pct = int(level / max_lvl * 100)
-    draw.text((PAD, H-18), f"Zenith's Academy Season 1 Pass  ·  {prog_pct}% tamamlandi", font=fxi, fill=GRAY)
+    draw.text((PAD, H-18), f"Nextlevelaz Season 1 Pass  ·  {prog_pct}% tamamlandi", font=fxi, fill=GRAY)
     draw.text((W-PAD, H-18), "5 AZN", font=fb, fill=PASS_GOLD, anchor="ra")
 
     return img
@@ -955,7 +955,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
     f_row   = _font(15, True)
     f_sm    = _font(13)
 
-    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=f_brand, fill=GOLD)
     draw.text((28, 30), "İNVENTAR",  font=f_title, fill=WHITE)
     tot_t = f"{len(faceit)+len(skins)+len(elo_rows)} əşya"
     draw.text((WIDTH-28-_tw(draw, tot_t, f_sm), 40), tot_t, font=f_sm, fill=GRAY)
@@ -1019,7 +1019,7 @@ def generate_inventory_card(owned_ids, active_banner, active_frame, skin_inv, ge
                     draw.line([(18, y+ROW_H-1), (WIDTH-18, y+ROW_H-1)], fill=BORDER, width=1)
                 y += ROW_H
 
-    draw.text((28, height-FOOTER_H+4), "Zenith's Academy", font=_font(11), fill=GRAY)
+    draw.text((28, height-FOOTER_H+4), "Nextlevelaz", font=_font(11), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1033,7 +1033,7 @@ def generate_transfer_card(from_nick, to_nick, amount, commission, receiver_gets
     draw.rectangle([(0,0),(W-1,H-1)], outline=BORDER, width=2)
     f_brand = _font(12, True); f_title = _font(22, True); f_big = _font(20, True)
     f_med = _font(15, True);   f_sm = _font(12);          f_lbl = _font(11)
-    draw.text((28, 14), "Zenith's Academy", font=f_brand, fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=f_brand, fill=GOLD)
     draw.text((28, 30), "COiN TRANSFERi", font=f_title, fill=WHITE)
     draw.line([(18, 65), (W-18, 65)], fill=BORDER, width=1)
     cx = W // 2
@@ -1052,7 +1052,7 @@ def generate_transfer_card(from_nick, to_nick, amount, commission, receiver_gets
     draw.text((rc, 163), "Alan",               font=f_lbl, fill=GRAY,  anchor="mm")
     draw.line([(18, 175), (W-18, 175)], fill=BORDER, width=1)
     draw.text((W//2, 195), f"Komissiya: {commission} coin (20%)   |   Balans: {from_balance} coin", font=f_lbl, fill=GRAY, anchor="mm")
-    draw.text((28, H-18), "Zenith's Academy", font=f_lbl, fill=GRAY)
+    draw.text((28, H-18), "Nextlevelaz", font=f_lbl, fill=GRAY)
     _finalize(img).save(output_path); return output_path
 
 
@@ -1063,7 +1063,7 @@ def generate_search_results_card(query, results, output_path):
     H = HEADER_H + max(1, len(results)) * ROW_H + FOOTER_H
     img = _bg(H); draw = ImageDraw.Draw(img)
     draw.rectangle([(0,0),(WIDTH-1,H-1)], outline=BORDER, width=2)
-    draw.text((28, 14), "Zenith's Academy", font=_font(12,True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12,True), fill=GOLD)
     draw.text((28, 30), f"AXTARIS: '{query[:18]}'  -  {len(results)} netice", font=_font(20,True), fill=WHITE)
     draw.line([(18, HEADER_H-6), (WIDTH-18, HEADER_H-6)], fill=BORDER, width=1)
     y = HEADER_H
@@ -1077,7 +1077,7 @@ def generate_search_results_card(query, results, output_path):
         draw.text((WIDTH-28, y+ROW_H//2), str(elo), font=_font(16,True), fill=ec, anchor="rm")
         draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
         y += ROW_H
-    draw.text((28, H-FOOTER_H+6), "Zenith's Academy", font=_font(11), fill=GRAY)
+    draw.text((28, H-FOOTER_H+6), "Nextlevelaz", font=_font(11), fill=GRAY)
     _finalize(img).save(output_path); return output_path
 
 
@@ -1088,7 +1088,7 @@ def generate_skin_catalog_card(skins, output_path):
     H = HEADER_H + max(1, len(skins)) * ROW_H + FOOTER_H
     img = _bg(H); draw = ImageDraw.Draw(img)
     draw.rectangle([(0,0),(WIDTH-1,H-1)], outline=BORDER, width=2)
-    draw.text((28, 14), "Zenith's Academy", font=_font(12,True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12,True), fill=GOLD)
     draw.text((28, 30), "SKiN KATALOQU", font=_font(22,True), fill=WHITE)
     cnt_t = f"{len(skins)} skin"
     draw.text((WIDTH-28-_tw(draw,cnt_t,_font(12)), 42), cnt_t, font=_font(12), fill=GRAY)
@@ -1102,7 +1102,7 @@ def generate_skin_catalog_card(skins, output_path):
         draw.text((WIDTH-28, y+ROW_H//2), f"{s.get('price','?')} coin", font=_font(16,True), fill=GOLD, anchor="rm")
         draw.line([(18,y+ROW_H-1),(WIDTH-18,y+ROW_H-1)], fill=BORDER, width=1)
         y += ROW_H
-    draw.text((28, H-FOOTER_H+6), "Zenith's Academy", font=_font(11), fill=GRAY)
+    draw.text((28, H-FOOTER_H+6), "Nextlevelaz", font=_font(11), fill=GRAY)
     _finalize(img).save(output_path); return output_path
 
 
@@ -1136,7 +1136,7 @@ def generate_elo_cards_market_card(balance_azn, card_counts, packs, output_path)
     draw = ImageDraw.Draw(img)
     draw.rectangle([(0, 0), (WIDTH - 1, H - 1)], outline=BORDER, width=2)
 
-    draw.text((28, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 32), "ELO KARTLARI", font=_font(24, True), fill=WHITE)
     bal_t = f"{balance_azn:.2f} AZN"
     draw.text((WIDTH - 28, 20), bal_t, font=_font(18, True), fill=SILVER, anchor="ra")
@@ -1232,7 +1232,7 @@ def generate_weekly_mvp_card(mvp_data, output_path):
         draw.text((bx + bw // 2, box_y + box_h // 2 - 12), val, font=_font(22, True), fill=col, anchor="mm")
         draw.text((bx + bw // 2, box_y + box_h - 16), lbl, font=_font(9, True), fill=GRAY, anchor="mm")
 
-    draw.text((28, H - 26), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, H - 26), "Nextlevelaz", font=_font(10), fill=GRAY)
     draw.text((W - 28, H - 26), "Hər həftə ən azı 3 matç oynayan ən uğurlu oyunçu seçilir",
               font=_font(9), fill=GRAY, anchor="ra")
 
@@ -1267,7 +1267,7 @@ def generate_monthly_reward_card(knife_image_path, top_players, output_path,
     draw = ImageDraw.Draw(img)
     draw.rectangle([(0, 0), (WIDTH - 1, H - 1)], outline=BORDER, width=2)
 
-    draw.text((PAD, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((PAD, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((PAD, 32), "AYIN ELO ÇEMPİONU MÜKAFATI", font=_font(22, True), fill=WHITE)
     draw.text((PAD, 64), "Hər ayın son günü 2v2+5v5 ELO cəmi ən yüksək olan oyunçu bu skini qazanır",
               font=_font(12), fill=GRAY)
@@ -1317,7 +1317,7 @@ def generate_monthly_reward_card(knife_image_path, top_players, output_path,
               font=_font(13, True), fill=GOLD, anchor="mm")
     y += CTA_H
 
-    draw.text((PAD, H - FOOTER_H + 4), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((PAD, H - FOOTER_H + 4), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1375,7 +1375,7 @@ def generate_announcement_card(title, body, output_path):
     draw.rectangle([(0, 0), (WIDTH - 1, 6)], fill=GOLD)
 
     draw.ellipse([(PAD, 26), (PAD + 8, 34)], fill=GOLD)
-    draw.text((PAD + 18, 22), "Zenith's Academy — ELAN", font=brand_font, fill=GOLD)
+    draw.text((PAD + 18, 22), "Nextlevelaz — ELAN", font=brand_font, fill=GOLD)
     draw.line([(PAD, HEADER_H - 16), (WIDTH - PAD, HEADER_H - 16)], fill=BORDER, width=1)
 
     y = HEADER_H
@@ -1392,7 +1392,7 @@ def generate_announcement_card(title, body, output_path):
 
     footer_y = H - FOOTER_H + 8
     draw.line([(PAD, footer_y - 12), (WIDTH - PAD, footer_y - 12)], fill=BORDER, width=1)
-    draw.text((PAD, footer_y), "Zenith's Academy — FACEIT Standoff 2", font=footer_font, fill=GRAY)
+    draw.text((PAD, footer_y), "Nextlevelaz — FACEIT Standoff 2", font=footer_font, fill=GRAY)
 
     _finalize(img).save(output_path)
     return output_path
@@ -1409,7 +1409,7 @@ def generate_bet_card(match_number, balance, output_path,
     # Header
     draw.rectangle([(0,0),(W,54)], fill=(20,15,30))
     draw.line([(0,54),(W,54)], fill=BORDER, width=1)
-    draw.text((28, 12), "Zenith's Academy", font=_font(12,True), fill=GOLD)
+    draw.text((28, 12), "Nextlevelaz", font=_font(12,True), fill=GOLD)
     draw.text((28, 30), f"MATC No{match_number}  —  MERC", font=_font(20,True), fill=WHITE)
 
     # Komanda panelləri
@@ -1461,7 +1461,7 @@ def generate_map_stats_card(nick, map_stats, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=10, outline=BORDER, width=2)
 
-    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 30), "XƏRİTƏ STATİSTİKASI", font=_font(22, True), fill=WHITE)
     draw.line([(18, HEADER - 6), (WIDTH - 18, HEADER - 6)], fill=BORDER, width=1)
 
@@ -1482,7 +1482,7 @@ def generate_map_stats_card(nick, map_stats, output_path):
             draw.text((WIDTH - 28 - _tw(draw, wr_txt, _font(15, True)), y + 14), wr_txt, font=_font(15, True), fill=col)
             y += ROW_H
 
-    draw.text((28, height - FOOTER + 2), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, height - FOOTER + 2), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1496,7 +1496,7 @@ def generate_personal_record_card(nick, record, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
 
-    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 30), f"{nick} — ŞƏXSİ REKORD", font=_font(20, True), fill=WHITE)
     draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
 
@@ -1517,7 +1517,7 @@ def generate_personal_record_card(nick, record, output_path):
     match_txt = f"Ən yaxşı K/D matçı: No{best_match}" if best_match else "Hələ heç bir matç qeyd olunmayıb."
     draw.text((28, 172), match_txt, font=_font(12), fill=GRAY)
 
-    draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, H - 22), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1531,13 +1531,13 @@ def generate_elo_chart_card(nick, history, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
 
-    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 30), f"{nick} — ELO İNKİŞAFI", font=_font(20, True), fill=WHITE)
     draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
 
     if not history:
         draw.text((28, 100), "Hələ heç bir matç oynanılmayıb.", font=_font(14), fill=GRAY)
-        draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+        draw.text((28, H - 22), "Nextlevelaz", font=_font(10), fill=GRAY)
         _finalize(img).save(output_path)
         return output_path
 
@@ -1581,7 +1581,7 @@ def generate_elo_chart_card(nick, history, output_path):
     gain_color = GREEN if gain >= 0 else RED
     draw.text((WIDTH - 28, 40), gain_txt, font=_font(14, True), fill=gain_color, anchor="rm")
 
-    draw.text((28, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, H - 22), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1596,13 +1596,13 @@ def generate_quest_card(nick, quests, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
 
-    draw.text((20, 12), "Zenith's Academy", font=_font(13, True), fill=GOLD)
+    draw.text((20, 12), "Nextlevelaz", font=_font(13, True), fill=GOLD)
     draw.text((20, 28), f"{nick} — QUESTLƏR", font=_font(22, True), fill=WHITE)
     draw.line([(0, 68), (WIDTH, 68)], fill=BORDER, width=1)
 
     if not quests:
         draw.text((20, HEADER + 10), "Hələ heç bir quest yoxdur.", font=_font(14), fill=GRAY)
-        draw.text((20, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+        draw.text((20, H - 22), "Nextlevelaz", font=_font(10), fill=GRAY)
         _finalize(img).save(output_path)
         return output_path
 
@@ -1636,7 +1636,7 @@ def generate_quest_card(nick, quests, output_path):
 
         y += CHAIN_H
 
-    draw.text((20, H - 22), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((20, H - 22), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1650,7 +1650,7 @@ def generate_squad_card(nick, squad_info, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=BORDER, width=2)
 
-    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 30), "SQUAD", font=_font(22, True), fill=WHITE)
     draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
 
@@ -1661,7 +1661,7 @@ def generate_squad_card(nick, squad_info, output_path):
         draw.text((28, 82), f"{nick}  &  {squad_info['partner_nick']}", font=_font(18, True), fill=GOLD)
         draw.text((28, 116), f"Birlikdə qələbə: {squad_info['wins_together']}", font=_font(14), fill=GREEN)
 
-    draw.text((28, H - 20), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, H - 20), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1675,7 +1675,7 @@ def generate_synergy_card(nick, synergy, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, H - 1)], radius=10, outline=GOLD, width=2)
 
-    draw.text((28, 14), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 14), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 30), "GİZLİ SİNERGİYA", font=_font(22, True), fill=WHITE)
     draw.line([(18, 64), (WIDTH - 18, 64)], fill=BORDER, width=1)
 
@@ -1687,7 +1687,7 @@ def generate_synergy_card(nick, synergy, output_path):
         draw.text((28, 116), f"Birlikdə: {synergy['wins']}Q / {synergy['matches']} matç", font=_font(14), fill=WHITE)
         draw.text((28, 140), f"Qazanma faizi: {synergy['win_rate']}%", font=_font(14, True), fill=GREEN)
 
-    draw.text((28, H - 20), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, H - 20), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1724,7 +1724,7 @@ def generate_boss_event_card(boss, leaderboard, output_path):
     accent = GREEN if boss["defeated"] else RED
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=accent, width=2)
 
-    draw.text((28, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 34), "HƏFTƏLİK BOSS EVENT", font=_font(26, True), fill=WHITE)
     draw.line([(18, HEADER - 8), (WIDTH - 18, HEADER - 8)], fill=BORDER, width=1)
 
@@ -1772,7 +1772,7 @@ def generate_boss_event_card(boss, leaderboard, output_path):
             draw.text((WIDTH - 32, y + ROW_H // 2), dmg_txt, font=_font(13, True), fill=col, anchor="rm")
             y += ROW_H
 
-    draw.text((28, height - FOOTER + 6), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, height - FOOTER + 6), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1794,7 +1794,7 @@ def generate_map_masters_card(masters: dict, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=GOLD, width=2)
 
-    draw.text((28, 16), "Zenith's Academy", font=_font(12, True), fill=GOLD)
+    draw.text((28, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
     draw.text((28, 34), "XƏRİTƏ USTALARI", font=_font(26, True), fill=WHITE)
     draw.line([(18, HEADER - 8), (WIDTH - 18, HEADER - 8)], fill=BORDER, width=1)
 
@@ -1818,7 +1818,7 @@ def generate_map_masters_card(masters: dict, output_path):
                 draw.text((x + CARD_W - 16, ry), wr_txt, font=_font(13, True), fill=col, anchor="ra")
                 ry += 26
 
-    draw.text((28, height - FOOTER + 6), "Zenith's Academy", font=_font(10), fill=GRAY)
+    draw.text((28, height - FOOTER + 6), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -1851,7 +1851,51 @@ def generate_sticker_card(name, label, output_path):
 
     draw.text((W // 2, 262), name, font=_font(22, True), fill=WHITE, anchor="mm")
     draw.line([(40, 292), (W - 40, 292)], fill=BORDER, width=1)
-    draw.text((W // 2, 312), "Zenith's Academy", font=_font(11), fill=GRAY, anchor="mm")
+    draw.text((W // 2, 312), "Nextlevelaz", font=_font(11), fill=GRAY, anchor="mm")
 
+    _finalize(img).save(output_path)
+    return output_path
+
+
+# ── ÜMUMI SÖHBƏT AKTİVLİK LÖVHƏSİ ────────────────────────────────────────────
+
+def generate_chat_activity_card(rows, output_path):
+    """rows: [{"nick": str, "weekly_xp": int}, ...] XP-yə görə azalan sırada.
+    Hündürlük sətir sayına görə dinamik hesablanır (digər kartlarla eyni prinsip)."""
+    PAD = 28
+    HEADER_H = 90
+    ROW_H = 38
+    FOOTER_H = 30
+    n_rows = max(len(rows), 1)
+    height = HEADER_H + n_rows * ROW_H + FOOTER_H
+
+    img = _bg(height)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=GOLD, width=2)
+
+    draw.text((28, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
+    draw.text((28, 34), "HƏFTƏLİK AKTİVLİK LÖVHƏSİ", font=_font(26, True), fill=WHITE)
+    draw.text((28, 68), "Ümumi söhbətdə yazdığın hər mesaja görə XP qazanırsan", font=_font(12), fill=GRAY)
+    draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)
+
+    y = HEADER_H
+    if rows:
+        medal_colors = [GOLD, SILVER, (176, 120, 60)]
+        for i, r in enumerate(rows):
+            if i % 2 == 0:
+                draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=PANEL)
+            col = medal_colors[i] if i < 3 else GRAY
+            draw.text((PAD, y + ROW_H // 2), f"#{i + 1}", font=_font(15, True), fill=col, anchor="lm")
+            draw.text((PAD + 50, y + ROW_H // 2), r["nick"][:28], font=_font(15, True), fill=WHITE, anchor="lm")
+            draw.text((WIDTH - PAD, y + ROW_H // 2), f"{r['weekly_xp']} XP",
+                      font=_font(15, True), fill=GREEN, anchor="rm")
+            y += ROW_H
+    else:
+        draw.text((WIDTH // 2, y + ROW_H // 2), "Bu həftə hələ heç kim yazmayıb.",
+                  font=_font(14), fill=GRAY, anchor="mm")
+        y += ROW_H
+
+    draw.text((28, height - FOOTER_H + 6), "Nextlevelaz — hər Bazar 23:59 həftənin ən aktivi elan olunur",
+              font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path

@@ -169,7 +169,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     f_small  = _load_font(11)
 
     # ── Header şerid ─────────────────────────────────────────────────────────
-    draw.text((28, 18), "Zenith's Academy", font=f_brand, fill=t_accent)
+    draw.text((28, 18), "Nextlevelaz", font=f_brand, fill=t_accent)
     draw.text((28, 34), t("profile.header", lang), font=f_title, fill=WHITE)
 
     # Coin + AZN (sağ üst)
@@ -269,7 +269,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     # bütün kart (aşağı ~2/3) banner üçün tam açıqdır.
 
     # ── Footer ────────────────────────────────────────────────────────────────
-    draw.text((28, HEIGHT-26), "Zenith's Academy", font=_load_font(11), fill=GRAY)
+    draw.text((28, HEIGHT-26), "Nextlevelaz", font=_load_font(11), fill=GRAY)
     draw.text((WIDTH-28, HEIGHT-26), "/stats → ətraflı statistika", font=_load_font(11), fill=t_text2, anchor="ra")
 
     draw = ImageDraw.Draw(img)  # refresh after alpha ops

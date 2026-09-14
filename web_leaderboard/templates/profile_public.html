@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ nick }} — Zenith's Academy</title>
-<meta property="og:title" content="{{ nick }} — Zenith's Academy">
+<title>{{ nick }} — Nextlevelaz</title>
+<meta property="og:title" content="{{ nick }} — Nextlevelaz">
 <meta property="og:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ wins }}Q/{{ losses }}M ({{ win_rate }}% qazanma) — Standoff 2 FACEIT 2v2 profili.">
 <meta property="og:type" content="profile">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="{{ nick }} — Zenith's Academy">
+<meta name="twitter:title" content="{{ nick }} — Nextlevelaz">
 <meta name="twitter:description" content="{{ rank_emoji }} {{ rank_name }} · {{ elo }} ELO · {{ win_rate }}% qazanma">
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#8a5ce6">
@@ -900,7 +900,7 @@
     <canvas id="signatureCanvas"></canvas>
     <div class="flip-container" id="flipContainer">
       <div class="card front spotlight">
-        <div class="eyebrow">Zenith's Academy — Oyunçu Profili</div>
+        <div class="eyebrow">Nextlevelaz — Oyunçu Profili</div>
         <div class="mode-toggle">
           <a href="/u/{{ discord_id }}?mode=2v2" class="mode-toggle-btn{{ ' active' if mode == '2v2' else '' }}">🏆 2v2</a>
           <a href="/u/{{ discord_id }}?mode=5v5" class="mode-toggle-btn{{ ' active' if mode == '5v5' else '' }}">🎯 5v5</a>
@@ -951,10 +951,10 @@
         <div id="compassWidget">
           <svg id="compassNeedle" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="46" fill="none" stroke="var(--border)" stroke-width="2"/>
-            <text x="50" y="14" text-anchor="middle" font-size="10" fill="var(--text-dim)">Z</text>
+            <text x="50" y="14" text-anchor="middle" font-size="10" fill="var(--text-dim)">N</text>
             <polygon points="50,15 44,55 50,50 56,55" fill="var(--rank)"/>
           </svg>
-          <span style="font-size:10px; color:var(--text-dim);">Zenith Akademiyasının istiqaməti</span>
+          <span style="font-size:10px; color:var(--text-dim);">Nextlevelaz-ın istiqaməti</span>
         </div>
 
         <div class="wl">
@@ -993,7 +993,7 @@
       </div>
 
       <div class="card back spotlight">
-        <div class="eyebrow">Zenith's Academy — Ətraflı</div>
+        <div class="eyebrow">Nextlevelaz — Ətraflı</div>
         <h1>{{ nick }}</h1>
         <div class="rank">{{ rank_emoji }} {{ rank_name }}</div>
         <div class="grid" style="margin-top: 30px;">
@@ -1133,7 +1133,7 @@
     </div>
   </div>
 
-  <footer>zenith's academy · faceit 2v2</footer>
+  <footer>nextlevelaz · faceit 5v5</footer>
 
 <script>
 const MY_ID = "{{ discord_id }}";  // string kimi saxlanır — Discord ID-ləri JS Number-in 2^53 dəqiqlik hüdudunu keçir, ədədə çevrilsə son rəqəmlər korlanar
@@ -1231,7 +1231,7 @@ document.getElementById('downloadBtn').addEventListener('click', async (e) => {
     const target = document.querySelector('.flip-container .card.front');
     const canvas = await window.html2canvas(target, {backgroundColor: null, scale: 2});
     const link = document.createElement('a');
-    link.download = `zenith-${SAFE_NICK.replace(/[^a-z0-9_-]/gi, '_')}.png`;
+    link.download = `nextlevelaz-${SAFE_NICK.replace(/[^a-z0-9_-]/gi, '_')}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   } catch (err) {
@@ -1242,7 +1242,7 @@ document.getElementById('downloadBtn').addEventListener('click', async (e) => {
 // ── Brauzer Bildirişləri (yeni nailiyyət/level dəyişəndə) ───────────────────
 (function setupNotifications() {
   if (!('Notification' in window)) return;
-  const notifKey = 'zenith-notif-peak-' + MY_ID;
+  const notifKey = 'nextlevelaz-notif-peak-' + MY_ID;
   async function checkAndNotify() {
     try {
       const r = await fetch(`/api/profile/${MY_ID}/milestones`);
@@ -1250,7 +1250,7 @@ document.getElementById('downloadBtn').addEventListener('click', async (e) => {
       const lastPeak = parseInt(localStorage.getItem(notifKey) || '0', 10);
       if (m.peak_elo && m.peak_elo > lastPeak) {
         if (lastPeak > 0 && Notification.permission === 'granted') {
-          new Notification('Zenith\'s Academy', {
+          new Notification('Nextlevelaz', {
             body: `Yeni ELO rekordu: ${m.peak_elo}! 🏆`,
             icon: '/static/icon-192.png'
           });
@@ -1281,15 +1281,15 @@ function applyTheme(theme) {
   }
 }
 (function initTheme() {
-  const saved = localStorage.getItem('zenith-theme');
+  const saved = localStorage.getItem('nextlevelaz-theme');
   if (saved) { applyTheme(saved); return; }
   const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
   applyTheme(prefersLight ? 'light' : 'dark');
 })();
 themeToggle.addEventListener('click', () => {
-  const current = localStorage.getItem('zenith-theme') || 'dark';
+  const current = localStorage.getItem('nextlevelaz-theme') || 'dark';
   const next = current === 'dark' ? 'light' : 'dark';
-  localStorage.setItem('zenith-theme', next);
+  localStorage.setItem('nextlevelaz-theme', next);
   applyTheme(next);
 });
 
@@ -1334,7 +1334,7 @@ document.querySelectorAll('a[href]').forEach(a => {
 });
 
 // ── Səs Effektləri (Web Audio API — heç bir fayl lazım deyil) ─────────────
-let soundOn = localStorage.getItem('zenith-sound') !== 'off';
+let soundOn = localStorage.getItem('nextlevelaz-sound') !== 'off';
 const soundToggle = document.getElementById('soundToggle');
 function updateSoundBtn() {
   soundToggle.textContent = soundOn ? '🔊' : '🔇';
@@ -1343,7 +1343,7 @@ function updateSoundBtn() {
 updateSoundBtn();
 soundToggle.addEventListener('click', () => {
   soundOn = !soundOn;
-  localStorage.setItem('zenith-sound', soundOn ? 'on' : 'off');
+  localStorage.setItem('nextlevelaz-sound', soundOn ? 'on' : 'off');
   updateSoundBtn();
   if (soundOn) playTone(660, 0.06);
 });
@@ -1430,14 +1430,14 @@ function applyAccent(rgbStr) {
 colorSwatches.innerHTML = ACCENT_PRESETS.map(p =>
   `<div class="swatch" data-v="${p.value || ''}" title="${p.name}" style="background:${p.value ? 'rgb('+p.value+')' : 'var(--rank)'}"></div>`
 ).join('');
-const savedAccent = localStorage.getItem('zenith-accent');
+const savedAccent = localStorage.getItem('nextlevelaz-accent');
 if (savedAccent) applyAccent(savedAccent);
 colorSwatches.querySelectorAll('.swatch').forEach(sw => {
   if (sw.dataset.v === (savedAccent || '')) sw.classList.add('active');
   sw.addEventListener('click', () => {
     const v = sw.dataset.v || null;
     applyAccent(v);
-    if (v) localStorage.setItem('zenith-accent', v); else localStorage.removeItem('zenith-accent');
+    if (v) localStorage.setItem('nextlevelaz-accent', v); else localStorage.removeItem('nextlevelaz-accent');
     colorSwatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
     sw.classList.add('active');
   });
@@ -1635,7 +1635,7 @@ fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
   const rgb = rankColor.match(/\d+/g) || [138, 92, 230];
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26"><polygon points="13,2 24,13 13,24 2,13" fill="rgba(${rgb[0]},${rgb[1]},${rgb[2]},0.25)" stroke="rgb(${rgb[0]},${rgb[1]},${rgb[2]})" stroke-width="2"/></svg>`;
   cursorImg.src = 'data:image/svg+xml;base64,' + btoa(svg);
-  let enabled = localStorage.getItem('zenith-custom-cursor') === '1';
+  let enabled = localStorage.getItem('nextlevelaz-custom-cursor') === '1';
   function apply() { document.body.classList.toggle('custom-cursor', enabled); }
   apply();
   document.addEventListener('mousemove', (e) => {
@@ -1645,7 +1645,7 @@ fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
   document.getElementById('cursorToggle').addEventListener('click', (e) => {
     e.stopPropagation();
     enabled = !enabled;
-    localStorage.setItem('zenith-custom-cursor', enabled ? '1' : '0');
+    localStorage.setItem('nextlevelaz-custom-cursor', enabled ? '1' : '0');
     apply();
     showToast(enabled ? '🎯 Rütbə kursoru aktiv' : '🎯 Rütbə kursoru bağlandı');
   });
@@ -1655,7 +1655,7 @@ fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
 (function matrixRain() {
   const canvas = document.getElementById('matrixCanvas');
   const ctx = canvas.getContext('2d');
-  let active = localStorage.getItem('zenith-matrix-rain') === '1';
+  let active = localStorage.getItem('nextlevelaz-matrix-rain') === '1';
   let cols = [];
   function resize() {
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -1684,7 +1684,7 @@ fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
   document.getElementById('rainToggle').addEventListener('click', (e) => {
     e.stopPropagation();
     active = !active;
-    localStorage.setItem('zenith-matrix-rain', active ? '1' : '0');
+    localStorage.setItem('nextlevelaz-matrix-rain', active ? '1' : '0');
     apply();
     showToast(active ? '🌧️ Rəqəm yağışı aktiv' : '🌧️ Rəqəm yağışı bağlandı');
   });
@@ -1692,7 +1692,7 @@ fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
 
 // ── Kollektiv Server Ürək Döyüntüsü (saat-sinxron, backend lazım deyil) ────
 (function collectivePulse() {
-  let enabled = localStorage.getItem('zenith-collective-pulse') === '1';
+  let enabled = localStorage.getItem('nextlevelaz-collective-pulse') === '1';
   const scene = document.querySelector('.scene');
   function loop() {
     if (enabled) {
@@ -1708,7 +1708,7 @@ fetch(`/api/profile/${MY_ID}/history`).then(r => r.json()).then(history => {
   document.getElementById('pulseToggle').addEventListener('click', (e) => {
     e.stopPropagation();
     enabled = !enabled;
-    localStorage.setItem('zenith-collective-pulse', enabled ? '1' : '0');
+    localStorage.setItem('nextlevelaz-collective-pulse', enabled ? '1' : '0');
     showToast(enabled ? '💓 Kollektiv nəbz aktiv — bütün ziyarətçilər eyni anı hiss edir' : '💓 Kollektiv nəbz bağlandı');
   });
 })();
@@ -1807,7 +1807,7 @@ document.getElementById('melodyBtn').addEventListener('click', async (e) => {
 
 // ── Xüsusi Klik-Kodu ilə Sirli Giriş ────────────────────────────────────────
 (function clickCodeSecret() {
-  const key = 'zenith-clickcode-' + MY_ID;
+  const key = 'nextlevelaz-clickcode-' + MY_ID;
   let recording = false;
   let sequence = [];
   const card = document.querySelector('.card.front');
@@ -1839,11 +1839,11 @@ document.getElementById('melodyBtn').addEventListener('click', async (e) => {
     const saved = localStorage.getItem(key);
     if (!saved) return;
     const rect = card.getBoundingClientRect();
-    window._zenithClickBuffer = window._zenithClickBuffer || [];
-    window._zenithClickBuffer.push(quadrantOf(e, rect));
-    if (window._zenithClickBuffer.length > 4) window._zenithClickBuffer.shift();
-    if (window._zenithClickBuffer.length === 4 && JSON.stringify(window._zenithClickBuffer) === saved) {
-      window._zenithClickBuffer = [];
+    window._nextlevelazClickBuffer = window._nextlevelazClickBuffer || [];
+    window._nextlevelazClickBuffer.push(quadrantOf(e, rect));
+    if (window._nextlevelazClickBuffer.length > 4) window._nextlevelazClickBuffer.shift();
+    if (window._nextlevelazClickBuffer.length === 4 && JSON.stringify(window._nextlevelazClickBuffer) === saved) {
+      window._nextlevelazClickBuffer = [];
       document.body.classList.add('konami-active');
       showToast('🔓 Sirli giriş aşkarlandı!');
       playTone(660, 0.15, 'triangle');
@@ -2004,7 +2004,7 @@ document.getElementById('shareBtn').addEventListener('click', async (e) => {
   try {
     await navigator.clipboard.writeText(PROFILE_URL);
     showToast('✓ Link kopyalandı!');
-    localStorage.setItem('zenith-onboard-share', '1');
+    localStorage.setItem('nextlevelaz-onboard-share', '1');
     updateOnboardChecklist();
   } catch (err) {
     showToast('❌ Kopyalama uğursuz oldu');
@@ -2084,7 +2084,7 @@ document.getElementById('rivalBtn').addEventListener('click', async () => {
     const pct = total > 0 ? Math.round((MY_ELO / total) * 100) : 50;
     document.getElementById('compareBar').style.width = pct + '%';
     resEl.style.display = 'block';
-    localStorage.setItem('zenith-onboard-rival', '1');
+    localStorage.setItem('nextlevelaz-onboard-rival', '1');
     updateOnboardChecklist();
   } catch (e) {
     errEl.textContent = 'Xəta baş verdi, yenidən cəhd edin.';
@@ -2270,7 +2270,7 @@ fetch(`/api/profile/${MY_ID}/momentum`).then(r => r.json()).then(m => {
   if (!btn) return;
   const track = document.getElementById('rankProgressTrack');
   const skins = ['default', 'skin-neon', 'skin-wave', 'skin-dots'];
-  let idx = skins.indexOf(localStorage.getItem('zenith-progress-skin') || 'default');
+  let idx = skins.indexOf(localStorage.getItem('nextlevelaz-progress-skin') || 'default');
   if (idx < 0) idx = 0;
   function applySkin() {
     skins.forEach(s => track.classList.remove(s));
@@ -2280,18 +2280,18 @@ fetch(`/api/profile/${MY_ID}/momentum`).then(r => r.json()).then(m => {
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     idx = (idx + 1) % skins.length;
-    localStorage.setItem('zenith-progress-skin', skins[idx]);
+    localStorage.setItem('nextlevelaz-progress-skin', skins[idx]);
     applySkin();
   });
 })();
 
 // ── İnteraktiv Onboarding Checklist ─────────────────────────────────────────
-localStorage.setItem('zenith-onboard-profile', '1');
+localStorage.setItem('nextlevelaz-onboard-profile', '1');
 function updateOnboardChecklist() {
   const items = [
-    {key: 'zenith-onboard-profile', el: 'ocProfile', label: 'Profilə bax'},
-    {key: 'zenith-onboard-rival', el: 'ocRival', label: 'Rəqib müqayisə et'},
-    {key: 'zenith-onboard-share', el: 'ocShare', label: 'Profili paylaş'},
+    {key: 'nextlevelaz-onboard-profile', el: 'ocProfile', label: 'Profilə bax'},
+    {key: 'nextlevelaz-onboard-rival', el: 'ocRival', label: 'Rəqib müqayisə et'},
+    {key: 'nextlevelaz-onboard-share', el: 'ocShare', label: 'Profili paylaş'},
   ];
   let doneCount = 0;
   items.forEach(it => {
@@ -2301,13 +2301,13 @@ function updateOnboardChecklist() {
     if (el) { el.textContent = (done ? '✓ ' : '○ ') + it.label; el.classList.toggle('done', done); }
   });
   const widget = document.getElementById('onboardChecklist');
-  if (doneCount === items.length || localStorage.getItem('zenith-onboard-dismissed')) {
+  if (doneCount === items.length || localStorage.getItem('nextlevelaz-onboard-dismissed')) {
     widget.classList.add('hide');
   }
 }
 document.getElementById('ocCloseBtn').addEventListener('click', (e) => {
   e.stopPropagation();
-  localStorage.setItem('zenith-onboard-dismissed', '1');
+  localStorage.setItem('nextlevelaz-onboard-dismissed', '1');
   document.getElementById('onboardChecklist').classList.add('hide');
 });
 updateOnboardChecklist();
@@ -2697,7 +2697,7 @@ document.getElementById('randomRivalBtn').addEventListener('click', async (e) =>
     if (!candidates.length) { showToast('❌ Uyğun rəqib tapılmadı'); return; }
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
     showToast(`🎲 Tapıldı: ${pick.nick} (${pick.elo} ELO)`);
-    localStorage.setItem('zenith-onboard-rival', '1');
+    localStorage.setItem('nextlevelaz-onboard-rival', '1');
     updateOnboardChecklist();
     startLoadingBar();
     triggerShatter(() => { window.location.href = `/compare/${MY_ID}/${pick.discord_id}`; });
@@ -2726,7 +2726,7 @@ document.getElementById('randomRivalBtn').addEventListener('click', async (e) =>
       }
     });
   }
-  const notifKeyBlink = 'zenith-blink-peak-' + MY_ID;
+  const notifKeyBlink = 'nextlevelaz-blink-peak-' + MY_ID;
   setInterval(() => {
     fetch(`/api/profile/${MY_ID}/milestones`).then(r => r.json()).then(m => {
       const lastPeak = parseInt(localStorage.getItem(notifKeyBlink) || '0', 10);
@@ -2746,7 +2746,7 @@ document.getElementById('randomRivalBtn').addEventListener('click', async (e) =>
   const scoreEl = document.getElementById('aimScore');
   const timeEl = document.getElementById('aimTime');
   const bestEl = document.getElementById('aimBest');
-  const bestKey = 'zenith-aim-best';
+  const bestKey = 'nextlevelaz-aim-best';
   let score = 0, timeLeft = 10, target = null, running = false, timerHandle = null;
 
   function updateBest() {

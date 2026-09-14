@@ -54,7 +54,7 @@ def fetch_article_text(url: str):
     return title, "\n".join(parts)
 
 
-NEWS_TRANSLATE_SYSTEM_PROMPT = """Sen Zenith's Academy-nin (Standoff 2 Azərbaycan icması) rəsmi
+NEWS_TRANSLATE_SYSTEM_PROMPT = """Sen Nextlevelaz-nin (Standoff 2 Azərbaycan icması) rəsmi
 xəbər redaktorusan. Sənə Standoff 2 oyununun rəsmi yenilik (patch notes) məqaləsinin İngiliscə
 mətni verilir. Bunu Azərbaycan dilinə tərcümə edib, Discord elanı üçün yığcam, oxunaqlı formada
 YENİDƏN YAZ:

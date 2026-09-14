@@ -449,6 +449,16 @@ def init_db():
         )
     """)
 
+    # ── Ümumi söhbət XP / aktivlik ──────────────────────────────────────────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_activity (
+            discord_id  INTEGER PRIMARY KEY,
+            weekly_xp   INTEGER DEFAULT 0,
+            total_xp    INTEGER DEFAULT 0,
+            last_xp_at  INTEGER DEFAULT 0
+        )
+    """)
+
     # ── Scan results ──────────────────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scan_results (
@@ -737,9 +747,9 @@ RESETTABLE_PLAYER_TABLES = [
     "player_achievements", "player_quest_progress", "daily_challenge_claims",
     "player_titles", "match_predictions", "season_stats", "scan_results",
     "player_tasks", "chat_history", "inventory", "match_history", "squads",
-    "skin_inventory", "coin_logs", "active_boosts", "player_bp_missions",
-    "battle_pass", "referral_invites", "referrals", "active_match",
-    "players_5v5", "matchmaking_queue_5v5",
+    "skin_inventory", "coin_logs", "active_boosts",
+    "referral_invites", "referrals", "active_match",
+    "players_5v5", "matchmaking_queue_5v5", "matchmaking_queue", "chat_activity",
 ]
 
 
@@ -6103,4 +6113,71 @@ def get_moderation_summary(days=30):
         "suspicious_flags": len(flagged),
         "suspicious_players": flagged[:10],
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ÜMUMI SÖHBƏT XP / HƏFTƏLİK AKTİVLİK LÖVHƏSİ
+# ═══════════════════════════════════════════════════════════════════════════════
+
+CHAT_XP_PER_MESSAGE = 5
+CHAT_XP_COOLDOWN_SECONDS = 30  # spam-la XP fermalaşdırmanın qarşısını almaq üçün
+
+
+def add_chat_xp(discord_id, amount=CHAT_XP_PER_MESSAGE, cooldown_seconds=CHAT_XP_COOLDOWN_SECONDS):
+    """Cooldown bitibsə XP verir və True qaytarır; hələ cooldown-dadırsa heç nə etmir,
+    False qaytarır (spam-la XP fermalaşdırmanın qarşısını almaq üçün)."""
+    import time
+    now = int(time.time())
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT last_xp_at FROM chat_activity WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if row and now - row[0] < cooldown_seconds:
+        conn.close()
+        return False
+    if row:
+        cursor.execute(
+            "UPDATE chat_activity SET weekly_xp = weekly_xp + ?, total_xp = total_xp + ?, last_xp_at = ? "
+            "WHERE discord_id = ?",
+            (amount, amount, now, discord_id)
+        )
+    else:
+        cursor.execute(
+            "INSERT INTO chat_activity (discord_id, weekly_xp, total_xp, last_xp_at) VALUES (?,?,?,?)",
+            (discord_id, amount, amount, now)
+        )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_chat_leaderboard(limit=10):
+    """Cari həftənin XP-sinə görə sıralanmış aktivlik lövhəsi. [{"discord_id","nick","weekly_xp"}, ...]"""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT ca.discord_id, p.so2_nick, ca.weekly_xp FROM chat_activity ca "
+        "JOIN players p ON p.discord_id = ca.discord_id "
+        "WHERE ca.weekly_xp > 0 ORDER BY ca.weekly_xp DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"discord_id": r[0], "nick": r[1], "weekly_xp": r[2]} for r in rows]
+
+
+def get_top_chat_activity():
+    """Bu həftənin ən aktiv üzvünü qaytarır (yoxdursa None) — Bazar elanı üçün."""
+    top = get_chat_leaderboard(limit=1)
+    return top[0] if top else None
+
+
+def reset_weekly_chat_xp():
+    """Hər Bazar gecəsi elandan sonra çağırılır — həftəlik sayğacı sıfırlayır, `total_xp`
+    (bütün-zamanlar) toxunulmaz qalır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE chat_activity SET weekly_xp = 0")
+    conn.commit()
+    conn.close()
 

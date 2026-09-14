@@ -113,8 +113,8 @@ def index():
 @app.route("/manifest.json")
 def manifest():
     return jsonify({
-        "name": "Zenith's Academy",
-        "short_name": "Zenith",
+        "name": "Nextlevelaz",
+        "short_name": "Nextlevelaz",
         "description": "Standoff 2 FACEIT 2v2 leaderboard və profil paneli",
         "start_url": "/",
         "display": "standalone",
@@ -135,7 +135,7 @@ def offline_page():
 @app.route("/sw.js")
 def service_worker():
     js = (
-        "const CACHE = 'zenith-v2';\n"
+        "const CACHE = 'nextlevelaz-v1';\n"
         "const OFFLINE_URL = '/offline';\n"
         "self.addEventListener('install', e => {\n"
         "  self.skipWaiting();\n"

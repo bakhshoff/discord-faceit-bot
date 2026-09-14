@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Zenith's Academy Leaderboard</title>
+<title>Nextlevelaz Leaderboard</title>
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#8a5ce6">
 <style>
@@ -697,7 +697,7 @@
 
 <header>
   <div class="eyebrow">Standoff 2 · Competitive</div>
-  <h1>Zenith's Academy Leaderboard</h1>
+  <h1>Nextlevelaz Leaderboard</h1>
   <p class="subtitle" id="subtitleText"></p>
   <div class="mode-toggle">
     <a href="/?mode=2v2" class="mode-toggle-btn{{ ' active' if mode == '2v2' else '' }}">🏆 2v2</a>
@@ -781,7 +781,7 @@
   </div>
 
   <footer>
-    <span class="refresh-dot"></span>Avtomatik yenilənir — 30 saniyədə bir &middot; Zenith's Academy
+    <span class="refresh-dot"></span>Avtomatik yenilənir — 30 saniyədə bir &middot; Nextlevelaz
   </footer>
 </div>
 
@@ -926,7 +926,7 @@ document.addEventListener('click', (e) => {
 });
 
 // ── Səs Effektləri ───────────────────────────────────────────────────────────
-let soundOn = localStorage.getItem('zenith-sound') !== 'off';
+let soundOn = localStorage.getItem('nextlevelaz-sound') !== 'off';
 const soundToggleEl = document.getElementById('soundToggle');
 function updateSoundBtn() {
   soundToggleEl.textContent = soundOn ? '🔊' : '🔇';
@@ -935,7 +935,7 @@ function updateSoundBtn() {
 updateSoundBtn();
 soundToggleEl.addEventListener('click', () => {
   soundOn = !soundOn;
-  localStorage.setItem('zenith-sound', soundOn ? 'on' : 'off');
+  localStorage.setItem('nextlevelaz-sound', soundOn ? 'on' : 'off');
   updateSoundBtn();
   if (soundOn) playTone(660, 0.06);
 });
@@ -1040,7 +1040,7 @@ const COLUMN_DEFS = {
 };
 let columnOrder = [];
 try {
-  const saved = JSON.parse(localStorage.getItem('zenith-col-order') || 'null');
+  const saved = JSON.parse(localStorage.getItem('nextlevelaz-col-order') || 'null');
   columnOrder = (saved && saved.every(k => COLUMN_DEFS[k])) ? saved : Object.keys(COLUMN_DEFS);
 } catch (e) { columnOrder = Object.keys(COLUMN_DEFS); }
 
@@ -1068,7 +1068,7 @@ function renderTableHead() {
       const to = columnOrder.indexOf(targetKey);
       columnOrder.splice(from, 1);
       columnOrder.splice(to, 0, dragSrcKey);
-      localStorage.setItem('zenith-col-order', JSON.stringify(columnOrder));
+      localStorage.setItem('nextlevelaz-col-order', JSON.stringify(columnOrder));
       renderTableHead();
       render();
     });

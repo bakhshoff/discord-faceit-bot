@@ -13,10 +13,10 @@ client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 HISTORY_LIMIT = 20
 MODEL = "groq/compound-mini"  # "llama-3.3-70b-versatile" Groq tərəfindən silinib (404 model_not_found)
 
-SYSTEM_PROMPT = """Sen Zenith's Academy-nin Discord botusun. Standoff 2 mobile oyunu üzrə turnirləri idarə edirsən.
+SYSTEM_PROMPT = """Sen Nextlevelaz-nin Discord botusun. Standoff 2 mobile oyunu üzrə turnirləri idarə edirsən.
 
 Cəmiyyət haqqında:
-- Zenith's Academy — Azərbaycanlı Standoff 2 oyunçularının toplumu
+- Nextlevelaz — Azərbaycanlı Standoff 2 oyunçularının toplumu
 - ELO sistemi, 1v1 və 5v5 turnir matçları keçirilir
 - Oyunçular coin qazanır, market vasitəsilə bannerlər, çərçivələr, skinlər ala bilər
 - 2500 coin = 0.5 AZN olaraq çevrilə bilər
@@ -133,7 +133,7 @@ def ask_groq(discord_id: int, username: str, user_message: str, player_data=None
     return reply
 
 
-COACH_SYSTEM_PROMPT = """Sen Zenith's Academy-nin Standoff 2 oyun köməkçisisən.
+COACH_SYSTEM_PROMPT = """Sen Nextlevelaz-nin Standoff 2 oyun köməkçisisən.
 Oyunçuya bir matçdan sonra qısa, konkret, 1-2 cümləlik məsləhət ver.
 Azərbaycan dilində yaz. Emoji istifadə etmə. Ümumi sözlər yox, verilən
 statistikaya əsaslanan konkret müşahidə et (məs. çox ölüb az kill edibsə,
@@ -168,8 +168,8 @@ def generate_match_coach_tip(nick, kills, assists, deaths, elo_before, elo_after
         return None
 
 
-NEWS_SYSTEM_PROMPT = """Sen Zenith's Academy-nin (Standoff 2 Azərbaycan icması) rəsmi
-"Zenith Xəbərləri" bülleteni yazarısan. Verilmiş gündəlik statistikaya əsasən,
+NEWS_SYSTEM_PROMPT = """Sen Nextlevelaz-nin (Standoff 2 Azərbaycan icması) rəsmi
+"Nextlevelaz Xəbərləri" bülleteni yazarısan. Verilmiş gündəlik statistikaya əsasən,
 real idman jurnalisti üslubunda, canlı və maraqlı bir paraqraf (3-5 cümlə) yaz.
 Azərbaycan dilində yaz. Emoji istifadə etmə. Quru rəqəm sadalama yox, hekayə kimi yaz."""
 
@@ -201,13 +201,13 @@ def generate_daily_news(stats: dict) -> str:
         return None
 
 
-INTEL_SYSTEM_PROMPT = """Sen Zenith's Academy-nin Standoff 2 taktiki köməkçisisən.
+INTEL_SYSTEM_PROMPT = """Sen Nextlevelaz-nin Standoff 2 taktiki köməkçisisən.
 Oyunçuya matç başlamazdan əvvəl, rəqib komandanın seçilmiş xəritədəki tarixi
 performansına əsasən, 1-2 cümləlik qısa "kəşfiyyat" qeydi ver. Azərbaycan dilində
 yaz. Emoji istifadə etmə. Konkret və taktiki ol, ümumi sözlər yazma."""
 
 
-PERSONAL_COACH_SYSTEM_PROMPT = """Sen Zenith's Academy-nin Standoff 2 şəxsi analitik köməkçisisən.
+PERSONAL_COACH_SYSTEM_PROMPT = """Sen Nextlevelaz-nin Standoff 2 şəxsi analitik köməkçisisən.
 Oyunçunun son matçlar üzrə ÜMUMİ statistikasına əsaslanaraq 3-4 cümləlik konkret analiz və
 inkişaf tövsiyəsi ver. Azərbaycan dilində yaz. Emoji istifadə etmə. Ümumi klişe məsləhətlər
 yox — verilən rəqəmlərə (K/D, qələbə faizi, ELO trendi) əsaslanan konkret müşahidə et."""

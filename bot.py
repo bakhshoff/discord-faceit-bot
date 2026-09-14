@@ -96,6 +96,7 @@ from database import (
     start_tournament, record_tournament_match_winner, get_tournament_match, get_tournament_bracket,
     get_tournament_team_members, get_open_tournament_matches, cancel_tournament,
     set_tournament_meta, set_tournament_match_message,
+    add_chat_xp, get_chat_leaderboard, get_top_chat_activity, reset_weekly_chat_xp,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_match_coach_tip, generate_daily_news, generate_intel_briefing, generate_personal_coach_report
@@ -119,7 +120,7 @@ from visual_cards import (
     generate_activity_card, generate_elo_chart_card, generate_quest_card, generate_synergy_card,
     generate_elo_cards_market_card, generate_monthly_reward_card, generate_weekly_mvp_card,
     generate_boss_event_card, generate_map_masters_card,
-    generate_announcement_card, generate_sticker_card,
+    generate_announcement_card, generate_sticker_card, generate_chat_activity_card,
     RANKS, get_rank
 )
 from sticker_config import STICKER_ITEMS, get_sticker_by_achievement, get_sticker_by_id
@@ -208,9 +209,9 @@ DOUBLE_XP_DURATION_MINUTES = 60
 
 SOCIAL_CHANNEL_ID = 1529227720939012229
 SOCIAL_LINKS = {
-    "youtube": "https://www.youtube.com/@zenithst2",
-    "tiktok": "https://www.tiktok.com/@zenithst2",
-    "discord": "https://discord.com/invite/5uTvVKejG7",
+    "youtube": "https://www.youtube.com/@nextlevelaze",
+    "tiktok": "https://www.tiktok.com/@nextlevelaz",
+    "discord": "https://discord.gg/nextlevelaz",
     "shop": "https://zenithshop.up.railway.app/",
 }
 
@@ -511,7 +512,7 @@ async def _post_wall_announcement(guild, discord_id, nick, name, icon, kind):
         description=f"<@{discord_id}> (**{nick}**) — **{name}** {kind}ini qazandı!",
         color=discord.Color.gold()
     )
-    embed.set_footer(text="Zenith's Academy")
+    embed.set_footer(text="Nextlevelaz")
     try:
         await channel.send(embed=embed)
     except discord.HTTPException:
@@ -779,7 +780,7 @@ async def anniversary_check_loop():
                 try:
                     await member.send(
                         f"🎉 **{entry['years']} illik ildönümün mübarək, {entry['nick']}!** "
-                        "Zenith's Academy icmasına qoşulmağının üstündən düz bu qədər vaxt keçdi. "
+                        "Nextlevelaz icmasına qoşulmağının üstündən düz bu qədər vaxt keçdi. "
                         "Uğurların davam etsin! 🏆"
                     )
                 except discord.Forbidden:
@@ -949,7 +950,7 @@ async def standoff2_news_loop():
             color=discord.Color.from_rgb(138, 92, 230),
             url=article["url"]
         )
-        embed.set_footer(text="Mənbə: help.standoff2.com — Zenith's Academy avtomatik tərcümə")
+        embed.set_footer(text="Mənbə: help.standoff2.com — Nextlevelaz avtomatik tərcümə")
         try:
             await channel.send(embed=embed)
         except discord.HTTPException as e:
@@ -1018,7 +1019,7 @@ async def weekly_summary_dm_loop():
                     f"Bu həftə **{recap['matches']}** matç oynadınız: **{recap['wins']}Q / {recap['losses']}M**\n"
                     f"ELO dəyişimi: **{'+' if recap['elo_change'] >= 0 else ''}{recap['elo_change']}**\n"
                     f"Qazanılan coin: **{recap['coins_earned']}**\n\n"
-                    "Zenith's Academy-də növbəti həftə uğurlar! 🎮"
+                    "Nextlevelaz-də növbəti həftə uğurlar! 🎮"
                 ),
                 color=discord.Color.from_rgb(138, 92, 230)
             )
@@ -1115,7 +1116,7 @@ async def _send_coach_dm(guild, discord_id, nick, s, old_elo, new_elo, won, matc
         ),
         color=discord.Color.blurple()
     )
-    embed.set_footer(text="Zenith's Academy")
+    embed.set_footer(text="Nextlevelaz")
     try:
         await member.send(embed=embed)
     except discord.Forbidden:
@@ -1212,7 +1213,7 @@ async def _send_intel_briefing(guild, discord_id, nick, opponent_team, selected_
         description=briefing,
         color=discord.Color.dark_teal()
     )
-    embed.set_footer(text="Zenith's Academy")
+    embed.set_footer(text="Nextlevelaz")
     try:
         briefing_msg = await member.send(embed=embed)
         _intel_briefing_message_ids.add(briefing_msg.id)
@@ -1289,7 +1290,7 @@ async def _update_live_board_message(change_note=None):
         return
     lines = [f"{i+1}. **{r[0]}** — {r[2]} ELO ({r[3]}Q/{r[4]}M)" for i, r in enumerate(rows)]
     content = (
-        "🏆 **Zenith's Academy FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+        "🏆 **Nextlevelaz FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
         "(bu şəkil Top-20-ni göstərir).\n"
         f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}\n\n"
         "📊 **Top 10 (canlı):**\n" + "\n".join(lines)
@@ -1337,7 +1338,7 @@ async def _update_live_board_message_5v5(change_note=None):
         return
     lines = [f"{i+1}. **{r[0]}** — {r[2]} ELO ({r[3]}Q/{r[4]}M)" for i, r in enumerate(rows)]
     content = (
-        "🎯 **Zenith's Academy FACEIT 5v5 Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+        "🎯 **Nextlevelaz FACEIT 5v5 Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
         "(bu şəkil Top-20-ni göstərir).\n"
         f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}\n\n"
         "📊 **Top 10 (canlı):**\n" + "\n".join(lines)
@@ -1401,7 +1402,7 @@ async def check_giveaways():
                     description=f"**Mükafat:** {mukafat}\n\n❌ Heç kim 🎉 reaksiyası vermədi, qalib təyin olunmadı.",
                     color=discord.Color.red()
                 )
-                no_winner_embed.set_footer(text="Zenith's Academy")
+                no_winner_embed.set_footer(text="Nextlevelaz")
                 try:
                     await message.edit(embed=no_winner_embed)
                 except discord.HTTPException:
@@ -1417,7 +1418,7 @@ async def check_giveaways():
             description=f"**Mükafat:** {mukafat}\n\n🏆 Qalib: {winner_mention}\n\nTəbriklər!",
             color=discord.Color.green()
         )
-        final_embed.set_footer(text="Zenith's Academy")
+        final_embed.set_footer(text="Nextlevelaz")
         try:
             await message.edit(embed=final_embed)
         except discord.HTTPException:
@@ -1651,11 +1652,11 @@ async def daily_report_loop():
             news_text = await asyncio.to_thread(generate_daily_news, stats)
             if news_text:
                 news_embed = discord.Embed(
-                    title="📰 Zenith Xəbərləri",
+                    title="📰 Nextlevelaz Xəbərləri",
                     description=news_text,
                     color=discord.Color.from_rgb(138, 92, 230)
                 )
-                news_embed.set_footer(text="Zenith's Academy")
+                news_embed.set_footer(text="Nextlevelaz")
                 await log_channel.send(embed=news_embed)
 
             # ── Günün Ortaq Çağırışı (bu gün üçün) ──────────────────────────
@@ -1742,7 +1743,7 @@ async def daily_report_loop():
                     improved = get_most_improved_player(month_start_ts, month_end_ts)
                     most_active = get_month_most_active(month_start_ts, month_end_ts)
                     awards_embed = discord.Embed(
-                        title="🏆 Zenith Mükafatları",
+                        title="🏆 Nextlevelaz Mükafatları",
                         description=f"Keçən ayın ({ended_az_date.strftime('%m.%Y')}) mükafatları:",
                         color=discord.Color.from_rgb(138, 92, 230)
                     )
@@ -1821,15 +1822,15 @@ class SocialLinksView(discord.ui.View):
         self.add_item(discord.ui.Button(label="YouTube", emoji="▶️", style=discord.ButtonStyle.link, url=SOCIAL_LINKS["youtube"]))
         self.add_item(discord.ui.Button(label="TikTok", emoji="🎵", style=discord.ButtonStyle.link, url=SOCIAL_LINKS["tiktok"]))
         self.add_item(discord.ui.Button(label="Discord", emoji="💬", style=discord.ButtonStyle.link, url=SOCIAL_LINKS["discord"]))
-        self.add_item(discord.ui.Button(label="ZenithShop", emoji="🛒", style=discord.ButtonStyle.link, url=SOCIAL_LINKS["shop"]))
+        self.add_item(discord.ui.Button(label="NextlevelazShop", emoji="🛒", style=discord.ButtonStyle.link, url=SOCIAL_LINKS["shop"]))
 
 
 SOCIAL_REMINDER_TEXTS = [
-    "Zenith's Academy icmasının bir hissəsi olduğunuz üçün təşəkkürlər! Bizi sosial mediada da izləyin ki, "
+    "Nextlevelaz icmasının bir hissəsi olduğunuz üçün təşəkkürlər! Bizi sosial mediada da izləyin ki, "
     "turnir elanlarını, canlı yayımları və xüsusi endirimləri qaçırmayasınız.",
     "Bilirdinizmi? Bizim YouTube və TikTok hesablarımızda ən gözəl anlar, matç xülasələri və məsləhətlər paylaşılır. "
     "Bir kliklə izləyin, geridə qalmayın!",
-    "ZenithShop-da xüsusi əşyalar sizi gözləyir! Aşağıdakı düymələrdən bizim bütün platformalarımıza baş çəkə bilərsiniz.",
+    "NextlevelazShop-da xüsusi əşyalar sizi gözləyir! Aşağıdakı düymələrdən bizim bütün platformalarımıza baş çəkə bilərsiniz.",
 ]
 _social_index = 0
 
@@ -1856,15 +1857,15 @@ async def social_reminder_loop():
     _social_index += 1
 
     embed = discord.Embed(
-        title="📢 Zenith's Academy — Bizi izləyin!",
+        title="📢 Nextlevelaz — Bizi izləyin!",
         description=text,
         color=discord.Color.from_rgb(138, 92, 230)
     )
     embed.add_field(name="▶️ YouTube", value=SOCIAL_LINKS["youtube"], inline=False)
     embed.add_field(name="🎵 TikTok", value=SOCIAL_LINKS["tiktok"], inline=False)
     embed.add_field(name="💬 Discord", value=SOCIAL_LINKS["discord"], inline=False)
-    embed.add_field(name="🛒 ZenithShop", value=SOCIAL_LINKS["shop"], inline=False)
-    embed.set_footer(text="Zenith's Academy")
+    embed.add_field(name="🛒 NextlevelazShop", value=SOCIAL_LINKS["shop"], inline=False)
+    embed.set_footer(text="Nextlevelaz")
     if os.path.exists(LOGO_PATH):
         try:
             file = discord.File(LOGO_PATH, filename="logo.jpg")
@@ -3638,7 +3639,7 @@ async def _start_one_match(channel, guild) -> bool:
             value=f"**{captain_b['nick']}**\n<@{captain_b['discord_id']}> · `{captain_b['discord_id']}`",
             inline=True
         )
-        announce_embed.set_footer(text="Zenith's Academy")
+        announce_embed.set_footer(text="Nextlevelaz")
         try:
             await social_channel.send(embed=announce_embed)
         except discord.Forbidden:
@@ -3799,7 +3800,7 @@ async def _start_one_5v5_match(channel, guild) -> bool:
             value=f"**{captain_b['nick']}**\n<@{captain_b['discord_id']}> · `{captain_b['discord_id']}`",
             inline=True
         )
-        announce_embed.set_footer(text="Zenith's Academy — 5v5")
+        announce_embed.set_footer(text="Nextlevelaz — 5v5")
         try:
             await social_channel.send(embed=announce_embed)
         except discord.Forbidden:
@@ -4059,6 +4060,7 @@ async def on_ready():
     global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5, leaderboard_message_id_5v5
     global leaderboard_channel_id, leaderboard_message_id
     global tournament_signup_channel_id, tournament_bracket_channel_id
+    global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     init_db()
 
     if not get_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}"):
@@ -4114,6 +4116,15 @@ async def on_ready():
     saved_tourn_bracket = get_meta("tournament_bracket_channel_id")
     if saved_tourn_bracket:
         tournament_bracket_channel_id = int(saved_tourn_bracket)
+    saved_chat_xp = get_meta("chat_xp_channel_id")
+    if saved_chat_xp:
+        CHAT_XP_CHANNEL_ID = int(saved_chat_xp)
+    saved_chat_lb = get_meta("chat_activity_channel_id")
+    if saved_chat_lb:
+        chat_activity_channel_id = int(saved_chat_lb)
+    saved_chat_lb_msg = get_meta("chat_activity_message_id")
+    if saved_chat_lb_msg:
+        chat_activity_message_id = int(saved_chat_lb_msg)
     saved_reward = get_meta("reward_channel_id")
     if saved_reward:
         REWARD_CHANNEL_ID = int(saved_reward)
@@ -4183,6 +4194,10 @@ async def on_ready():
         weekly_mvp_loop.start()
     if not season_rotation_loop.is_running():
         season_rotation_loop.start()
+    if not refresh_chat_activity_leaderboard.is_running():
+        refresh_chat_activity_leaderboard.start()
+    if not weekly_chat_activity_loop.is_running():
+        weekly_chat_activity_loop.start()
     if not refresh_leaderboard.is_running():
         refresh_leaderboard.start()
     if not refresh_leaderboard_5v5.is_running():
@@ -4259,7 +4274,7 @@ class OnboardingTourView(discord.ui.View):
             description=s["description"].format(name=self.member_name, guild=self.guild_name),
             color=discord.Color.from_rgb(138, 92, 230)
         )
-        embed.set_footer(text=f"Zenith's Academy · Addım {self.step + 1}/{len(ONBOARDING_STEPS)}")
+        embed.set_footer(text=f"Nextlevelaz · Addım {self.step + 1}/{len(ONBOARDING_STEPS)}")
         return embed
 
     @discord.ui.button(label="Növbəti →", style=discord.ButtonStyle.primary)
@@ -4293,6 +4308,16 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         start = _voice_session_start.pop(member.id, None)
         if start:
             add_voice_seconds(member.id, now - start)
+
+
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+    if CHAT_XP_CHANNEL_ID and message.channel.id == CHAT_XP_CHANNEL_ID:
+        add_chat_xp(message.author.id)
+    # Bu bot yalnız slash (app_commands) komandaları istifadə edir, prefiks-komanda
+    # emalı (process_commands) lazım deyil — ona görə burada əlavə çağırış edilmir.
 
 
 class ConvertCoinsView(discord.ui.View):
@@ -4765,7 +4790,7 @@ class SocialMenuView(_ProfileSubMenuBase):
 
 
 class NicknameModal(discord.ui.Modal, title="Ad Dəyiş"):
-    yeni_ad = discord.ui.TextInput(label="Yeni Standoff 2 nickiniz", placeholder="məs: ZenithPro", max_length=32, min_length=2)
+    yeni_ad = discord.ui.TextInput(label="Yeni Standoff 2 nickiniz", placeholder="məs: NextlevelazPro", max_length=32, min_length=2)
 
     def __init__(self, discord_id):
         super().__init__()
@@ -5017,7 +5042,7 @@ async def _post_leaderboard(channel):
 
     message = await channel.send(
         content=(
-            "🏆 **Zenith's Academy FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+            "🏆 **Nextlevelaz FACEIT Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
             "(bu şəkil Top-20-ni göstərir).\n"
             f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}"
         ),
@@ -5047,7 +5072,7 @@ async def _post_leaderboard_5v5(channel):
 
     message = await channel.send(
         content=(
-            "🎯 **Zenith's Academy FACEIT 5v5 Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
+            "🎯 **Nextlevelaz FACEIT 5v5 Leaderboard** — hər 60 saniyədə avtomatik yenilənir "
             "(bu şəkil Top-20-ni göstərir).\n"
             f"🌐 Bütün oyunçuların tam, axtarışlı siyahısı üçün vebsaytımıza baxın: {PUBLIC_WEB_URL}"
         ),
@@ -5062,6 +5087,95 @@ async def _post_leaderboard_5v5(channel):
 
     if not refresh_leaderboard_5v5.is_running():
         refresh_leaderboard_5v5.start()
+
+
+CHAT_ACTIVITY_IMAGE_PATH = "chat_activity.png"
+CHAT_XP_CHANNEL_ID = None
+chat_activity_channel_id = None
+chat_activity_message_id = None
+
+
+async def _post_chat_activity_leaderboard(channel):
+    global chat_activity_channel_id, chat_activity_message_id
+    rows = get_chat_leaderboard(20)
+    await asyncio.to_thread(generate_chat_activity_card, rows, CHAT_ACTIVITY_IMAGE_PATH)
+
+    message = await channel.send(
+        content="💬 **Həftəlik Aktivlik Lövhəsi** — hər 60 saniyədə avtomatik yenilənir.",
+        file=discord.File(CHAT_ACTIVITY_IMAGE_PATH, filename="chat_activity.png"),
+    )
+    chat_activity_channel_id = channel.id
+    chat_activity_message_id = message.id
+    set_meta("chat_activity_channel_id", str(channel.id))
+    set_meta("chat_activity_message_id", str(message.id))
+    try:
+        pins = await channel.pins()
+        for old in pins:
+            if old.author.id == bot.user.id:
+                await old.unpin()
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+    try:
+        await message.pin()
+    except (discord.Forbidden, discord.HTTPException):
+        pass
+
+    if not refresh_chat_activity_leaderboard.is_running():
+        refresh_chat_activity_leaderboard.start()
+
+
+@tasks.loop(seconds=60)
+async def refresh_chat_activity_leaderboard():
+    if chat_activity_channel_id is None or chat_activity_message_id is None:
+        return
+    channel = bot.get_channel(chat_activity_channel_id)
+    if channel is None:
+        return
+    rows = get_chat_leaderboard(20)
+    await asyncio.to_thread(generate_chat_activity_card, rows, CHAT_ACTIVITY_IMAGE_PATH)
+    try:
+        message = await channel.fetch_message(chat_activity_message_id)
+        await message.edit(attachments=[discord.File(CHAT_ACTIVITY_IMAGE_PATH, filename="chat_activity.png")])
+    except (discord.NotFound, discord.HTTPException):
+        pass
+
+
+_last_chat_activity_sunday = None
+
+
+@tasks.loop(minutes=5)
+async def weekly_chat_activity_loop():
+    """Hər Bazar günü (AZ vaxtı, weekday()==6) saat 23:00-23:59 aralığında bir dəfə işə düşür
+    (5 dəqiqəlik interval, dəqiq 23:59-u qaçırmamaq üçün tam saatlıq pəncərə yoxlanılır).
+    Bayraq DB-də saxlanılır (bax: season_rotation_loop-dakı eyni izah) ki, bot həmin saat
+    aralığında bir neçə dəfə restart olsa belə, elan TƏKRARLANMASIN."""
+    global _last_chat_activity_sunday
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+    if now.weekday() != 6 or now.hour != 23:
+        return
+    today_key = now.strftime("%Y-%m-%d")
+    if _last_chat_activity_sunday == today_key:
+        return
+    if get_meta("last_chat_activity_announce") == today_key:
+        _last_chat_activity_sunday = today_key
+        return
+    _last_chat_activity_sunday = today_key
+    set_meta("last_chat_activity_announce", today_key)
+
+    top = get_top_chat_activity()
+    channel = bot.get_channel(CHAT_XP_CHANNEL_ID) if CHAT_XP_CHANNEL_ID else None
+    if top and channel:
+        embed = discord.Embed(
+            title="🏆 Həftənin Ən Aktivi!",
+            description=(f"<@{top['discord_id']}> (**{top['nick']}**) bu həftə **{top['weekly_xp']} XP** "
+                         "qazanaraq ən aktiv üzv oldu! 🎉"),
+            color=discord.Color.gold()
+        )
+        await channel.send(embed=embed)
+
+    reset_weekly_chat_xp()
+    if chat_activity_channel_id and chat_activity_message_id:
+        await refresh_chat_activity_leaderboard()
 
 
 async def _post_register(channel):
@@ -5221,6 +5335,8 @@ async def full_setup(interaction: discord.Interaction):
     ch_boss = await _recreate_text("boss-event", category_general, announce_overwrites)
     ch_masters = await _recreate_text("xerite-ustalari", category_general, announce_overwrites)
     ch_news = await _recreate_text("standoff2-yenilikleri", category_general, announce_overwrites)
+    ch_chat_xp = await _recreate_text("umumi-sohbet", category_general)
+    ch_chat_lb = await _recreate_text("aktivlik-lovhesi", category_general, announce_overwrites)
 
     # ── 2v2 ──────────────────────────────────────────────────────────────────
     ch_matchmaking = await _recreate_text("matchmaking", category_2v2, announce_overwrites)
@@ -5282,6 +5398,11 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("tournament_signup_channel_id", ch_tournament_signup.id)
     tournament_bracket_channel_id = ch_tournament_bracket.id
     set_meta("tournament_bracket_channel_id", ch_tournament_bracket.id)
+    global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
+    CHAT_XP_CHANNEL_ID = ch_chat_xp.id
+    set_meta("chat_xp_channel_id", ch_chat_xp.id)
+    chat_activity_channel_id = ch_chat_lb.id
+    set_meta("chat_activity_channel_id", ch_chat_lb.id)
     await _progress_step(progress_msg, 3, 5, "İcazələr və köhnə kanallar təmizlənir...")
 
     await _post_register(ch_register)
@@ -5317,6 +5438,11 @@ async def full_setup(interaction: discord.Interaction):
         "🗂️ **Turnir Cədvəli** — aktiv turnirin canlı bracket şəkli və hər matçın nəticə düymələri "
         "burada göstəriləcək."
     )
+    await ch_chat_xp.send(
+        "💬 **Ümumi Söhbət** — burada yazdığın hər mesaja görə XP qazanırsan! "
+        f"Hər Bazar günü saat 23:59 həftənin ən aktivi elan olunacaq. Lövhə: {ch_chat_lb.mention}"
+    )
+    await _post_chat_activity_leaderboard(ch_chat_lb)
     await _progress_step(progress_msg, 4, 5, "Tanıtım mesajları göndərilir...")
     await _progress_step(progress_msg, 5, 5, "Tamamlandı!")
 
@@ -5448,7 +5574,7 @@ async def giveaway_create(
                     + (f"\n\n{mode_line}" if mode_line else ""),
         color=discord.Color.from_rgb(138, 92, 230)
     )
-    embed.set_footer(text="Zenith's Academy")
+    embed.set_footer(text="Nextlevelaz")
 
     message = await elan_kanal.send(embed=embed)
     await message.add_reaction("🎉")
@@ -6448,7 +6574,7 @@ async def _render_market(interaction: discord.Interaction, discord_id: int):
     balance = get_coins(discord_id)
     azn_balance = get_zm_balance(discord_id)
     embed = discord.Embed(
-        title="🛒 Zenith's Academy Market",
+        title="🛒 Nextlevelaz Market",
         description=f"Balansınız: **{balance} coin**\n💵 **{azn_balance:.2f} AZN**\n\nBir kataqoriya seçin:",
         color=discord.Color.from_rgb(138, 92, 230)
     )
@@ -6590,7 +6716,7 @@ async def _post_pass_showcase(channel):
     embed = discord.Embed(
         title=f"🎫 Battle Pass — {BP_SEASON_NAME} ({BP_SEASON_NAME_AZ})",
         description=(
-            f"Zenith's Academy-nin yeni sezonu **{BP_SEASON_NAME} ({BP_SEASON_NAME_AZ})** başladı!\n\n"
+            f"Nextlevelaz-nin yeni sezonu **{BP_SEASON_NAME} ({BP_SEASON_NAME_AZ})** başladı!\n\n"
             "Matç oynayaraq, qazanaraq və missiyaları tamamlayaraq XP toplayın, Level artırın "
             "və **35 levelə qədər** mükafatlar qazanın.\n\n"
             f"🆓 **FREE Pass** — hər leveldə coin, milestone-larda (5-35) ELO kartları\n"
@@ -7954,7 +8080,7 @@ PANEL_CATEGORIES = {
             ("📡 Bot statusu", "Botun Discord statusu canlı oyunçu/matç rəqəmləri ilə növbələnir"),
             ("🌟 Qızıl Matç", f"Hər yeni matç ~{int(GOLDEN_MATCH_CHANCE*100)}% ehtimalla 2x ELO/Coin \"Qızıl Matç\" ola bilər"),
             ("🔥 Sürpriz Aşkarlayıcı", "Böyük ELO fərqi ilə qazanılan matçlar avtomatik xüsusi elanla qeyd olunur"),
-            ("🏆 Zenith Mükafatları", "Hər ayın 1-də keçən ayın MVP-si, ən inkişaf edəni və ən aktivi elan olunur"),
+            ("🏆 Nextlevelaz Mükafatları", "Hər ayın 1-də keçən ayın MVP-si, ən inkişaf edəni və ən aktivi elan olunur"),
             ("⚡ İldırım Turu", f"Təsadüfi olaraq {LIGHTNING_ROUND_DURATION_MINUTES} dəqiqəlik əlavə 2x ELO/Coin dövrü elan oluna bilər"),
             ("🎫 Double XP Saatı", f"Təsadüfi olaraq {DOUBLE_XP_DURATION_MINUTES} dəqiqəlik 2x Battle Pass XP dövrü elan oluna bilər"),
             ("🎮 Matç Başlama Elanı", "Hər yeni matçda kapitanların adı/ID-si elan kanalına avtomatik göndərilir — lobbi tez qurulsun deyə"),
@@ -8001,7 +8127,7 @@ PANEL_CATEGORIES = {
             ("/rank_rollari_qur", "ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir"),
             ("📊 Aktivlik (aşağıdakı düymə)", "Son 7 günün aktivlik statistikasını göstərir"),
             ("📋 Günlük hesabat", "Bot hər gün AZ vaxtı ilə 00:00-da avtomatik günlük statistikanı bu kanala göndərir"),
-            ("📰 Zenith Xəbərləri", "Gündəlik hesabatın ardınca AI (Claude) yazılmış qısa icmal göndərilir"),
+            ("📰 Nextlevelaz Xəbərləri", "Gündəlik hesabatın ardınca AI (Claude) yazılmış qısa icmal göndərilir"),
             ("🎯 Günün Ortaq Çağırışı", "Hər gün hamı üçün eyni ortaq tapşırıq elan olunur, şərti ödəyən bonus coin qazanır"),
             ("🚫 Ləğv et (matç mesajında)", "Asılı qalan matçı ləğv edir, gəlməyənə ELO cəzası verə bilər"),
             ("/full_setup", "Bütün FACEIT kanallarını avtomatik qurur"),
@@ -8026,7 +8152,7 @@ def _build_panel_embed(category_key: str) -> discord.Embed:
     embed = discord.Embed(title=cat["title"], color=discord.Color.from_rgb(138, 92, 230))
     for name, desc in cat["items"]:
         embed.add_field(name=name, value=desc, inline=False)
-    embed.set_footer(text="Zenith's Academy")
+    embed.set_footer(text="Nextlevelaz")
     return embed
 
 

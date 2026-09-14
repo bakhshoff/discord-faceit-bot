@@ -91,7 +91,7 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
     row_font    = _load_font(16)
 
     # Başlıq
-    draw.text((30, 20), "Zenith's Academy LEADERBOARD", font=title_font, fill=GOLD)
+    draw.text((30, 20), "Nextlevelaz LEADERBOARD", font=title_font, fill=GOLD)
     draw.text((30, 58), "Top 20 players by ELO", font=sub_font, fill=GRAY)
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=LINE_COLOR, width=2)
 
@@ -152,7 +152,7 @@ def generate_leaderboard_image(rows, output_path="leaderboard.png",
             draw.text((col_x[7], y), str(kd),             font=row_font, fill=kd_color)
             y += ROW_HEIGHT
 
-    draw.text((30, y + 10), "Auto-updated by Zenith's Academy Bot", font=sub_font, fill=FOOTER_GRAY)
+    draw.text((30, y + 10), "Auto-updated by Nextlevelaz Bot", font=sub_font, fill=FOOTER_GRAY)
     _finalize(img).save(output_path)
     return output_path
 
@@ -179,7 +179,7 @@ def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
     RED_C = (220, 80, 80)
 
     # Header
-    draw.text((30, 18), f"Zenith's Academy — SEZON {season_number} LEADERBOARD", font=title_font, fill=CYAN)
+    draw.text((30, 18), f"Nextlevelaz — SEZON {season_number} LEADERBOARD", font=title_font, fill=CYAN)
     draw.text((30, 56), f"Sezon: {start_date}  -  {end_date}", font=sub_font, fill=GRAY)
     draw.line([(0, HEADER_HEIGHT), (WIDTH, HEADER_HEIGHT)], fill=LINE_COLOR, width=2)
 
@@ -220,6 +220,6 @@ def generate_season_leaderboard_image(rows, season_number, start_date, end_date,
                       font=_load_font(12, bold=True), fill=rank_color, anchor="rm")
         y += S_ROW_H
 
-    draw.text((30, y + 8), f"Sezon {season_number}  ·  Zenith's Academy Bot", font=sub_font, fill=FOOTER_GRAY)
+    draw.text((30, y + 8), f"Sezon {season_number}  ·  Nextlevelaz Bot", font=sub_font, fill=FOOTER_GRAY)
     _finalize(img).save(output_path)
     return output_path
