@@ -268,6 +268,7 @@ QUEUE_CLOSE_HOUR = 2   # 02:00
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
