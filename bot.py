@@ -63,10 +63,6 @@ from database import (
     get_zm_balance, spend_zm, add_zm,
     add_boost_cards, get_boost_card_counts,
     reset_all_player_data,
-    update_bp_mission, add_bp_xp, get_pass_data, has_battle_pass, is_premium_pass,
-    buy_battle_pass, get_active_bp_missions, claim_bp_rewards, get_pending_bp_reward_count,
-    BP_XP_PER_LEVEL, BP_MAX_LEVEL, BP_PRICE_AZN, BP_LEVEL_REWARDS, BP_PREMIUM_REWARDS,
-    BP_SEASON_NAME, BP_SEASON_NAME_AZ, BP_PREVIOUS_SEASON_ID, BP_PREVIOUS_SEASON_NAME,
     transfer_coins, set_discount, get_discount, get_all_discounts, clear_expired_discounts,
     add_boost, get_active_boost, get_all_active_boosts,
     get_or_create_current_season, get_season_by_number, add_season_stat,
@@ -85,7 +81,6 @@ from database import (
     bulk_add_coins, check_suspicious_activity,
     create_auction, get_auction, place_bid, get_due_auctions, mark_auction_finished, get_open_auction_ids,
     get_activity_heatmap, WEEKDAY_NAMES_AZ,
-    archive_bp_season, get_bp_season_archives,
     get_weekly_recap,
     get_map_masters, get_loss_streak,
     get_or_create_boss_event, set_boss_message, apply_boss_damage,
@@ -125,7 +120,6 @@ from visual_cards import (
 )
 from sticker_config import STICKER_ITEMS, get_sticker_by_achievement, get_sticker_by_id
 from referral_visual import generate_item_preview_card
-from pass_visual import generate_pass_card, generate_pass_levels_card, generate_pass_announcement, generate_pass_missions_card
 from tournament_card import generate_tournament_bracket_image, generate_tournament_signup_card
 import requests
 
@@ -203,9 +197,6 @@ DAILY_CHALLENGE_DESCRIPTIONS = {c[0]: c[3] for c in DAILY_CHALLENGE_TEMPLATES}
 
 LIGHTNING_ROUND_CHECK_CHANCE = 0.05
 LIGHTNING_ROUND_DURATION_MINUTES = 10
-
-DOUBLE_XP_CHECK_CHANCE = 0.05
-DOUBLE_XP_DURATION_MINUTES = 60
 
 SOCIAL_CHANNEL_ID = 1529227720939012229
 SOCIAL_LINKS = {
@@ -1123,31 +1114,6 @@ async def _send_coach_dm(guild, discord_id, nick, s, old_elo, new_elo, won, matc
         pass
 
 
-async def _send_bp_levelup_dm(guild, discord_id, nick, new_level):
-    """Battle Pass level artımını DM ilə bildirir (Profil → Bildirişlər düyməsi ilə bağlana bilər)."""
-    member = guild.get_member(discord_id) if guild else None
-    if not member and guild:
-        try:
-            member = await guild.fetch_member(discord_id)
-        except (discord.NotFound, discord.HTTPException):
-            return
-    if not member:
-        return
-    embed = discord.Embed(
-        title="🎫 Battle Pass Level Artdı!",
-        description=(
-            f"Təbriklər, **{nick}**! Yeni level: **{new_level}**\n\n"
-            "Yeni mükafatınızı /pass panelindəki \"Mükafatları tələb et\" düyməsi ilə tələb edin!"
-        ),
-        color=discord.Color.from_rgb(138, 92, 230)
-    )
-    embed.set_footer(text="Bu bildirişi Profil → Bildirişlər düyməsindən bağlaya bilərsiniz.")
-    try:
-        await member.send(embed=embed)
-    except discord.Forbidden:
-        pass
-
-
 TILT_ENCOURAGEMENT_MESSAGES = [
     "Hamının pis günü olur — bir az mola vermək, təzə başla düyməsi kimi işləyir. Su iç, dərin nəfəs al, sonra geri qayıt! 💪",
     "Ardıcıl məğlubiyyətlər çox vaxt yorğunluqdan gəlir, bacarıqdan yox. 10-15 dəqiqə fasilə verməyi düşün.",
@@ -1542,34 +1508,6 @@ async def lightning_round_loop():
                 "bütün matçlarda ELO və Coin **2x**-dir! Tələsin! ⚡"
             ),
             color=discord.Color.yellow()
-        )
-        await log_channel.send(embed=embed)
-
-
-def _is_double_xp_active():
-    until = get_meta("double_xp_until")
-    return bool(until) and int(until) > int(datetime.datetime.utcnow().timestamp())
-
-
-@tasks.loop(minutes=30)
-async def double_xp_loop():
-    if _is_double_xp_active() or _is_lightning_round_active():
-        return  # eyni anda iki sürpriz bonus üst-üstə düşməsin — hər biri öz növbəsində
-    if random.random() >= DOUBLE_XP_CHECK_CHANCE:
-        return
-
-    until_ts = int(datetime.datetime.utcnow().timestamp()) + DOUBLE_XP_DURATION_MINUTES * 60
-    set_meta("double_xp_until", until_ts)
-
-    log_channel = await _get_log_channel()
-    if log_channel:
-        embed = discord.Embed(
-            title="🎫 DOUBLE XP SAATI BAŞLADI!",
-            description=(
-                f"Növbəti **{DOUBLE_XP_DURATION_MINUTES} dəqiqə** ərzində bitən bütün matçlardan "
-                "qazanılan **Battle Pass XP 2x**-dir! Sürətlə level qazanmaq üçün indi oynayın! 🎫"
-            ),
-            color=discord.Color.from_rgb(138, 92, 230)
         )
         await log_channel.send(embed=embed)
 
@@ -2598,7 +2536,6 @@ class MatchResultView(discord.ui.View):
         new_achievements = []
         new_titles = []
         new_quests = []
-        new_bp_levels = []
         challenge_claimers = []
         achievement_rarity = get_achievement_rarity()
 
@@ -2608,28 +2545,6 @@ class MatchResultView(discord.ui.View):
                 stats_by_id.items(),
                 key=lambda kv: kv[1].get("kills", 0) * 2 + kv[1].get("assists", 0) - kv[1].get("deaths", 0)
             )[0]
-
-        def _award_bp_xp(did, nick, s, is_winner):
-            """Battle Pass XP: iştirak üçün baza + missiya irəliləyişindən qazanılan XP."""
-            xp = 40 if is_winner else 20
-            xp += update_bp_mission(did, "matches", 1)
-            if is_winner:
-                xp += update_bp_mission(did, "wins", 1)
-            if did in stats_by_id:
-                xp += update_bp_mission(did, "kills", s.get("kills", 0))
-                xp += update_bp_mission(did, "assists", s.get("assists", 0))
-                if did == mvp_id:
-                    xp += update_bp_mission(did, "mvp", 1)
-            if _is_double_xp_active():
-                xp *= 2
-            personal_boost = get_active_boost(did, "bp_xp")
-            if personal_boost:
-                xp = round(xp * personal_boost["multiplier"])
-            bp_result = add_bp_xp(did, xp)
-            if bp_result.get("leveled_up"):
-                new_bp_levels.append((nick, bp_result))
-                if get_dm_notifications(did) and interaction.guild:
-                    asyncio.create_task(_send_bp_levelup_dm(interaction.guild, did, nick, bp_result["new_level"]))
 
         current_season = get_or_create_current_season()
 
@@ -2661,7 +2576,6 @@ class MatchResultView(discord.ui.View):
             update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
             if did in stats_by_id:
                 update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
-            _award_bp_xp(did, p["nick"], s, True)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
@@ -2716,7 +2630,6 @@ class MatchResultView(discord.ui.View):
             update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
             if did in stats_by_id:
                 update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
-            _award_bp_xp(did, p["nick"], s, False)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
@@ -2801,13 +2714,6 @@ class MatchResultView(discord.ui.View):
                 value="\n".join(f"**{q['name']}** ({q['reward_coins']} coin) — {nick}" for nick, q in new_quests),
                 inline=False
             )
-        if new_bp_levels:
-            embed.add_field(
-                name="🎫 Pass Level artdı!",
-                value="\n".join(f"**{nick}** → Level {bp['new_level']}" for nick, bp in new_bp_levels)
-                      + "\n`/pass` → \"Mükafatları tələb et\" ilə yığılmış mükafatları alın",
-                inline=False
-            )
         if challenge_claimers:
             embed.add_field(
                 name="🎯 Günün Çağırışı tamamlandı",
@@ -2889,7 +2795,7 @@ class MatchResultView(discord.ui.View):
 
 class MatchResultView5v5(discord.ui.View):
     """`MatchResultView`-in 5v5 analoqu. FƏRQ: ELO/streak/rütbə/mövsüm 5v5 cədvəllərinə
-    yazılır, `match_history` "5v5" işarəli. PAYLAŞILAN (dəyişməz): coin, Battle Pass XP,
+    yazılır, `match_history` "5v5" işarəli. PAYLAŞILAN (dəyişməz): coin,
     gündəlik çağırış, nailiyyət/ləqəb, şəxsi rekord, coach/tilt DM-ləri — bunlar discord_id-yə
     bağlıdır, formatdan asılı deyil. Squad bonusu (2-nəfərlik sabit cütlük konsepti) 5 nəfərlik
     komandaya aid olmadığı üçün buraxılıb."""
@@ -2954,7 +2860,6 @@ class MatchResultView5v5(discord.ui.View):
         new_achievements = []
         new_titles = []
         new_quests = []
-        new_bp_levels = []
         challenge_claimers = []
         achievement_rarity = get_achievement_rarity()
 
@@ -2964,27 +2869,6 @@ class MatchResultView5v5(discord.ui.View):
                 stats_by_id.items(),
                 key=lambda kv: kv[1].get("kills", 0) * 2 + kv[1].get("assists", 0) - kv[1].get("deaths", 0)
             )[0]
-
-        def _award_bp_xp(did, nick, s, is_winner):
-            xp = 40 if is_winner else 20
-            xp += update_bp_mission(did, "matches", 1)
-            if is_winner:
-                xp += update_bp_mission(did, "wins", 1)
-            if did in stats_by_id:
-                xp += update_bp_mission(did, "kills", s.get("kills", 0))
-                xp += update_bp_mission(did, "assists", s.get("assists", 0))
-                if did == mvp_id:
-                    xp += update_bp_mission(did, "mvp", 1)
-            if _is_double_xp_active():
-                xp *= 2
-            personal_boost = get_active_boost(did, "bp_xp")
-            if personal_boost:
-                xp = round(xp * personal_boost["multiplier"])
-            bp_result = add_bp_xp(did, xp)
-            if bp_result.get("leveled_up"):
-                new_bp_levels.append((nick, bp_result))
-                if get_dm_notifications(did) and interaction.guild:
-                    asyncio.create_task(_send_bp_levelup_dm(interaction.guild, did, nick, bp_result["new_level"]))
 
         current_season = get_or_create_current_season("5v5")
 
@@ -3016,7 +2900,6 @@ class MatchResultView5v5(discord.ui.View):
             update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
             if did in stats_by_id:
                 update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
-            _award_bp_xp(did, p["nick"], s, True)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
@@ -3071,7 +2954,6 @@ class MatchResultView5v5(discord.ui.View):
             update_task_progress(did, s.get("kills", 0), s.get("assists", 0))
             if did in stats_by_id:
                 update_personal_record(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0), self.match_number)
-            _award_bp_xp(did, p["nick"], s, False)
             for ach in check_and_grant_achievements(did):
                 new_achievements.append((p["nick"], ach))
                 if interaction.guild and achievement_rarity.get(ach["id"], 100) <= RARE_ACHIEVEMENT_THRESHOLD_PCT:
@@ -3141,13 +3023,6 @@ class MatchResultView5v5(discord.ui.View):
             embed.add_field(
                 name="🧗 Quest tamamlandı!",
                 value="\n".join(f"**{q['name']}** ({q['reward_coins']} coin) — {nick}" for nick, q in new_quests),
-                inline=False
-            )
-        if new_bp_levels:
-            embed.add_field(
-                name="🎫 Pass Level artdı!",
-                value="\n".join(f"**{nick}** → Level {bp['new_level']}" for nick, bp in new_bp_levels)
-                      + "\n`/pass` → \"Mükafatları tələb et\" ilə yığılmış mükafatları alın",
                 inline=False
             )
         if challenge_claimers:
@@ -4063,14 +3938,6 @@ async def on_ready():
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     init_db()
 
-    if not get_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}"):
-        try:
-            archived = archive_bp_season(BP_PREVIOUS_SEASON_NAME, season_id=BP_PREVIOUS_SEASON_ID)
-            print(f"[BP] Köhnə sezon arxivləşdirildi: {BP_PREVIOUS_SEASON_NAME} ({archived['total_participants']} iştirakçı)")
-        except Exception as e:
-            print(f"[BP] Köhnə sezon arxivləşdirilə bilmədi: {e}")
-        set_meta(f"bp_archived_season_{BP_PREVIOUS_SEASON_ID}", "1")
-
     if not get_meta("season_correction_2026_09_01"):
         try:
             for _m, _prefix in (("2v2", "leaderboard-sezon-"), ("5v5", "leaderboard-5v5-sezon-")):
@@ -4188,8 +4055,6 @@ async def on_ready():
         social_reminder_loop.start()
     if not lightning_round_loop.is_running():
         lightning_round_loop.start()
-    if not double_xp_loop.is_running():
-        double_xp_loop.start()
     if not weekly_mvp_loop.is_running():
         weekly_mvp_loop.start()
     if not season_rotation_loop.is_running():
@@ -4505,7 +4370,6 @@ class InventoryMenuView(_ProfileSubMenuBase):
         self._add_buttons([
             ("btn.inventory", "🎒", self.inventory_btn),
             ("btn.market", "🛒", self.market_btn),
-            ("btn.pass", "🎫", self.pass_btn),
             ("btn.convert", "💱", self.convert_btn),
         ])
 
@@ -4519,10 +4383,6 @@ class InventoryMenuView(_ProfileSubMenuBase):
             return
         await _render_market(interaction, self.discord_id)
 
-    async def pass_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_pass(interaction, self.discord_id)
 
     async def convert_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -4617,10 +4477,6 @@ class RewardsMenuView(_ProfileSubMenuBase):
                    f"{season_stat['wins']}Q/{season_stat['losses']}M"),
             inline=False
         )
-        archives = get_bp_season_archives()
-        if archives:
-            lines = [f"**{a['season_name']}** — {a['total_participants']} iştirakçı" for a in archives[:5]]
-            embed.add_field(name="🎫 Keçmiş Battle Pass sezonları", value="\n".join(lines), inline=False)
         completed = get_completed_seasons()
         view = SeasonHistoryView(completed) if completed else discord.utils.MISSING
         if completed:
@@ -4868,7 +4724,7 @@ class ProfileHubView(discord.ui.View):
 
         category_defs = [
             ("btn.menu_stats", "📊", StatsMenuView, "Stats, tarixçə, qrafik, rekord, xəritələr, fəallıq, sinergiya, AI Koç"),
-            ("btn.menu_inventory", "🎒", InventoryMenuView, "İnventar, market, Battle Pass, Coin→AZN çevirmə"),
+            ("btn.menu_inventory", "🎒", InventoryMenuView, "İnventar, market, Coin→AZN çevirmə"),
             ("btn.menu_rewards", "💰", RewardsMenuView, "Coin balansı, gündəlik giriş, gündəlik bonus, karyera yolu"),
             ("btn.menu_social", "🏆", SocialMenuView, "Nailiyyətlər, ləqəblər, questlər, squad, sosial reytinq, paylaşım"),
             ("btn.menu_settings", "⚙️", SettingsMenuView, "Bildirişlər, dil, ad dəyişmə, hədiyyə/şikayət"),
@@ -4937,7 +4793,6 @@ async def profile(interaction: discord.Interaction):
             theme_colors = theme_item.get("colors")
 
     player_lang = get_lang(discord_id)
-    pass_data = get_pass_data(discord_id)
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
@@ -4945,7 +4800,6 @@ async def profile(interaction: discord.Interaction):
         zm_balance=stats.get("zm_balance", 0),
         kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
         theme_colors=theme_colors, title=get_active_title_name(discord_id), lang=player_lang,
-        pass_status="premium" if pass_data["is_premium"] else "free", pass_level=pass_data["level"]
     )
 
     await interaction.followup.send(
@@ -5327,7 +5181,6 @@ async def full_setup(interaction: discord.Interaction):
     ch_reward = await _recreate_text("ay-sonu-mukafati", category_general, announce_overwrites)
     ch_register = await _recreate_text("faceit-qeydiyyat", category_general, announce_overwrites)
     ch_rules = await _recreate_text("faceit-qaydalari", category_general, announce_overwrites)
-    ch_pass = await _recreate_text(f"pass-{BP_SEASON_NAME.lower()}", category_general, announce_overwrites)
     ch_hof = await _recreate_text("hall-of-fame", category_general, announce_overwrites)
     ch_reports = await _recreate_text("reports", category_general, staff_only_overwrites)
     ch_audit = await _recreate_text("audit-log", category_general, staff_only_overwrites)
@@ -5412,7 +5265,6 @@ async def full_setup(interaction: discord.Interaction):
     await _post_leaderboard(ch_leaderboard)
     await _post_leaderboard_5v5(ch_leaderboard_5v5)
     await _post_monthly_reward_card(ch_reward)
-    await _post_pass_showcase(ch_pass)
     await ch_hof.send(
         "🏆 **Həftənin MVP-si** buraya elan olunacaq — hər həftə Bazar ertəsi, "
         "keçən 7 gündə ən çox qələbə qazanan oyunçu seçilib pinlənmiş kartla təbrik ediləcək."
@@ -5453,7 +5305,6 @@ async def full_setup(interaction: discord.Interaction):
         f"🔪 Ay sonu mükafatı: {ch_reward.mention}\n"
         f"📋 Qeydiyyat: {ch_register.mention}\n"
         f"📜 Qaydalar: {ch_rules.mention}\n"
-        f"🎫 Battle Pass ({BP_SEASON_NAME}): {ch_pass.mention}\n"
         f"🏆 Hall of Fame: {ch_hof.mention}\n"
         f"🚩 Reports: {ch_reports.mention} (yalnız adminlər)\n"
         f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər)\n"
@@ -6153,29 +6004,9 @@ async def admin_toplu_coin_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-@bot.tree.command(name="admin_pass_sezon_bitir", description="[Admin] Cari Battle Pass sıralamasını tarixə arxivləşdirir")
-@staff_check()
-async def admin_pass_sezon_bitir(interaction: discord.Interaction):
-    archived = archive_bp_season(BP_SEASON_NAME)
-    log_admin_action("admin_pass_sezon_bitir", 0, "bp_season_archive", "-", BP_SEASON_NAME, "sezon arxivləşdirildi", interaction.user.id)
-    await _post_audit_log("admin_pass_sezon_bitir", 0, "bp_season_archive", "-", BP_SEASON_NAME, "-", interaction.user.id)
-    lines = "\n".join(f"#{i+1} {p['nick']} — Level {p['level']}" for i, p in enumerate(archived["top_players"][:5]))
-    await interaction.response.send_message(
-        f"✅ **{BP_SEASON_NAME}** sezonu arxivləşdirildi ({archived['total_participants']} iştirakçı).\n\n{lines or 'Heç bir iştirakçı yoxdur.'}\n\n"
-        "ℹ️ Diqqət: bu YALNIZ tarixi sıralamanı dondurur — oyunçuların cari Battle Pass tərəqqisi SIFIRLANMIR.",
-        ephemeral=True
-    )
-
-
-@admin_pass_sezon_bitir.error
-async def admin_pass_sezon_bitir_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
-
-
 class AnnouncementModal(discord.ui.Modal, title="Yeni Elan"):
     baslik = discord.ui.TextInput(
-        label="Başlıq", placeholder="məs: Yeni Battle Pass Sezonu!",
+        label="Başlıq", placeholder="məs: Yeni Turnir Elanı!",
         max_length=100
     )
     metn = discord.ui.TextInput(
@@ -6580,184 +6411,6 @@ async def _render_market(interaction: discord.Interaction, discord_id: int):
     )
     view = MarketCategoryView(discord_id)
     await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-
-
-class PassView(discord.ui.View):
-    def __init__(self, discord_id, is_premium):
-        super().__init__(timeout=180)
-        self.discord_id = discord_id
-        self.is_premium = is_premium
-        pending = get_pending_bp_reward_count(discord_id)
-        if pending > 0:
-            self.claim_btn.label = f"Mükafatları tələb et ({pending})"
-        else:
-            self.claim_btn.disabled = True
-            self.claim_btn.label = "Tələb ediləcək mükafat yoxdur"
-        if is_premium:
-            self.buy_btn.disabled = True
-            self.buy_btn.label = "VIP Pass sahibisiniz"
-
-    async def _guard(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.discord_id:
-            await interaction.response.send_message(
-                "❌ Bu pass yalnız sizin üçündür — Profil → Pass düyməsi ilə özününüzü açın.", ephemeral=True
-            )
-            return False
-        return True
-
-    @discord.ui.button(label="Mükafatları tələb et", style=discord.ButtonStyle.success, emoji="🎁")
-    async def claim_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.defer()
-        granted = claim_bp_rewards(self.discord_id)
-        if not granted:
-            await interaction.followup.send("✅ Tələb ediləcək yeni mükafat yoxdur.", ephemeral=True)
-            return
-
-        pass_data = get_pass_data(self.discord_id)
-        missions = get_active_bp_missions(self.discord_id)
-        card_path = os.path.join(DATA_DIR or ".", f"pass_{self.discord_id}.png")
-        await asyncio.to_thread(generate_pass_card, pass_data, missions, card_path)
-
-        pending = get_pending_bp_reward_count(self.discord_id)
-        if pending > 0:
-            button.label = f"Mükafatları tələb et ({pending})"
-        else:
-            button.disabled = True
-            button.label = "Tələb ediləcək mükafat yoxdur"
-        await interaction.edit_original_response(
-            attachments=[discord.File(card_path, filename="pass.png")], view=self
-        )
-
-        lines = [f"Lv.{r['level']} ({'VIP' if r['track'] == 'premium' else 'FREE'}) — {r['label']}" for r in granted]
-        embed = discord.Embed(
-            title=f"🎁 {len(granted)} mükafat tələb edildi!",
-            description="\n".join(lines),
-            color=discord.Color.from_rgb(138, 92, 230)
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="Bütün Levellər", style=discord.ButtonStyle.secondary, emoji="📋")
-    async def levels_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        pass_data = get_pass_data(self.discord_id)
-        card_path = os.path.join(DATA_DIR or ".", f"pass_levels_{self.discord_id}.png")
-        await asyncio.to_thread(generate_pass_levels_card, pass_data, card_path)
-        await interaction.followup.send(file=discord.File(card_path, filename="pass_levels.png"), ephemeral=True)
-
-    @discord.ui.button(label="Missiyalar", style=discord.ButtonStyle.secondary, emoji="🎯")
-    async def missions_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        missions = get_active_bp_missions(self.discord_id)
-        card_path = os.path.join(DATA_DIR or ".", f"pass_missions_{self.discord_id}.png")
-        await asyncio.to_thread(generate_pass_missions_card, missions, card_path)
-        await interaction.followup.send(file=discord.File(card_path, filename="pass_missions.png"), ephemeral=True)
-
-    @discord.ui.button(label="Çərçivə/Banner Önizlə", style=discord.ButtonStyle.secondary, emoji="👁️")
-    async def preview_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.defer(ephemeral=True)
-        avatar_bytes = None
-        try:
-            avatar_url = interaction.user.display_avatar.replace(size=256).url
-            resp = await asyncio.to_thread(requests.get, avatar_url, timeout=10)
-            avatar_bytes = resp.content
-        except Exception:
-            avatar_bytes = None
-
-        files = []
-        for item_id in ("frame_genesis", "banner_genesis"):
-            item = get_item_by_id(item_id)
-            if not item:
-                continue
-            preview_path = os.path.join(DATA_DIR or ".", f"pass_preview_{self.discord_id}_{item_id}.png")
-            await asyncio.to_thread(generate_item_preview_card, interaction.user.display_name, avatar_bytes, item, preview_path)
-            files.append(discord.File(preview_path, filename=f"{item_id}.png"))
-
-        if not files:
-            await interaction.followup.send("❌ Önizləmə hazırlana bilmədi.", ephemeral=True)
-            return
-        await interaction.followup.send(
-            content="🎫 **Genesis VIP Pass** — Level 15 Çərçivə və Level 20 Banner önizləməsi:",
-            files=files, ephemeral=True
-        )
-
-    @discord.ui.button(label="VIP Pass Al", style=discord.ButtonStyle.success, emoji="💎")
-    async def buy_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._guard(interaction):
-            return
-        if self.is_premium:
-            await interaction.response.send_message("✅ Artıq VIP Pass sahibisiniz!", ephemeral=True)
-            return
-        ok, msg = buy_battle_pass(self.discord_id)
-        if ok:
-            self.is_premium = True
-            button.disabled = True
-            button.label = "VIP Pass sahibisiniz"
-            await interaction.response.edit_message(view=self)
-            await interaction.followup.send(f"✅ {msg}", ephemeral=True)
-        else:
-            await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-
-
-async def _post_pass_showcase(channel):
-    """Cari sezonun (BP_SEASON_NAME) tanıtım kartını kanala göndərib pinləyir — statik məzmun,
-    canlı yenilənən deyil (yalnız full_setup hər işə düşdükdə təzələnir)."""
-    card_path = os.path.join(DATA_DIR or ".", "pass_announcement.png")
-    await asyncio.to_thread(generate_pass_announcement, card_path)
-    finale_skin = str(BP_PREMIUM_REWARDS.get(BP_MAX_LEVEL, {}).get("value", "")).replace("|", "").strip()
-    finale_skin = " ".join(finale_skin.split())
-    embed = discord.Embed(
-        title=f"🎫 Battle Pass — {BP_SEASON_NAME} ({BP_SEASON_NAME_AZ})",
-        description=(
-            f"Nextlevelaz-nin yeni sezonu **{BP_SEASON_NAME} ({BP_SEASON_NAME_AZ})** başladı!\n\n"
-            "Matç oynayaraq, qazanaraq və missiyaları tamamlayaraq XP toplayın, Level artırın "
-            "və **35 levelə qədər** mükafatlar qazanın.\n\n"
-            f"🆓 **FREE Pass** — hər leveldə coin, milestone-larda (5-35) ELO kartları\n"
-            f"💎 **VIP Pass** ({BP_PRICE_AZN} AZN) — Çərçivə (Lv.15), Banner (Lv.20), "
-            f"{finale_skin} skini (Lv.{BP_MAX_LEVEL}) + AZN/Coin/ELO kart bonusları\n\n"
-            "`/pass` komandası ilə öz statusunuzu görüb VIP Pass ala bilərsiniz."
-        ),
-        color=discord.Color.from_rgb(138, 92, 230)
-    )
-    embed.set_image(url="attachment://pass_announcement.png")
-    message = await channel.send(embed=embed, file=discord.File(card_path, filename="pass_announcement.png"))
-    try:
-        pins = await channel.pins()
-        for old in pins:
-            if old.author.id == bot.user.id:
-                await old.unpin()
-    except (discord.Forbidden, discord.HTTPException):
-        pass
-    try:
-        await message.pin()
-    except (discord.Forbidden, discord.HTTPException):
-        pass
-    return message
-
-
-async def _render_pass(interaction: discord.Interaction, discord_id: int):
-    await interaction.response.defer(ephemeral=True)
-    pass_data = get_pass_data(discord_id)
-    missions = get_active_bp_missions(discord_id)
-    card_path = os.path.join(DATA_DIR or ".", f"pass_{discord_id}.png")
-    await asyncio.to_thread(generate_pass_card, pass_data, missions, card_path)
-    view = PassView(discord_id, pass_data["is_premium"])
-    await interaction.followup.send(file=discord.File(card_path, filename="pass.png"), view=view, ephemeral=True)
-
-
-@bot.tree.command(name="pass", description="Battle Pass statusunuzu göstərir")
-async def pass_cmd(interaction: discord.Interaction):
-    if not get_player(interaction.user.id):
-        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
-        return
-    await _render_pass(interaction, interaction.user.id)
 
 
 class InventoryView(discord.ui.View):
@@ -7604,7 +7257,7 @@ class ConfirmSwapMatchView(discord.ui.View):
             description=(
                 "**Yeni ELO:**\n" + "\n".join(elo_lines) +
                 "\n\n**Yeni coin mükafatı:**\n" + "\n".join(coin_lines) +
-                "\n\n⚠️ Kill/asist/ölüm, nailiyyət, missiya/Battle Pass XP və artıq istifadə olunmuş "
+                "\n\n⚠️ Kill/asist/ölüm, nailiyyət, missiya XP və artıq istifadə olunmuş "
                 "ELO kartları köhnə (səhv) nəticəyə görə hesablanmış olaraq qalır — düzəlmir."
             ),
             color=discord.Color.blurple()
@@ -7646,7 +7299,7 @@ async def admin_matc_qalib_deyis_cmd(interaction: discord.Interaction, matc_no: 
             "ELO və qələbə/məğlubiyyət sayı köhnə vəziyyətə qaytarılıb yeni nəticəyə görə YENİDƏN "
             "hesablanacaq (əvvəlki kimi eyni formula ilə). Coin mükafatı da yeni rola uyğun təzədən "
             "verilir (köhnə ədəd köçürülmür, standart düsturla yenidən hesablanır).\n\n"
-            "⚠️ Kill/asist/ölüm, nailiyyət, missiya/Battle Pass XP və artıq istifadə olunmuş ELO "
+            "⚠️ Kill/asist/ölüm, nailiyyət, missiya XP və artıq istifadə olunmuş ELO "
             "kartları köhnə nəticəyə görə qalır — bunlar düzəlmir."
         ),
         color=discord.Color.orange()
@@ -8054,7 +7707,6 @@ PANEL_CATEGORIES = {
             ("⚡ ELO Kartları (Market → ELO Kartları)",
              "AZN balansı ilə ELO Boost (50%/100%) və ELO Qoruma kartları alınır — hər kart növbəti "
              "uyğun matç nəticəsində avtomatik tətbiq olunur"),
-            ("/pass", f"Battle Pass statusunuzu (level, XP, missiyalar) göstərir — VIP Pass ({BP_PRICE_AZN} AZN) da düymə ilə buradan alınır"),
         ],
     },
     "naliyyet": {
@@ -8082,7 +7734,6 @@ PANEL_CATEGORIES = {
             ("🔥 Sürpriz Aşkarlayıcı", "Böyük ELO fərqi ilə qazanılan matçlar avtomatik xüsusi elanla qeyd olunur"),
             ("🏆 Nextlevelaz Mükafatları", "Hər ayın 1-də keçən ayın MVP-si, ən inkişaf edəni və ən aktivi elan olunur"),
             ("⚡ İldırım Turu", f"Təsadüfi olaraq {LIGHTNING_ROUND_DURATION_MINUTES} dəqiqəlik əlavə 2x ELO/Coin dövrü elan oluna bilər"),
-            ("🎫 Double XP Saatı", f"Təsadüfi olaraq {DOUBLE_XP_DURATION_MINUTES} dəqiqəlik 2x Battle Pass XP dövrü elan oluna bilər"),
             ("🎮 Matç Başlama Elanı", "Hər yeni matçda kapitanların adı/ID-si elan kanalına avtomatik göndərilir — lobbi tez qurulsun deyə"),
             ("🗑️ Qeydiyyat təmizliyi",
              f"Qeydiyyatdan {INACTIVE_REGISTRATION_DAYS} gün keçməsinə baxmayaraq heç bir matç oynamayan "
@@ -8138,7 +7789,6 @@ PANEL_CATEGORIES = {
             ("/giveaway_create", "Giveaway yaradır — gizli qalib təyin edə, ya da boş buraxıb əsl-random seçim edə bilərsiniz"),
             ("/admin_herrac_baslat", "Coin ilə hərrac başladır"),
             ("/admin_toplu_coin", "Bir neçə oyunçuya eyni anda coin verir/çıxarır"),
-            ("/admin_pass_sezon_bitir", "Cari Battle Pass sıralamasını tarixə arxivləşdirir"),
             ("🛡️ Audit Log kanalı", "Bütün admin əməliyyatları (ELO düzəlişi, matç silmə/dəyişmə və s.) canlı qeydə alınır"),
             ("🚩 Reports kanalı", "Profil → Ayarlar → Digər → Şikayət et ilə göndərilən şikayətlər buraya düşür"),
             ("⚠️ Şübhəli fəaliyyət xəbərdarlığı", "Qeyri-adi sürətli coin qazancı avtomatik audit-log kanalına bildirilir"),
