@@ -213,6 +213,7 @@ CATEGORY_TOURNAMENT_NAME = "🏆 Turnirlər"
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
 LOGO_PATH = "logo.jpg"
+NEXTLEVELAZ_LOGO_PATH = "1fd03444-818d-4271-b35f-62fd17745199.jpg"
 MONTHLY_CHAMPION_IMAGE_PATH = os.path.join("assets", "butterfly_legacy.jpg")
 MONTHLY_CHAMPION_SKIN_NAME = "Butterfly | Legacy"
 INACTIVE_REGISTRATION_DAYS = 3
@@ -4035,72 +4036,67 @@ async def setup_register_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-@bot.tree.command(name="full_setup", description="[Admin] FACEIT 5v5 kanallarını silib yenilənmiş, kataqoriyalaşdırılmış formada təzədən qurur")
-@staff_check()
-async def full_setup(interaction: discord.Interaction):
+async def _execute_server_reset(interaction: discord.Interaction):
+    """`/server_sifirla` təsdiqləndikdən sonra əsl işi görür: BÜTÜN kanal/kataqoriya və
+    rolları silir (bot-un özünün roluna VƏ idarə olunan/@everyone rollarına toxunmadan),
+    sonra Nextlevelaz formatında yeni struktur qurur, rütbə rollarını yaradır və loqonu
+    bot avatarı/server ikonu kimi tətbiq edir."""
     global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5
     global tournament_signup_channel_id, tournament_bracket_channel_id
+    global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
 
-    if not interaction.guild:
-        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-    progress_msg = await interaction.followup.send("⏳ Server qurulur...\n`░░░░░░░░░░░░░░░░░░░░` 0%", ephemeral=True)
+    admin_user = interaction.user
+    bot_role_ids = {r.id for r in guild.me.roles}
 
-    # İki ayrı kataqoriya: Ümumi, 5v5 — kanallar səliqəli şəkildə ayrılsın deyə.
-    category_general = discord.utils.get(guild.categories, name=CATEGORY_GENERAL_NAME)
-    if category_general is None:
-        category_general = await guild.create_category(CATEGORY_GENERAL_NAME)
-    category_5v5 = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
-    if category_5v5 is None:
-        category_5v5 = await guild.create_category(CATEGORY_5V5_NAME)
-    category_tournament = discord.utils.get(guild.categories, name=CATEGORY_TOURNAMENT_NAME)
-    if category_tournament is None:
-        category_tournament = await guild.create_category(CATEGORY_TOURNAMENT_NAME)
-    await _progress_step(progress_msg, 1, 5, "Kataqoriyalar hazırlanır...")
+    # ── 1. Bütün rolları sil — @everyone, idarə olunan (bot inteqrasiyası/booster) və
+    # botun öz rolları avtomatik keçilir (bunlar silinsə bot öz icazələrini itirər). ──
+    deleted_roles = 0
+    for role in list(guild.roles):
+        if role.name == "@everyone" or role.managed or role.id in bot_role_ids:
+            continue
+        try:
+            await role.delete(reason="server_sifirla: tam sıfırlama")
+            deleted_roles += 1
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
-    announce_overwrites = {
-        guild.default_role: discord.PermissionOverwrite(send_messages=False)
-    }
-    staff_only_overwrites = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False)
-    }
+    # ── 2. Bütün kanal/kataqoriyaları sil (botun tanımadıqları da daxil) ──
+    deleted_channels = 0
+    for channel in list(guild.channels):
+        try:
+            await channel.delete(reason="server_sifirla: tam sıfırlama")
+            deleted_channels += 1
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
-    async def _recreate_text(name, category, overwrites=None):
-        existing = discord.utils.get(category.text_channels, name=name)
-        if existing:
-            try:
-                await existing.delete(reason="full_setup: yenilənmiş formada yenidən qurulur")
-            except discord.Forbidden:
-                pass
-        return await guild.create_text_channel(name, category=category, overwrites=overwrites or {})
+    # ── 3. Yeni struktur: 3 kataqoriya (Ümumi, FACEIT 5v5, Turnirlər) ──
+    category_general = await guild.create_category(CATEGORY_GENERAL_NAME)
+    category_5v5 = await guild.create_category(CATEGORY_5V5_NAME)
+    category_tournament = await guild.create_category(CATEGORY_TOURNAMENT_NAME)
 
-    # ── Ümumi (hər iki formata aid) ────────────────────────────────────────────
-    # Ay sonu mükafat kanalı ən üstdə olsun deyə digərlərindən ƏVVƏL yaradılır.
-    ch_reward = await _recreate_text("ay-sonu-mukafati", category_general, announce_overwrites)
-    ch_register = await _recreate_text("faceit-qeydiyyat", category_general, announce_overwrites)
-    ch_rules = await _recreate_text("faceit-qaydalari", category_general, announce_overwrites)
-    ch_reports = await _recreate_text("reports", category_general, staff_only_overwrites)
-    ch_audit = await _recreate_text("audit-log", category_general, staff_only_overwrites)
-    ch_boss = await _recreate_text("boss-event", category_general, announce_overwrites)
-    ch_chat_xp = await _recreate_text("umumi-sohbet", category_general)
-    ch_chat_lb = await _recreate_text("aktivlik-lovhesi", category_general, announce_overwrites)
+    announce_overwrites = {guild.default_role: discord.PermissionOverwrite(send_messages=False)}
+    staff_only_overwrites = {guild.default_role: discord.PermissionOverwrite(view_channel=False)}
 
-    # ── 5v5 ──────────────────────────────────────────────────────────────────
-    ch_matchmaking_5v5 = await _recreate_text("matchmaking-5v5", category_5v5, announce_overwrites)
+    ch_reward = await guild.create_text_channel("ay-sonu-mukafati", category=category_general, overwrites=announce_overwrites)
+    ch_register = await guild.create_text_channel("faceit-qeydiyyat", category=category_general, overwrites=announce_overwrites)
+    ch_rules = await guild.create_text_channel("faceit-qaydalari", category=category_general, overwrites=announce_overwrites)
+    ch_reports = await guild.create_text_channel("reports", category=category_general, overwrites=staff_only_overwrites)
+    ch_audit = await guild.create_text_channel("audit-log", category=category_general, overwrites=staff_only_overwrites)
+    ch_boss = await guild.create_text_channel("boss-event", category=category_general, overwrites=announce_overwrites)
+    ch_chat_xp = await guild.create_text_channel("umumi-sohbet", category=category_general)
+    ch_chat_lb = await guild.create_text_channel("aktivlik-lovhesi", category=category_general, overwrites=announce_overwrites)
+
+    ch_matchmaking_5v5 = await guild.create_text_channel("matchmaking-5v5", category=category_5v5, overwrites=announce_overwrites)
     current_season_5v5 = get_or_create_current_season("5v5")
-    ch_leaderboard_5v5 = await _recreate_text(
-        f"leaderboard-5v5-sezon-{current_season_5v5['season_number']}", category_5v5, announce_overwrites
+    ch_leaderboard_5v5 = await guild.create_text_channel(
+        f"leaderboard-5v5-sezon-{current_season_5v5['season_number']}", category=category_5v5, overwrites=announce_overwrites
     )
-    ch_log_5v5 = await _recreate_text("faceit-log-5v5", category_5v5)
+    ch_log_5v5 = await guild.create_text_channel("faceit-log-5v5", category=category_5v5)
 
-    # ── Turnirlər (FACEIT ELO/2v2/5v5-dən müstəqil) ─────────────────────────────
-    ch_tournament_signup = await _recreate_text("turnir-qeydiyyat", category_tournament, announce_overwrites)
-    ch_tournament_bracket = await _recreate_text("turnir-cetveli", category_tournament, announce_overwrites)
-    await _progress_step(progress_msg, 2, 5, "Kanallar yaradılır...")
+    ch_tournament_signup = await guild.create_text_channel("turnir-qeydiyyat", category=category_tournament, overwrites=announce_overwrites)
+    ch_tournament_bracket = await guild.create_text_channel("turnir-cetveli", category=category_tournament, overwrites=announce_overwrites)
 
     await _get_or_create_warmup_channel(guild, mode="5v5")
 
@@ -4120,13 +4116,33 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("tournament_signup_channel_id", ch_tournament_signup.id)
     tournament_bracket_channel_id = ch_tournament_bracket.id
     set_meta("tournament_bracket_channel_id", ch_tournament_bracket.id)
-    global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     CHAT_XP_CHANNEL_ID = ch_chat_xp.id
     set_meta("chat_xp_channel_id", ch_chat_xp.id)
     chat_activity_channel_id = ch_chat_lb.id
     set_meta("chat_activity_channel_id", ch_chat_lb.id)
-    await _progress_step(progress_msg, 3, 5, "İcazələr və köhnə kanallar təmizlənir...")
 
+    # ── 4. Rütbə rolları ──
+    created_roles, synced_players = await _create_rank_roles(guild)
+
+    # ── 5. Loqo: bot avatarı + server ikonu ──
+    avatar_status = icon_status = "❌ loqo faylı tapılmadı"
+    try:
+        with open(NEXTLEVELAZ_LOGO_PATH, "rb") as f:
+            logo_bytes = f.read()
+        try:
+            await bot.user.edit(avatar=logo_bytes)
+            avatar_status = "✅ yeniləndi"
+        except (discord.HTTPException, discord.Forbidden) as e:
+            avatar_status = f"❌ xəta: {e}"
+        try:
+            await guild.edit(icon=logo_bytes)
+            icon_status = "✅ yeniləndi"
+        except (discord.HTTPException, discord.Forbidden) as e:
+            icon_status = f"❌ xəta: {e}"
+    except (FileNotFoundError, OSError):
+        pass
+
+    # ── 6. Tanıtım mesajları ──
     await _post_register(ch_register)
     await _post_matchmaking_5v5(ch_matchmaking_5v5)
     await _post_rules(ch_rules)
@@ -4134,7 +4150,7 @@ async def full_setup(interaction: discord.Interaction):
     await _post_monthly_reward_card(ch_reward)
     await _post_boss_event(ch_boss)
     await ch_tournament_signup.send(
-        "🏆 **Turnirlər** — FACEIT ELO/2v2/5v5 sistemindən TAM MÜSTƏQİL, ayrı bracket turnirlər "
+        "🏆 **Turnirlər** — FACEIT 5v5 sistemindən TAM MÜSTƏQİL, ayrı bracket turnirlər "
         "burada elan olunacaq. Admin `/turnir_yarat` ilə yeni turnir başladanda qeydiyyat kartı "
         "bura göndəriləcək — qoşulmaq üçün FACEIT-də qeydiyyatdan keçmiş olmaq kifayətdir."
     )
@@ -4147,37 +4163,97 @@ async def full_setup(interaction: discord.Interaction):
         f"Hər Bazar günü saat 23:59 həftənin ən aktivi elan olunacaq. Lövhə: {ch_chat_lb.mention}"
     )
     await _post_chat_activity_leaderboard(ch_chat_lb)
-    await _progress_step(progress_msg, 4, 5, "Tanıtım mesajları göndərilir...")
-    await _progress_step(progress_msg, 5, 5, "Tamamlandı!")
 
-    await interaction.followup.send(
-        "✅ Server yenidən quruldu! Kanallar 3 kataqoriyaya bölünüb: **📌 Ümumi**, "
-        "**🎯 FACEIT 5v5**, **🏆 Turnirlər**.\n\n"
+    summary = (
+        "✅ **Server tam sıfırlanıb Nextlevelaz formatında yenidən quruldu!**\n\n"
+        f"🗑️ Silinən rollar: {deleted_roles} · Silinən kanal/kataqoriya: {deleted_channels}\n"
+        f"🖼️ Bot avatarı: {avatar_status} · Server ikonu: {icon_status}\n"
+        f"🏅 Rütbə rolları: {len(created_roles)} yaradıldı, {synced_players} oyunçu sinxronlaşdı\n\n"
+        "Kanallar 3 kataqoriyaya bölünüb: **📌 Ümumi**, **🎯 FACEIT 5v5**, **🏆 Turnirlər**.\n\n"
         f"**📌 Ümumi**\n"
         f"🔪 Ay sonu mükafatı: {ch_reward.mention}\n"
         f"📋 Qeydiyyat: {ch_register.mention}\n"
         f"📜 Qaydalar: {ch_rules.mention}\n"
         f"🚩 Reports: {ch_reports.mention} (yalnız adminlər)\n"
         f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər)\n"
-        f"👹 Boss Event: {ch_boss.mention}\n\n"
+        f"👹 Boss Event: {ch_boss.mention}\n"
+        f"💬 Ümumi Söhbət: {ch_chat_xp.mention}\n"
+        f"📊 Aktivlik Lövhəsi: {ch_chat_lb.mention}\n\n"
         f"**🎯 FACEIT 5v5**\n"
         f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
         f"🏆 Leaderboard: {ch_leaderboard_5v5.mention}\n"
         f"📰 Faceit log: {ch_log_5v5.mention}\n\n"
-        f"**🏆 Turnirlər** (FACEIT ELO-dan müstəqil)\n"
+        f"**🏆 Turnirlər**\n"
         f"📋 Qeydiyyat: {ch_tournament_signup.mention}\n"
-        f"🗂️ Cədvəl: {ch_tournament_bracket.mention}\n"
-        f"➡️ Yeni turnir üçün: `/turnir_yarat`\n\n"
-        f"🔊 Səs kanalları (isınma otağı daxil) hər format üçün öz kataqoriyasında avtomatik yaradılır/silinir.\n\n"
-        "Elan kanallarında adi üzvlər yazı yaza bilmir, yalnız düymələrlə əməliyyat edə bilirlər.\n"
-        "⚠️ Diqqət: bu komanda hər işə düşdükdə mövcud FACEIT kanallarını silib təzədən qurur "
-        "(köhnə mesaj tarixçəsi itir).",
+        f"🗂️ Cədvəl: {ch_tournament_bracket.mention}\n\n"
+        "⚠️ **Diqqət:** staff/xüsusi rol təyinatları itdi — hər kəsin admin/moderator rollarını "
+        "əl ilə yenidən verməlisiniz. Oyunçu datası (qeydiyyat/statistika/coin) bu komanda ilə "
+        "TOXUNULMADI — onu ayrıca `/admin_full_reset` ilə sıfırlaya bilərsiniz."
+    )
+
+    try:
+        await interaction.followup.send(summary, ephemeral=True)
+    except discord.HTTPException:
+        pass
+    try:
+        await admin_user.send(summary)
+    except discord.HTTPException:
+        pass
+
+
+class ServerResetConfirmView(discord.ui.View):
+    def __init__(self, requester_id):
+        super().__init__(timeout=60)
+        self.requester_id = requester_id
+
+    @discord.ui.button(label="Bəli, SERVERİ TAM SIFIRLA", style=discord.ButtonStyle.danger, emoji="⚠️")
+    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı çağıran şəxs üçündür.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="⏳ Server sıfırlanır — kanal/rol sayına görə bir neçə dəqiqə çəkə bilər...", view=self
+        )
+        await _execute_server_reset(interaction)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary)
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı çağıran şəxs üçündür.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="❌ Ləğv edildi, heç nə silinmədi.", view=self)
+
+
+@bot.tree.command(name="server_sifirla", description="[Admin] TƏHLÜKƏLİ: serverin BÜTÜN kanal/rollarını silib Nextlevelaz formatında yenidən qurur")
+@staff_check()
+async def server_sifirla_cmd(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
+        return
+    await interaction.response.send_message(
+        "⚠️ **DİQQƏT — GERİ QAYTARILA BİLMƏZ!**\n\n"
+        "Bu əməliyyat serverdəki **BÜTÜN kanal, kataqoriya və rolları** (bot-un tanımadıqları da daxil "
+        "olmaqla, `@everyone`, Discord-un özəl idarə etdiyi rollar və botun öz rolu xaric) həmişəlik "
+        "siləcək və onların yerinə Nextlevelaz formatında yeni, sadələşdirilmiş struktur quracaq:\n"
+        "• **📌 Ümumi** — qeydiyyat, qaydalar, ay sonu mükafatı, boss event, ümumi söhbət/aktivlik lövhəsi, reports, audit-log\n"
+        "• **🎯 FACEIT 5v5** — matchmaking, leaderboard, faceit-log\n"
+        "• **🏆 Turnirlər**\n\n"
+        "Bot avatarı və server ikonu yeni Nextlevelaz loqosu ilə yenilənəcək. Rütbə rolları yenidən yaradılacaq.\n\n"
+        "🚫 **İtiriləcəklər:** bütün staff/xüsusi rol təyinatları (əl ilə yenidən verilməlidir), "
+        "bütün köhnə kanal mesaj tarixçəsi, bütün köhnə kanal/rol strukturu.\n"
+        "✅ **TOXUNULMAYACAQ:** oyunçu qeydiyyatı/statistika/coin (bunu ayrıca `/admin_full_reset` sıfırlayır).\n\n"
+        "Davam etmək istədiyinizə **əminsiniz**?",
+        view=ServerResetConfirmView(interaction.user.id),
         ephemeral=True
     )
 
 
-@full_setup.error
-async def full_setup_error(interaction: discord.Interaction, error):
+@server_sifirla_cmd.error
+async def server_sifirla_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
@@ -4632,7 +4708,7 @@ async def turnir_yarat(interaction: discord.Interaction, ad: str, komanda_olcusu
         return
     if tournament_signup_channel_id is None:
         await interaction.response.send_message(
-            "❌ Turnir kanalları hələ qurulmayıb. Əvvəlcə `/full_setup` işə salın.", ephemeral=True
+            "❌ Turnir kanalları hələ qurulmayıb. Əvvəlcə `/server_sifirla` işə salın.", ephemeral=True
         )
         return
     existing = get_active_tournament()
@@ -6209,16 +6285,10 @@ async def admin_matc_netice_error(interaction: discord.Interaction, error):
 
 
 
-@bot.tree.command(name="rank_rollari_qur", description="[Admin] ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir")
-@staff_check()
-async def rank_rollari_qur_cmd(interaction: discord.Interaction):
-    if not interaction.guild:
-        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-
+async def _create_rank_roles(guild):
+    """ELO rütbə rollarını (RANKS) serverdə yaradır (mövcud olmayanları) və bütün
+    qeydiyyatlı 5v5 oyunçularına təyin edir. `created` (yeni yaradılan rol adları) və
+    `player_count` (rolu yenilənən oyunçu sayı) qaytarır."""
     created = []
     for lo, hi, name, color, emoji in RANKS:
         role = discord.utils.get(guild.roles, name=name)
@@ -6230,10 +6300,23 @@ async def rank_rollari_qur_cmd(interaction: discord.Interaction):
     for p in players_5v5:
         await _sync_rank_role_5v5(guild, p["discord_id"], p["elo"])
 
+    return created, len(players_5v5)
+
+
+@bot.tree.command(name="rank_rollari_qur", description="[Admin] ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir")
+@staff_check()
+async def rank_rollari_qur_cmd(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    created, player_count = await _create_rank_roles(interaction.guild)
+
     await interaction.followup.send(
         f"✅ Rütbə rolları hazırdır.\n"
         f"🆕 Yaradılan rollar: {', '.join(created) if created else 'yoxdur (artıq mövcud idi)'}\n"
-        f"🔄 {len(players_5v5)} oyunçunun rütbə rolu yeniləndi.",
+        f"🔄 {player_count} oyunçunun rütbə rolu yeniləndi.",
         ephemeral=True
     )
 
@@ -6351,11 +6434,9 @@ PANEL_CATEGORIES = {
             ("📰 Nextlevelaz Xəbərləri", "Gündəlik hesabatın ardınca AI (Claude) yazılmış qısa icmal göndərilir"),
             ("🎯 Günün Ortaq Çağırışı", "Hər gün hamı üçün eyni ortaq tapşırıq elan olunur, şərti ödəyən bonus coin qazanır"),
             ("🚫 Ləğv et (matç mesajında)", "Asılı qalan matçı ləğv edir, gəlməyənə ELO cəzası verə bilər"),
-            ("/full_setup", "Bütün FACEIT kanallarını avtomatik qurur"),
-            ("/setup", "Matchmaking mesajını yaradır"),
+            ("/server_sifirla", "⚠️ TƏHLÜKƏLİ: serverin BÜTÜN kanal/rollarını silib Nextlevelaz formatında yenidən qurur"),
             ("/setup_register", "Qeydiyyat mesajını yaradır"),
             ("/setup_rules", "Qaydalar mesajını yaradır"),
-            ("/setup_leaderboard", "Leaderboard mesajını yaradıb avtomatik yeniləyir"),
             ("/giveaway_create", "Giveaway yaradır — gizli qalib təyin edə, ya da boş buraxıb əsl-random seçim edə bilərsiniz"),
             ("/admin_herrac_baslat", "Coin ilə hərrac başladır"),
             ("/admin_toplu_coin", "Bir neçə oyunçuya eyni anda coin verir/çıxarır"),
