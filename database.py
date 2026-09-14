@@ -386,66 +386,6 @@ def init_db():
     if "mode" not in _am_cols:
         cursor.execute("ALTER TABLE active_match ADD COLUMN mode TEXT NOT NULL DEFAULT '2v2'")
 
-    # ── Turnir Bracket Sistemi (FACEIT ELO/2v2/5v5-dən TAM MÜSTƏQİL) ────────────
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tournaments (
-            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-            name               TEXT NOT NULL,
-            team_size          INTEGER NOT NULL,
-            status             TEXT NOT NULL DEFAULT 'signup',
-            signup_channel_id  TEXT,
-            signup_message_id  TEXT,
-            bracket_channel_id TEXT,
-            bracket_message_id TEXT,
-            created_by         INTEGER,
-            created_at         INTEGER,
-            winner_team_id     INTEGER,
-            runner_up_team_id  INTEGER,
-            prize_winner       INTEGER DEFAULT 0,
-            prize_runner_up    INTEGER DEFAULT 0
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tournament_participants (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            tournament_id  INTEGER NOT NULL,
-            discord_id     INTEGER NOT NULL,
-            joined_at      INTEGER,
-            UNIQUE(tournament_id, discord_id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tournament_teams (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            tournament_id  INTEGER NOT NULL,
-            label          TEXT,
-            is_bye         INTEGER DEFAULT 0
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tournament_team_members (
-            team_id     INTEGER NOT NULL,
-            discord_id  INTEGER NOT NULL,
-            PRIMARY KEY (team_id, discord_id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tournament_matches (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            tournament_id    INTEGER NOT NULL,
-            round_number     INTEGER NOT NULL,
-            slot             INTEGER NOT NULL,
-            team_a_id        INTEGER,
-            team_b_id        INTEGER,
-            winner_team_id   INTEGER,
-            status           TEXT NOT NULL DEFAULT 'pending',
-            next_match_id    INTEGER,
-            next_slot_index  INTEGER,
-            match_channel_id TEXT,
-            match_message_id TEXT
-        )
-    """)
-
     # ── Ümumi söhbət XP / aktivlik ──────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_activity (
@@ -647,18 +587,6 @@ def init_db():
         )
     """)
 
-    # ── Şikayətlər (Report sistemi) ──────────────────────────────────────────
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS reports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            reporter_id INTEGER NOT NULL,
-            target_id INTEGER NOT NULL,
-            reason TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            status TEXT DEFAULT 'open'
-        )
-    """)
-
     # ── Hərraclar (Auction House) ────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS auctions (
@@ -683,28 +611,6 @@ def init_db():
             archived_at INTEGER NOT NULL,
             top_players TEXT NOT NULL,
             total_participants INTEGER NOT NULL
-        )
-    """)
-
-    # ── Həftəlik Boss Event ────────────────────────────────────────────────────
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS boss_events (
-            week_key     TEXT PRIMARY KEY,
-            max_hp       INTEGER NOT NULL,
-            current_hp   INTEGER NOT NULL,
-            reward_coins INTEGER NOT NULL,
-            defeated     INTEGER DEFAULT 0,
-            message_id   TEXT,
-            channel_id   TEXT,
-            created_at   INTEGER NOT NULL
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS boss_damage (
-            week_key   TEXT NOT NULL,
-            discord_id INTEGER NOT NULL,
-            damage     INTEGER DEFAULT 0,
-            PRIMARY KEY (week_key, discord_id)
         )
     """)
 
@@ -747,6 +653,7 @@ RESETTABLE_PLAYER_TABLES = [
     "skin_inventory", "coin_logs", "active_boosts",
     "referral_invites", "referrals", "active_match",
     "players_5v5", "matchmaking_queue_5v5", "matchmaking_queue", "chat_activity",
+    "seasons",
 ]
 
 
@@ -4496,31 +4403,6 @@ def check_and_grant_comeback_bonus(discord_id):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# FAZA 2 — ŞİKAYƏT SİSTEMİ
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def create_report(reporter_id, target_id, reason):
-    import time
-    conn = _get_conn(); cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO reports (reporter_id, target_id, reason, created_at, status) VALUES (?,?,?,?,'open')",
-        (reporter_id, target_id, reason, int(time.time()))
-    )
-    conn.commit(); rid = cur.lastrowid; conn.close()
-    return rid
-
-
-def get_recent_reports_for(target_id, limit=10):
-    conn = _get_conn(); cur = conn.cursor()
-    cur.execute(
-        "SELECT reporter_id, reason, created_at, status FROM reports WHERE target_id=? ORDER BY created_at DESC LIMIT ?",
-        (target_id, limit)
-    )
-    rows = cur.fetchall(); conn.close()
-    return [{"reporter_id": r[0], "reason": r[1], "created_at": r[2], "status": r[3]} for r in rows]
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # FAZA 2 — TOPLU ADMİN ƏMƏLİYYATI
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -4808,88 +4690,6 @@ def get_weekly_recap(discord_id, since_ts):
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# FAZA 3 — HƏFTƏLİK BOSS EVENT
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def _current_boss_week_key():
-    import datetime as _dt
-    return (_dt.datetime.utcnow() + _dt.timedelta(hours=4)).strftime("%G-W%V")  # AZ vaxtı, ISO həftə
-
-
-def get_or_create_boss_event(max_hp=500, reward_coins=40):
-    import time
-    week_key = _current_boss_week_key()
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT week_key, max_hp, current_hp, reward_coins, defeated, message_id, channel_id "
-                   "FROM boss_events WHERE week_key=?", (week_key,))
-    row = cursor.fetchone()
-    if row:
-        conn.close()
-        return {"week_key": row[0], "max_hp": row[1], "current_hp": row[2], "reward_coins": row[3],
-                "defeated": bool(row[4]), "message_id": row[5], "channel_id": row[6], "is_new": False}
-    cursor.execute(
-        "INSERT INTO boss_events (week_key, max_hp, current_hp, reward_coins, defeated, created_at) "
-        "VALUES (?,?,?,?,0,?)",
-        (week_key, max_hp, max_hp, reward_coins, int(time.time()))
-    )
-    conn.commit(); conn.close()
-    return {"week_key": week_key, "max_hp": max_hp, "current_hp": max_hp, "reward_coins": reward_coins,
-            "defeated": False, "message_id": None, "channel_id": None, "is_new": True}
-
-
-def set_boss_message(week_key, message_id, channel_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("UPDATE boss_events SET message_id=?, channel_id=? WHERE week_key=?",
-                   (str(message_id), str(channel_id), week_key))
-    conn.commit(); conn.close()
-
-
-def apply_boss_damage(week_key, contributions: dict):
-    """contributions: {discord_id: kill_count}. Boss-un HP-sini azaldır, hər oyunçunun töhfəsini
-    qeyd edir. Qaytarır: (yeni_current_hp, max_hp, just_defeated: bool)."""
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT current_hp, max_hp, defeated FROM boss_events WHERE week_key=?", (week_key,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close(); return None
-    current_hp, max_hp, already_defeated = row
-    if already_defeated:
-        conn.close(); return (0, max_hp, False)
-    total_damage = sum(contributions.values())
-    new_hp = max(0, current_hp - total_damage)
-    just_defeated = new_hp == 0
-    cursor.execute("UPDATE boss_events SET current_hp=?, defeated=? WHERE week_key=?",
-                   (new_hp, 1 if just_defeated else 0, week_key))
-    for did, dmg in contributions.items():
-        if dmg <= 0:
-            continue
-        cursor.execute(
-            "INSERT INTO boss_damage (week_key, discord_id, damage) VALUES (?,?,?) "
-            "ON CONFLICT(week_key, discord_id) DO UPDATE SET damage=damage+excluded.damage",
-            (week_key, did, dmg)
-        )
-    conn.commit(); conn.close()
-    return (new_hp, max_hp, just_defeated)
-
-
-def get_boss_leaderboard(week_key, limit=5):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "SELECT bd.discord_id, p.so2_nick, bd.damage FROM boss_damage bd "
-        "JOIN players p ON p.discord_id = bd.discord_id "
-        "WHERE bd.week_key=? ORDER BY bd.damage DESC LIMIT ?",
-        (week_key, limit)
-    )
-    rows = cursor.fetchall(); conn.close()
-    return [{"discord_id": r[0], "nick": r[1], "damage": r[2]} for r in rows]
-
-
-def get_all_boss_contributors(week_key):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT discord_id FROM boss_damage WHERE week_key=? AND damage > 0", (week_key,))
-    rows = cursor.fetchall(); conn.close()
-    return [r[0] for r in rows]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -5087,362 +4887,6 @@ def get_rank_distribution():
     return [{"name": r[2], "color": list(r[3]), "count": counts[r[2]]} for r in RANKS]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TURNIR BRACKET SİSTEMİ (FACEIT ELO/2v2/5v5-dən TAM MÜSTƏQİL — heç bir ELO/season/
-# active_match funksiyasına toxunmur. Yeganə əlaqə: iştirak üçün `get_player()` ilə
-# qeydiyyat yoxlanılır.)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-def create_tournament(name, team_size, created_by):
-    import time
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO tournaments (name, team_size, status, created_by, created_at) VALUES (?,?,'signup',?,?)",
-        (name, team_size, created_by, int(time.time()))
-    )
-    tid = cursor.lastrowid
-    conn.commit(); conn.close()
-    return tid
-
-
-def get_tournament(tournament_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tournaments WHERE id=?", (tournament_id,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return None
-    cols = [d[0] for d in cursor.description]
-    conn.close()
-    return dict(zip(cols, row))
-
-
-def get_active_tournament():
-    """Cari 'signup' və ya 'active' statuslu ən son turniri qaytarır (yoxdursa None)."""
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT id FROM tournaments WHERE status IN ('signup','active') ORDER BY id DESC LIMIT 1")
-    row = cursor.fetchone()
-    conn.close()
-    return get_tournament(row[0]) if row else None
-
-
-def list_tournaments(status=None, limit=20):
-    conn = _get_conn(); cursor = conn.cursor()
-    if status:
-        cursor.execute("SELECT id FROM tournaments WHERE status=? ORDER BY id DESC LIMIT ?", (status, limit))
-    else:
-        cursor.execute("SELECT id FROM tournaments ORDER BY id DESC LIMIT ?", (limit,))
-    ids = [r[0] for r in cursor.fetchall()]
-    conn.close()
-    return [get_tournament(i) for i in ids]
-
-
-def set_tournament_meta(tournament_id, **fields):
-    """Turnir sətrində sütun(lar)ı yeniləyir — signup/bracket kanal/mesaj ID-lərini yazmaq üçün."""
-    if not fields:
-        return
-    conn = _get_conn(); cursor = conn.cursor()
-    set_clause = ", ".join(f"{k}=?" for k in fields)
-    cursor.execute(f"UPDATE tournaments SET {set_clause} WHERE id=?", (*fields.values(), tournament_id))
-    conn.commit(); conn.close()
-
-
-def join_tournament(tournament_id, discord_id):
-    """(success, msg) qaytarır."""
-    import time
-    t = get_tournament(tournament_id)
-    if not t or t["status"] != "signup":
-        return False, "Bu turnirə qeydiyyat artıq bağlıdır."
-    conn = _get_conn(); cursor = conn.cursor()
-    try:
-        cursor.execute(
-            "INSERT INTO tournament_participants (tournament_id, discord_id, joined_at) VALUES (?,?,?)",
-            (tournament_id, discord_id, int(time.time()))
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        return False, "Artıq bu turnirə qoşulmusunuz."
-    conn.close()
-    return True, "Qoşuldunuz!"
-
-
-def leave_tournament(tournament_id, discord_id):
-    t = get_tournament(tournament_id)
-    if not t or t["status"] != "signup":
-        return False, "Bu turnir artıq başlayıb, ayrıla bilməzsiniz."
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("DELETE FROM tournament_participants WHERE tournament_id=? AND discord_id=?",
-                   (tournament_id, discord_id))
-    changed = cursor.rowcount
-    conn.commit(); conn.close()
-    return (changed > 0), ("Ayrıldınız." if changed else "Siz artıq qeydiyyatda deyilsiniz.")
-
-
-def get_tournament_signup_count(tournament_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM tournament_participants WHERE tournament_id=?", (tournament_id,))
-    n = cursor.fetchone()[0]
-    conn.close()
-    return n
-
-
-def get_tournament_participants(tournament_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "SELECT tp.discord_id, p.so2_nick FROM tournament_participants tp "
-        "LEFT JOIN players p ON p.discord_id = tp.discord_id WHERE tp.tournament_id=? ORDER BY tp.joined_at",
-        (tournament_id,)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"discord_id": r[0], "nick": r[1] or str(r[0])} for r in rows]
-
-
-def start_tournament(tournament_id):
-    """Qeydiyyatı bağlayır, iştirakçıları TƏSADÜFİ team_size-lik komandalara bölür (mövcud
-    2v2/5v5 queue-nun 'tam təsadüfi' fəlsəfəsi ilə eyni), tam tək-eliminasiya bracket-i
-    qabaqcadan generasiya edir. Bye-lar HEÇ VAXT bir-biri ilə eşləşdirilmir (bax aşağı —
-    yalnız real komandaya qarşı bye qoyulur, çünki byes_needed < ilk-raund matç sayı təminatı
-    bracket-in-növbəti-2-qüvvəti tərifindən irəli gəlir). Kifayət qədər iştirakçı yoxdursa
-    (və ya 2-dən az tam komanda formalaşırsa) None qaytarır."""
-    import random
-    t = get_tournament(tournament_id)
-    if not t or t["status"] != "signup":
-        return None
-    team_size = t["team_size"]
-    participants = get_tournament_participants(tournament_id)
-    if len(participants) < team_size:
-        return None
-    random.shuffle(participants)
-    teams = [participants[i:i + team_size] for i in range(0, len(participants), team_size)]
-    if len(teams[-1]) < team_size:
-        teams.pop()
-    if len(teams) < 2:
-        return None
-
-    conn = _get_conn(); cursor = conn.cursor()
-    team_ids = []
-    for members in teams:
-        label = " / ".join(m["nick"] for m in members)
-        cursor.execute("INSERT INTO tournament_teams (tournament_id, label, is_bye) VALUES (?,?,0)",
-                       (tournament_id, label))
-        team_id = cursor.lastrowid
-        for m in members:
-            cursor.execute("INSERT INTO tournament_team_members (team_id, discord_id) VALUES (?,?)",
-                           (team_id, m["discord_id"]))
-        team_ids.append(team_id)
-    random.shuffle(team_ids)
-
-    bracket_size = 1
-    while bracket_size < len(team_ids):
-        bracket_size *= 2
-    num_matches = bracket_size // 2
-    num_byes = bracket_size - len(team_ids)  # təminatlı: num_byes < num_matches
-
-    bye_team_ids = []
-    for _ in range(num_byes):
-        cursor.execute("INSERT INTO tournament_teams (tournament_id, label, is_bye) VALUES (?, 'BYE', 1)",
-                       (tournament_id,))
-        bye_team_ids.append(cursor.lastrowid)
-
-    team_iter = iter(team_ids)
-    slot_pairs = []
-    byes_left = num_byes
-    for _ in range(num_matches):
-        a = next(team_iter)
-        if byes_left > 0:
-            slot_pairs.append((a, bye_team_ids.pop()))
-            byes_left -= 1
-        else:
-            slot_pairs.append((a, next(team_iter)))
-    random.shuffle(slot_pairs)  # bye-lı matçlar bracket-də həmişə eyni yerdə görünməsin
-
-    round_match_ids = []
-    for slot, (a, b) in enumerate(slot_pairs):
-        cursor.execute(
-            "INSERT INTO tournament_matches (tournament_id, round_number, slot, team_a_id, team_b_id, status) "
-            "VALUES (?,1,?,?,?,'pending')",
-            (tournament_id, slot, a, b)
-        )
-        round_match_ids.append(cursor.lastrowid)
-
-    num_rounds = bracket_size.bit_length() - 1
-    prev_round_ids = round_match_ids
-    for r in range(2, num_rounds + 1):
-        this_round_ids = []
-        n_matches = bracket_size // (2 ** r)
-        for slot in range(n_matches):
-            cursor.execute(
-                "INSERT INTO tournament_matches (tournament_id, round_number, slot, status) VALUES (?,?,?,'pending')",
-                (tournament_id, r, slot)
-            )
-            this_round_ids.append(cursor.lastrowid)
-        for slot, match_id in enumerate(prev_round_ids):
-            cursor.execute(
-                "UPDATE tournament_matches SET next_match_id=?, next_slot_index=? WHERE id=?",
-                (this_round_ids[slot // 2], slot % 2, match_id)
-            )
-        prev_round_ids = this_round_ids
-
-    cursor.execute("UPDATE tournaments SET status='active' WHERE id=?", (tournament_id,))
-    conn.commit()
-    conn.close()
-
-    for match_id in round_match_ids:
-        _auto_advance_if_bye(match_id)
-
-    return {"team_count": len(team_ids), "bracket_size": bracket_size}
-
-
-def _is_bye_team(team_id):
-    if team_id is None:
-        return False
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT is_bye FROM tournament_teams WHERE id=?", (team_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return bool(row and row[0])
-
-
-def _auto_advance_if_bye(match_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("SELECT team_a_id, team_b_id, status FROM tournament_matches WHERE id=?", (match_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if not row or row[2] == "completed":
-        return
-    team_a_id, team_b_id = row[0], row[1]
-    a_bye, b_bye = _is_bye_team(team_a_id), _is_bye_team(team_b_id)
-    if a_bye and not b_bye:
-        record_tournament_match_winner(match_id, team_b_id)
-    elif b_bye and not a_bye:
-        record_tournament_match_winner(match_id, team_a_id)
-
-
-def record_tournament_match_winner(match_id, winner_team_id):
-    """Qalibi yazır, `next_match_id`-ə ötürür. Final idisə turniri tamamlayır. Artıq
-    tamamlanmış matça yenidən çağırılarsa None qaytarır (təkrar-emal qorumsı)."""
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "SELECT tournament_id, team_a_id, team_b_id, next_match_id, next_slot_index, status "
-        "FROM tournament_matches WHERE id=?", (match_id,)
-    )
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return None
-    tournament_id, team_a_id, team_b_id, next_match_id, next_slot_index, status = row
-    if status == "completed":
-        conn.close()
-        return None
-    loser_team_id = team_b_id if winner_team_id == team_a_id else team_a_id
-    cursor.execute("UPDATE tournament_matches SET winner_team_id=?, status='completed' WHERE id=?",
-                   (winner_team_id, match_id))
-
-    is_final = next_match_id is None
-    if next_match_id is not None:
-        col = "team_a_id" if next_slot_index == 0 else "team_b_id"
-        cursor.execute(f"UPDATE tournament_matches SET {col}=? WHERE id=?", (winner_team_id, next_match_id))
-    else:
-        cursor.execute(
-            "UPDATE tournaments SET status='completed', winner_team_id=?, runner_up_team_id=? WHERE id=?",
-            (winner_team_id, loser_team_id, tournament_id)
-        )
-    conn.commit()
-    conn.close()
-
-    if next_match_id is not None:
-        _auto_advance_if_bye(next_match_id)
-
-    return {"tournament_id": tournament_id, "is_final": is_final,
-            "winner_team_id": winner_team_id, "loser_team_id": loser_team_id,
-            "next_match_id": next_match_id}
-
-
-def get_tournament_match(match_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, tournament_id, round_number, slot, team_a_id, team_b_id, winner_team_id, status, "
-        "match_channel_id, match_message_id FROM tournament_matches WHERE id=?", (match_id,)
-    )
-    row = cursor.fetchone()
-    conn.close()
-    if not row:
-        return None
-    keys = ["id", "tournament_id", "round_number", "slot", "team_a_id", "team_b_id", "winner_team_id", "status",
-            "match_channel_id", "match_message_id"]
-    return dict(zip(keys, row))
-
-
-def set_tournament_match_message(match_id, channel_id, message_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("UPDATE tournament_matches SET match_channel_id=?, match_message_id=? WHERE id=?",
-                   (channel_id, message_id, match_id))
-    conn.commit(); conn.close()
-
-
-def get_tournament_bracket(tournament_id):
-    """{"tournament": {...}, "rounds": [[match_dict, ...], ...]} qaytarır — şəkil generatoru üçün."""
-    t = get_tournament(tournament_id)
-    if not t:
-        return None
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, round_number, slot, team_a_id, team_b_id, winner_team_id, status "
-        "FROM tournament_matches WHERE tournament_id=? ORDER BY round_number, slot",
-        (tournament_id,)
-    )
-    match_rows = cursor.fetchall()
-    cursor.execute("SELECT id, label, is_bye FROM tournament_teams WHERE tournament_id=?", (tournament_id,))
-    team_rows = cursor.fetchall()
-    conn.close()
-    teams_by_id = {r[0]: {"label": r[1], "is_bye": bool(r[2])} for r in team_rows}
-
-    rounds = {}
-    for mid, rnd, slot, a, b, winner, status in match_rows:
-        rounds.setdefault(rnd, []).append({
-            "id": mid, "round_number": rnd, "slot": slot,
-            "team_a": teams_by_id.get(a), "team_b": teams_by_id.get(b),
-            "team_a_id": a, "team_b_id": b,
-            "winner_team_id": winner, "status": status,
-        })
-    ordered_rounds = [rounds[r] for r in sorted(rounds.keys())]
-    return {"tournament": t, "rounds": ordered_rounds}
-
-
-def get_tournament_team_members(team_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute(
-        "SELECT ttm.discord_id, p.so2_nick FROM tournament_team_members ttm "
-        "LEFT JOIN players p ON p.discord_id = ttm.discord_id WHERE ttm.team_id=?",
-        (team_id,)
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"discord_id": r[0], "nick": r[1] or str(r[0])} for r in rows]
-
-
-def get_open_tournament_matches():
-    """Bütün AKTİV turnirlərdə hələ tamamlanmamış VƏ hər iki tərəfi məlum olan (əvvəlki
-    raund hələ bitməyib gözləmədə olmayan) matçların ID-lərini qaytarır — bot restartından
-    sonra persistent view-ları yenidən qeydiyyatdan keçirmək üçün (bax: on_ready)."""
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("""
-        SELECT tm.id FROM tournament_matches tm
-        JOIN tournaments t ON t.id = tm.tournament_id
-        WHERE t.status='active' AND tm.status != 'completed'
-              AND tm.team_a_id IS NOT NULL AND tm.team_b_id IS NOT NULL
-    """)
-    ids = [r[0] for r in cursor.fetchall()]
-    conn.close()
-    return ids
-
-
-def cancel_tournament(tournament_id):
-    conn = _get_conn(); cursor = conn.cursor()
-    cursor.execute("UPDATE tournaments SET status='cancelled' WHERE id=?", (tournament_id,))
-    conn.commit(); conn.close()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -5532,22 +4976,19 @@ def get_match_volume_trend(days=30):
 
 
 def get_moderation_summary(days=30):
-    """Aqreqat moderasiya statistikası: cəmi/açıq şikayət sayı, admin əməliyyat sayı,
-    şübhəli coin-qazanc bayraqları (bax: check_suspicious_activity)."""
+    """Aqreqat moderasiya statistikası: admin əməliyyat sayı, şübhəli coin-qazanc
+    bayraqları (bax: check_suspicious_activity). Şikayət (reports) sistemi ləğv edilib —
+    həmin sahələr həmişə 0 qaytarır (geriyə uyğunluq üçün saxlanılır)."""
     import time
     conn = _get_conn(); cur = conn.cursor()
     start = int(time.time()) - days * 86400
-    cur.execute("SELECT COUNT(*) FROM reports WHERE created_at >= ?", (start,))
-    total_reports = cur.fetchone()[0]
-    cur.execute("SELECT COUNT(*) FROM reports WHERE created_at >= ? AND status='open'", (start,))
-    open_reports = cur.fetchone()[0]
     cur.execute("SELECT COUNT(*) FROM admin_logs WHERE created_at >= ?", (start,))
     admin_actions = cur.fetchone()[0]
     conn.close()
     flagged = check_suspicious_activity(start)
     return {
-        "total_reports": total_reports,
-        "open_reports": open_reports,
+        "total_reports": 0,
+        "open_reports": 0,
         "admin_actions": admin_actions,
         "suspicious_flags": len(flagged),
         "suspicious_players": flagged[:10],

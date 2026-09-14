@@ -77,20 +77,12 @@ from database import (
     get_leaderboard_5v5, get_all_players_5v5,
     get_dm_notifications, set_dm_notifications, use_free_nickname_change,
     check_and_grant_comeback_bonus, COMEBACK_BONUS_COINS,
-    create_report, get_recent_reports_for,
     bulk_add_coins, check_suspicious_activity,
     create_auction, get_auction, place_bid, get_due_auctions, mark_auction_finished, get_open_auction_ids,
     get_activity_heatmap, WEEKDAY_NAMES_AZ,
     get_weekly_recap,
     get_map_masters, get_loss_streak,
-    get_or_create_boss_event, set_boss_message, apply_boss_damage,
-    get_boss_leaderboard, get_all_boss_contributors,
     add_voice_seconds, get_voice_leaderboard,
-    create_tournament, get_tournament, get_active_tournament, list_tournaments,
-    join_tournament, leave_tournament, get_tournament_signup_count, get_tournament_participants,
-    start_tournament, record_tournament_match_winner, get_tournament_match, get_tournament_bracket,
-    get_tournament_team_members, get_open_tournament_matches, cancel_tournament,
-    set_tournament_meta, set_tournament_match_message,
     add_chat_xp, get_chat_leaderboard, get_top_chat_activity, reset_weekly_chat_xp,
 )
 from i18n import t, LANG_NAMES
@@ -114,13 +106,12 @@ from visual_cards import (
     generate_map_stats_card, generate_personal_record_card, generate_squad_card,
     generate_activity_card, generate_elo_chart_card, generate_quest_card, generate_synergy_card,
     generate_elo_cards_market_card, generate_monthly_reward_card, generate_weekly_mvp_card,
-    generate_boss_event_card, generate_map_masters_card,
+    generate_map_masters_card,
     generate_announcement_card, generate_sticker_card, generate_chat_activity_card,
     RANKS, get_rank
 )
 from sticker_config import STICKER_ITEMS, get_sticker_by_achievement, get_sticker_by_id
 from referral_visual import generate_item_preview_card
-from tournament_card import generate_tournament_bracket_image, generate_tournament_signup_card
 import requests
 
 load_dotenv()
@@ -198,7 +189,7 @@ DAILY_CHALLENGE_DESCRIPTIONS = {c[0]: c[3] for c in DAILY_CHALLENGE_TEMPLATES}
 LIGHTNING_ROUND_CHECK_CHANCE = 0.05
 LIGHTNING_ROUND_DURATION_MINUTES = 10
 
-SOCIAL_CHANNEL_ID = 1529227720939012229
+SOCIAL_CHANNEL_ID = None
 SOCIAL_LINKS = {
     "youtube": "https://www.youtube.com/@nextlevelaze",
     "tiktok": "https://www.tiktok.com/@nextlevelaz",
@@ -206,9 +197,13 @@ SOCIAL_LINKS = {
     "shop": "https://zenithshop.up.railway.app/",
 }
 
+CATEGORY_ANNOUNCEMENTS_NAME = "📢 Elanlar"
 CATEGORY_GENERAL_NAME = "📌 Ümumi"
-CATEGORY_5V5_NAME = "🎯 FACEIT 5v5"
-CATEGORY_TOURNAMENT_NAME = "🏆 Turnirlər"
+CATEGORY_5V5_NAME = "🎯 FACEIT"
+CATEGORY_STAFF_NAME = "🛡️ Admin"
+
+STAFF_ROLE_NAMES = ["Founder", "Head Admin", "Admin", "Moderator"]
+MEMBER_ROLE_NAME = "NLA Member"
 
 MAPS = ["Rust", "Province", "Sandstone", "Dune", "Hanami", "Prison", "Breeze"]
 
@@ -218,16 +213,11 @@ MONTHLY_CHAMPION_IMAGE_PATH = os.path.join("assets", "butterfly_legacy.jpg")
 MONTHLY_CHAMPION_SKIN_NAME = "Butterfly | Legacy"
 INACTIVE_REGISTRATION_DAYS = 3
 REWARD_CHANNEL_ID = None
-REPORTS_CHANNEL_ID = None
 AUDIT_LOG_CHANNEL_ID = None
 ACHIEVEMENT_WALL_CHANNEL_ID = None
-BOSS_EVENT_CHANNEL_ID = None
 MAP_MASTERS_CHANNEL_ID = None
 STANDOFF2_NEWS_CHANNEL_ID = None
 RARE_ACHIEVEMENT_THRESHOLD_PCT = 15
-BOSS_MAX_HP = 500
-BOSS_REWARD_COINS = 40
-BOSS_TOP_DAMAGE_BONUS = 40
 TILT_LOSS_STREAK_THRESHOLD = 3
 
 # ── Coin ↔ AZN çevrilməsi (ai_chat.py-dakı elan olunmuş məzənnə ilə eynidir) ────
@@ -381,74 +371,6 @@ async def _get_reward_channel():
         return None
 
 
-async def _render_boss_card(boss, leaderboard):
-    card_path = os.path.join(DATA_DIR or ".", "boss_event_card.png")
-    await asyncio.to_thread(generate_boss_event_card, boss, leaderboard, card_path)
-    return discord.File(card_path, filename="boss_event.png")
-
-
-async def _post_boss_event(channel):
-    boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
-    file = await _render_boss_card(boss, [])
-    message = await channel.send(file=file)
-    try:
-        pins = await channel.pins()
-        for old in pins:
-            if old.author.id == bot.user.id:
-                await old.unpin()
-    except (discord.Forbidden, discord.HTTPException):
-        pass
-    try:
-        await message.pin()
-    except (discord.Forbidden, discord.HTTPException):
-        pass
-    set_boss_message(boss["week_key"], message.id, channel.id)
-    return message
-
-
-async def _update_boss_progress(contributions: dict):
-    """Matçdan sonra kill-əsaslı töhfələri boss-a tətbiq edir, canlı mesajı yeniləyir,
-    boss məğlub olubsa iştirakçılara mükafat verir."""
-    if not contributions:
-        return
-    channel = await _get_boss_event_channel()
-    if not channel:
-        return
-    boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
-    if boss["defeated"]:
-        return
-    if boss["is_new"] or not boss.get("message_id"):
-        message = await _post_boss_event(channel)
-        boss = get_or_create_boss_event(BOSS_MAX_HP, BOSS_REWARD_COINS)
-    new_hp, max_hp, just_defeated = apply_boss_damage(boss["week_key"], contributions)
-    leaderboard = get_boss_leaderboard(boss["week_key"])
-    boss["current_hp"] = new_hp
-    boss["defeated"] = just_defeated
-    try:
-        message = await channel.fetch_message(int(boss["message_id"]))
-        file = await _render_boss_card(boss, leaderboard)
-        await message.edit(attachments=[file])
-    except (discord.NotFound, discord.HTTPException, TypeError, ValueError):
-        pass
-    if just_defeated:
-        contributors = get_all_boss_contributors(boss["week_key"])
-        for did in contributors:
-            new_bal = add_coins(did, BOSS_REWARD_COINS)
-            add_coin_log(did, BOSS_REWARD_COINS, "Boss Event qələbəsi", "earn", new_bal)
-        if leaderboard:
-            top_id = leaderboard[0]["discord_id"]
-            new_bal = add_coins(top_id, BOSS_TOP_DAMAGE_BONUS)
-            add_coin_log(top_id, BOSS_TOP_DAMAGE_BONUS, "Boss Event — ən çox zərbə bonusu", "earn", new_bal)
-        try:
-            await channel.send(
-                f"🎉 Boss məğlub edildi! {len(contributors)} nəfər töhfə verdi, hamısı "
-                f"**{BOSS_REWARD_COINS} coin** qazandı. Ən çox zərbə vuran: "
-                f"{'<@' + str(leaderboard[0]['discord_id']) + '>' if leaderboard else '-'} 🏅"
-            )
-        except discord.HTTPException:
-            pass
-
-
 async def _post_wall_announcement(guild, discord_id, nick, name, icon, kind):
     """Nadir nailiyyət/ləqəb qazananda dərhal Nailiyyət Divarı kanalına elan edir."""
     channel = await _get_achievement_wall_channel()
@@ -600,18 +522,6 @@ async def weekly_mvp_loop():
         await _post_map_masters(masters_channel)
 
 
-async def _get_reports_channel():
-    if not REPORTS_CHANNEL_ID:
-        return None
-    channel = bot.get_channel(REPORTS_CHANNEL_ID)
-    if channel:
-        return channel
-    try:
-        return await bot.fetch_channel(REPORTS_CHANNEL_ID)
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-        return None
-
-
 async def _get_audit_log_channel():
     if not AUDIT_LOG_CHANNEL_ID:
         return None
@@ -632,18 +542,6 @@ async def _get_achievement_wall_channel():
         return channel
     try:
         return await bot.fetch_channel(ACHIEVEMENT_WALL_CHANNEL_ID)
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-        return None
-
-
-async def _get_boss_event_channel():
-    if not BOSS_EVENT_CHANNEL_ID:
-        return None
-    channel = bot.get_channel(BOSS_EVENT_CHANNEL_ID)
-    if channel:
-        return channel
-    try:
-        return await bot.fetch_channel(BOSS_EVENT_CHANNEL_ID)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         return None
 
@@ -1187,8 +1085,6 @@ def is_queue_open():
 
 leaderboard_channel_id_5v5 = None
 leaderboard_message_id_5v5 = None
-tournament_signup_channel_id = None
-tournament_bracket_channel_id = None
 queue_status_channel_id_5v5 = None
 queue_status_message_id_5v5 = None
 
@@ -2928,10 +2824,9 @@ class MatchmakingView5v5(discord.ui.View):
 
 @bot.event
 async def on_ready():
-    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
-    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
+    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
+    global ACHIEVEMENT_WALL_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID, SOCIAL_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5, leaderboard_message_id_5v5
-    global tournament_signup_channel_id, tournament_bracket_channel_id
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     init_db()
 
@@ -2968,12 +2863,9 @@ async def on_ready():
     saved_lb_msg_5v5 = get_meta("leaderboard_message_id_5v5")
     if saved_lb_msg_5v5:
         leaderboard_message_id_5v5 = int(saved_lb_msg_5v5)
-    saved_tourn_signup = get_meta("tournament_signup_channel_id")
-    if saved_tourn_signup:
-        tournament_signup_channel_id = int(saved_tourn_signup)
-    saved_tourn_bracket = get_meta("tournament_bracket_channel_id")
-    if saved_tourn_bracket:
-        tournament_bracket_channel_id = int(saved_tourn_bracket)
+    saved_social = get_meta("social_channel_id")
+    if saved_social:
+        SOCIAL_CHANNEL_ID = int(saved_social)
     saved_chat_xp = get_meta("chat_xp_channel_id")
     if saved_chat_xp:
         CHAT_XP_CHANNEL_ID = int(saved_chat_xp)
@@ -2986,18 +2878,12 @@ async def on_ready():
     saved_reward = get_meta("reward_channel_id")
     if saved_reward:
         REWARD_CHANNEL_ID = int(saved_reward)
-    saved_reports = get_meta("reports_channel_id")
-    if saved_reports:
-        REPORTS_CHANNEL_ID = int(saved_reports)
     saved_audit = get_meta("audit_log_channel_id")
     if saved_audit:
         AUDIT_LOG_CHANNEL_ID = int(saved_audit)
     saved_wall = get_meta("achievement_wall_channel_id")
     if saved_wall:
         ACHIEVEMENT_WALL_CHANNEL_ID = int(saved_wall)
-    saved_boss = get_meta("boss_event_channel_id")
-    if saved_boss:
-        BOSS_EVENT_CHANNEL_ID = int(saved_boss)
     saved_masters = get_meta("map_masters_channel_id")
     if saved_masters:
         MAP_MASTERS_CHANNEL_ID = int(saved_masters)
@@ -3005,9 +2891,8 @@ async def on_ready():
     if saved_news:
         STANDOFF2_NEWS_CHANNEL_ID = int(saved_news)
     print(f"[CONFIG] LOG_CHANNEL_ID={LOG_CHANNEL_ID} REWARD_CHANNEL_ID={REWARD_CHANNEL_ID} "
-          f"REPORTS_CHANNEL_ID={REPORTS_CHANNEL_ID} "
           f"AUDIT_LOG_CHANNEL_ID={AUDIT_LOG_CHANNEL_ID} ACHIEVEMENT_WALL_CHANNEL_ID={ACHIEVEMENT_WALL_CHANNEL_ID} "
-          f"BOSS_EVENT_CHANNEL_ID={BOSS_EVENT_CHANNEL_ID} MAP_MASTERS_CHANNEL_ID={MAP_MASTERS_CHANNEL_ID} "
+          f"MAP_MASTERS_CHANNEL_ID={MAP_MASTERS_CHANNEL_ID} "
           f"STANDOFF2_NEWS_CHANNEL_ID={STANDOFF2_NEWS_CHANNEL_ID}", flush=True)
 
     if os.environ.get("RESET_SQUADS_ON_BOOT") == "1":
@@ -3021,11 +2906,6 @@ async def on_ready():
     bot.add_view(SquadInviteView())
     for aid in get_open_auction_ids():
         bot.add_view(AuctionBidView(aid))
-    active_tournament = get_active_tournament()
-    if active_tournament and active_tournament["status"] == "signup":
-        bot.add_view(TournamentSignupView(active_tournament["id"]))
-    for open_match_id in get_open_tournament_matches():
-        bot.add_view(TournamentMatchView(open_match_id))
     if not check_giveaways.is_running():
         check_giveaways.start()
     refresh_daily_tasks()
@@ -3077,6 +2957,14 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member: discord.Member):
+    if not member.bot:
+        member_role = discord.utils.get(member.guild.roles, name=MEMBER_ROLE_NAME)
+        if member_role:
+            try:
+                await member.add_roles(member_role, reason="Yeni üzv — avtomatik NLA Member rolu")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
     view = OnboardingTourView(member.name, member.guild.name)
     try:
         await member.send(embed=view._embed(), view=view)
@@ -4044,9 +3932,8 @@ async def _execute_server_reset(interaction: discord.Interaction):
     rolları silir (bot-un özünün roluna VƏ idarə olunan/@everyone rollarına toxunmadan),
     sonra Nextlevelaz formatında yeni struktur qurur, rütbə rollarını yaradır və loqonu
     bot avatarı/server ikonu kimi tətbiq edir."""
-    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID
-    global LOG_CHANNEL_ID_5V5
-    global tournament_signup_channel_id, tournament_bracket_channel_id
+    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
+    global LOG_CHANNEL_ID_5V5, SOCIAL_CHANNEL_ID
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
 
     guild = interaction.guild
@@ -4074,34 +3961,68 @@ async def _execute_server_reset(interaction: discord.Interaction):
         except (discord.Forbidden, discord.HTTPException):
             pass
 
-    # ── 3. Yeni struktur: 3 kataqoriya (Ümumi, FACEIT 5v5, Turnirlər) ──
+    # ── 3. Staff/üzv rollarını yarat (ən aşağıdan yuxarıya — Discord yeni rolu həmişə
+    # @everyone-dan bir pillə yuxarı əlavə edir, ona görə son yaradılan ən yuxarıda çıxır). ──
+    role_member = await guild.create_role(
+        name=MEMBER_ROLE_NAME, color=discord.Color.from_rgb(138, 92, 230),
+        reason="server_sifirla", hoist=True
+    )
+    role_moderator = await guild.create_role(
+        name="Moderator", color=discord.Color.from_rgb(46, 204, 113),
+        permissions=discord.Permissions(kick_members=True, moderate_members=True, manage_messages=True, view_audit_log=True),
+        reason="server_sifirla", hoist=True
+    )
+    role_admin = await guild.create_role(
+        name="Admin", color=discord.Color.from_rgb(52, 152, 219),
+        permissions=discord.Permissions(
+            kick_members=True, ban_members=True, moderate_members=True, manage_messages=True,
+            manage_channels=True, manage_roles=True, view_audit_log=True, mention_everyone=True
+        ),
+        reason="server_sifirla", hoist=True
+    )
+    role_head_admin = await guild.create_role(
+        name="Head Admin", color=discord.Color.from_rgb(230, 126, 34),
+        permissions=discord.Permissions(administrator=True), reason="server_sifirla", hoist=True
+    )
+    role_founder = await guild.create_role(
+        name="Founder", color=discord.Color.from_rgb(230, 30, 60),
+        permissions=discord.Permissions(administrator=True), reason="server_sifirla", hoist=True
+    )
+    staff_roles = [role_founder, role_head_admin, role_admin, role_moderator]
+
+    # ── 4. Yeni struktur: 4 kataqoriya (Elanlar, Ümumi, FACEIT, Admin) ──
+    category_announcements = await guild.create_category(CATEGORY_ANNOUNCEMENTS_NAME)
     category_general = await guild.create_category(CATEGORY_GENERAL_NAME)
     category_5v5 = await guild.create_category(CATEGORY_5V5_NAME)
-    category_tournament = await guild.create_category(CATEGORY_TOURNAMENT_NAME)
+    staff_view_overwrites = {guild.default_role: discord.PermissionOverwrite(view_channel=False)}
+    for r in staff_roles:
+        staff_view_overwrites[r] = discord.PermissionOverwrite(view_channel=True)
+    category_staff = await guild.create_category(CATEGORY_STAFF_NAME, overwrites=staff_view_overwrites)
 
     announce_overwrites = {guild.default_role: discord.PermissionOverwrite(send_messages=False)}
-    staff_only_overwrites = {guild.default_role: discord.PermissionOverwrite(view_channel=False)}
 
-    ch_reward = await guild.create_text_channel("ay-sonu-mukafati", category=category_general, overwrites=announce_overwrites)
-    ch_register = await guild.create_text_channel("faceit-qeydiyyat", category=category_general, overwrites=announce_overwrites)
-    ch_rules = await guild.create_text_channel("faceit-qaydalari", category=category_general, overwrites=announce_overwrites)
-    ch_reports = await guild.create_text_channel("reports", category=category_general, overwrites=staff_only_overwrites)
-    ch_audit = await guild.create_text_channel("audit-log", category=category_general, overwrites=staff_only_overwrites)
-    ch_boss = await guild.create_text_channel("boss-event", category=category_general, overwrites=announce_overwrites)
+    ch_giveaway = await guild.create_text_channel("giveaway-lar", category=category_announcements, overwrites=announce_overwrites)
+    ch_duyuru = await guild.create_text_channel("duyurular", category=category_announcements, overwrites=announce_overwrites)
+    ch_social = await guild.create_text_channel("sosial-media", category=category_announcements, overwrites=announce_overwrites)
+    ch_chat_lb = await guild.create_text_channel("aktivlik-lovhesi", category=category_announcements, overwrites=announce_overwrites)
+
     ch_chat_xp = await guild.create_text_channel("umumi-sohbet", category=category_general)
-    ch_chat_lb = await guild.create_text_channel("aktivlik-lovhesi", category=category_general, overwrites=announce_overwrites)
+    await guild.create_voice_channel("🔊 Ümumi Səsli", category=category_general)
 
+    ch_reward = await guild.create_text_channel("ay-sonu-mukafati", category=category_5v5, overwrites=announce_overwrites)
+    ch_register = await guild.create_text_channel("faceit-qeydiyyat", category=category_5v5, overwrites=announce_overwrites)
+    ch_rules = await guild.create_text_channel("faceit-qaydalari", category=category_5v5, overwrites=announce_overwrites)
     ch_matchmaking_5v5 = await guild.create_text_channel("matchmaking-5v5", category=category_5v5, overwrites=announce_overwrites)
     current_season_5v5 = get_or_create_current_season("5v5")
     ch_leaderboard_5v5 = await guild.create_text_channel(
         f"leaderboard-5v5-sezon-{current_season_5v5['season_number']}", category=category_5v5, overwrites=announce_overwrites
     )
     ch_log_5v5 = await guild.create_text_channel("faceit-log-5v5", category=category_5v5)
-
-    ch_tournament_signup = await guild.create_text_channel("turnir-qeydiyyat", category=category_tournament, overwrites=announce_overwrites)
-    ch_tournament_bracket = await guild.create_text_channel("turnir-cetveli", category=category_tournament, overwrites=announce_overwrites)
-
     await _get_or_create_warmup_channel(guild, mode="5v5")
+
+    ch_audit = await guild.create_text_channel("audit-log", category=category_staff)
+    ch_staff_chat = await guild.create_text_channel("staff-chat", category=category_staff)
+    await guild.create_voice_channel("🔊 Staff Voice", category=category_staff)
 
     LOG_CHANNEL_ID = ch_log_5v5.id
     set_meta("log_channel_id", ch_log_5v5.id)
@@ -4109,25 +4030,30 @@ async def _execute_server_reset(interaction: discord.Interaction):
     set_meta("log_channel_id_5v5", ch_log_5v5.id)
     REWARD_CHANNEL_ID = ch_reward.id
     set_meta("reward_channel_id", ch_reward.id)
-    REPORTS_CHANNEL_ID = ch_reports.id
-    set_meta("reports_channel_id", ch_reports.id)
     AUDIT_LOG_CHANNEL_ID = ch_audit.id
     set_meta("audit_log_channel_id", ch_audit.id)
-    BOSS_EVENT_CHANNEL_ID = ch_boss.id
-    set_meta("boss_event_channel_id", ch_boss.id)
-    tournament_signup_channel_id = ch_tournament_signup.id
-    set_meta("tournament_signup_channel_id", ch_tournament_signup.id)
-    tournament_bracket_channel_id = ch_tournament_bracket.id
-    set_meta("tournament_bracket_channel_id", ch_tournament_bracket.id)
+    SOCIAL_CHANNEL_ID = ch_social.id
+    set_meta("social_channel_id", ch_social.id)
     CHAT_XP_CHANNEL_ID = ch_chat_xp.id
     set_meta("chat_xp_channel_id", ch_chat_xp.id)
     chat_activity_channel_id = ch_chat_lb.id
     set_meta("chat_activity_channel_id", ch_chat_lb.id)
 
-    # ── 4. Rütbə rolları ──
+    # ── 5. ELO rütbə rolları (Nova/Elite/... — staff rollarından ayrı sistemdir) ──
     created_roles, synced_players = await _create_rank_roles(guild)
 
-    # ── 5. Loqo: bot avatarı + server ikonu ──
+    # ── 6. Hər kəsə NLA Member rolu ver (yeni qoşulanlara avtomatik verilməsi on_member_join-də) ──
+    member_role_given = 0
+    for member in guild.members:
+        if member.bot:
+            continue
+        try:
+            await member.add_roles(role_member, reason="server_sifirla: ilkin NLA Member təyinatı")
+            member_role_given += 1
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    # ── 7. Loqo: bot avatarı + server ikonu ──
     avatar_status = icon_status = "❌ loqo faylı tapılmadı"
     try:
         with open(NEXTLEVELAZ_LOGO_PATH, "rb") as f:
@@ -4145,53 +4071,58 @@ async def _execute_server_reset(interaction: discord.Interaction):
     except (FileNotFoundError, OSError):
         pass
 
-    # ── 6. Tanıtım mesajları ──
+    # ── 8. Tanıtım mesajları ──
     await _post_register(ch_register)
     await _post_matchmaking_5v5(ch_matchmaking_5v5)
     await _post_rules(ch_rules)
     await _post_leaderboard_5v5(ch_leaderboard_5v5)
     await _post_monthly_reward_card(ch_reward)
-    await _post_boss_event(ch_boss)
-    await ch_tournament_signup.send(
-        "🏆 **Turnirlər** — FACEIT 5v5 sistemindən TAM MÜSTƏQİL, ayrı bracket turnirlər "
-        "burada elan olunacaq. Admin `/turnir_yarat` ilə yeni turnir başladanda qeydiyyat kartı "
-        "bura göndəriləcək — qoşulmaq üçün FACEIT-də qeydiyyatdan keçmiş olmaq kifayətdir."
+    await ch_duyuru.send("📢 **Duyurular** — Nextlevelaz-ın rəsmi elanları burada paylaşılacaq.")
+    await ch_social.send(
+        "📱 **Sosial Media** — Nextlevelaz-ı bütün platformalarda izləyin! Bot burada mütəmadi "
+        "olaraq TikTok/Discord/YouTube linklərimizi xatırladacaq."
     )
-    await ch_tournament_bracket.send(
-        "🗂️ **Turnir Cədvəli** — aktiv turnirin canlı bracket şəkli və hər matçın nəticə düymələri "
-        "burada göstəriləcək."
+    await ch_giveaway.send(
+        "🎉 **Giveaway-lar** — bütün hədiyyə çəkilişləri burada elan olunacaq. `/giveaway_create` ilə admin yeni giveaway başlada bilər."
     )
     await ch_chat_xp.send(
         "💬 **Ümumi Söhbət** — burada yazdığın hər mesaja görə XP qazanırsan! "
         f"Hər Bazar günü saat 23:59 həftənin ən aktivi elan olunacaq. Lövhə: {ch_chat_lb.mention}"
     )
     await _post_chat_activity_leaderboard(ch_chat_lb)
+    await ch_staff_chat.send("🛡️ **Staff Chat** — yalnız rəhbərlik görə bilər.")
 
     summary = (
         "✅ **Server tam sıfırlanıb Nextlevelaz formatında yenidən quruldu!**\n\n"
         f"🗑️ Silinən rollar: {deleted_roles} · Silinən kanal/kataqoriya: {deleted_channels}\n"
         f"🖼️ Bot avatarı: {avatar_status} · Server ikonu: {icon_status}\n"
-        f"🏅 Rütbə rolları: {len(created_roles)} yaradıldı, {synced_players} oyunçu sinxronlaşdı\n\n"
-        "Kanallar 3 kataqoriyaya bölünüb: **📌 Ümumi**, **🎯 FACEIT 5v5**, **🏆 Turnirlər**.\n\n"
+        f"🏅 ELO rütbə rolları: {len(created_roles)} yaradıldı, {synced_players} oyunçu sinxronlaşdı\n"
+        f"👤 {member_role_given} üzvə **{MEMBER_ROLE_NAME}** rolu verildi (yeni qoşulanlara avtomatik veriləcək)\n\n"
+        "Yaradılan rollar (yuxarıdan aşağı): **Founder → Head Admin → Admin → Moderator → NLA Member**\n\n"
+        "Kanallar 4 kataqoriyaya bölünüb: **📢 Elanlar**, **📌 Ümumi**, **🎯 FACEIT**, **🛡️ Admin**.\n\n"
+        f"**📢 Elanlar**\n"
+        f"🎉 Giveaway-lar: {ch_giveaway.mention}\n"
+        f"📢 Duyurular: {ch_duyuru.mention}\n"
+        f"📱 Sosial Media: {ch_social.mention}\n"
+        f"📊 Aktivlik Lövhəsi: {ch_chat_lb.mention}\n\n"
         f"**📌 Ümumi**\n"
+        f"💬 Ümumi Söhbət: {ch_chat_xp.mention}\n"
+        f"🔊 Ümumi Səsli kanal\n\n"
+        f"**🎯 FACEIT**\n"
         f"🔪 Ay sonu mükafatı: {ch_reward.mention}\n"
         f"📋 Qeydiyyat: {ch_register.mention}\n"
         f"📜 Qaydalar: {ch_rules.mention}\n"
-        f"🚩 Reports: {ch_reports.mention} (yalnız adminlər)\n"
-        f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər)\n"
-        f"👹 Boss Event: {ch_boss.mention}\n"
-        f"💬 Ümumi Söhbət: {ch_chat_xp.mention}\n"
-        f"📊 Aktivlik Lövhəsi: {ch_chat_lb.mention}\n\n"
-        f"**🎯 FACEIT 5v5**\n"
         f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
         f"🏆 Leaderboard: {ch_leaderboard_5v5.mention}\n"
         f"📰 Faceit log: {ch_log_5v5.mention}\n\n"
-        f"**🏆 Turnirlər**\n"
-        f"📋 Qeydiyyat: {ch_tournament_signup.mention}\n"
-        f"🗂️ Cədvəl: {ch_tournament_bracket.mention}\n\n"
-        "⚠️ **Diqqət:** staff/xüsusi rol təyinatları itdi — hər kəsin admin/moderator rollarını "
-        "əl ilə yenidən verməlisiniz. Oyunçu datası (qeydiyyat/statistika/coin) bu komanda ilə "
-        "TOXUNULMADI — onu ayrıca `/admin_full_reset` ilə sıfırlaya bilərsiniz."
+        f"**🛡️ Admin** (yalnız Founder/Head Admin/Admin/Moderator görür)\n"
+        f"🛡️ Audit Log: {ch_audit.mention}\n"
+        f"💬 Staff Chat: {ch_staff_chat.mention}\n"
+        f"🔊 Staff Voice kanal\n\n"
+        "⚠️ **Diqqət:** köhnə staff rol təyinatları itdi — hər kəsə YENİ Founder/Head Admin/Admin/Moderator "
+        "rollarını əl ilə verməlisiniz (yalnız NLA Member avtomatik verildi). Oyunçu datası (qeydiyyat/"
+        "statistika/coin/sezon) bu komanda ilə TOXUNULMADI — onu ayrıca `/admin_full_reset` ilə "
+        "sıfırlaya bilərsiniz (Sezon 1-dən yenidən başlayır)."
     )
 
     try:
@@ -4242,11 +4173,15 @@ async def server_sifirla_cmd(interaction: discord.Interaction):
         "Bu əməliyyat serverdəki **BÜTÜN kanal, kataqoriya və rolları** (bot-un tanımadıqları da daxil "
         "olmaqla, `@everyone`, Discord-un özəl idarə etdiyi rollar və botun öz rolu xaric) həmişəlik "
         "siləcək və onların yerinə Nextlevelaz formatında yeni, sadələşdirilmiş struktur quracaq:\n"
-        "• **📌 Ümumi** — qeydiyyat, qaydalar, ay sonu mükafatı, boss event, ümumi söhbət/aktivlik lövhəsi, reports, audit-log\n"
-        "• **🎯 FACEIT 5v5** — matchmaking, leaderboard, faceit-log\n"
-        "• **🏆 Turnirlər**\n\n"
-        "Bot avatarı və server ikonu yeni Nextlevelaz loqosu ilə yenilənəcək. Rütbə rolları yenidən yaradılacaq.\n\n"
-        "🚫 **İtiriləcəklər:** bütün staff/xüsusi rol təyinatları (əl ilə yenidən verilməlidir), "
+        "• **📢 Elanlar** — giveaway-lar, duyurular, sosial media, aktivlik lövhəsi\n"
+        "• **📌 Ümumi** — ümumi söhbət, ümumi səsli kanal\n"
+        "• **🎯 FACEIT** — ay sonu mükafatı, qeydiyyat, qaydalar, matchmaking, leaderboard, faceit-log\n"
+        "• **🛡️ Admin** (yalnız staff görür) — audit-log, staff-chat, staff səsli kanal\n\n"
+        "Yeni rollar yaradılacaq: **Founder, Head Admin, Admin, Moderator, NLA Member** (hər kəsə NLA Member "
+        "veriləcək, yeni qoşulanlara da avtomatik). Köhnə staff rolları (əvvəlki admin/moderator təyinatları) "
+        "itəcək — yenilərini əl ilə verməlisiniz.\n\n"
+        "Bot avatarı və server ikonu yeni Nextlevelaz loqosu ilə yenilənəcək. ELO rütbə rolları yenidən yaradılacaq.\n\n"
+        "🚫 **İtiriləcəklər:** bütün staff/xüsusi rol təyinatları (yenilərini əl ilə verməlisiniz), "
         "bütün köhnə kanal mesaj tarixçəsi, bütün köhnə kanal/rol strukturu.\n"
         "✅ **TOXUNULMAYACAQ:** oyunçu qeydiyyatı/statistika/coin (bunu ayrıca `/admin_full_reset` sıfırlayır).\n\n"
         "Davam etmək istədiyinizə **əminsiniz**?",
@@ -4460,350 +4395,6 @@ async def admin_herrac_baslat_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TURNIR BRACKET SİSTEMİ (FACEIT ELO/2v2/5v5-dən TAM MÜSTƏQİL)
-# ═══════════════════════════════════════════════════════════════════════════════
-
-async def _post_tournament_signup(tournament_id, channel):
-    t = get_tournament(tournament_id)
-    participants = get_tournament_participants(tournament_id)
-    card_path = os.path.join(DATA_DIR or ".", f"tournament_signup_{tournament_id}.png")
-    await asyncio.to_thread(generate_tournament_signup_card, t, participants, card_path)
-    message = await channel.send(file=discord.File(card_path, filename="signup.png"),
-                                  view=TournamentSignupView(tournament_id))
-    set_tournament_meta(tournament_id, signup_channel_id=str(channel.id), signup_message_id=str(message.id))
-    return message
-
-
-async def _refresh_tournament_signup_message(tournament_id):
-    t = get_tournament(tournament_id)
-    if not t or not t.get("signup_channel_id") or not t.get("signup_message_id"):
-        return
-    channel = bot.get_channel(int(t["signup_channel_id"]))
-    if not channel:
-        return
-    participants = get_tournament_participants(tournament_id)
-    card_path = os.path.join(DATA_DIR or ".", f"tournament_signup_{tournament_id}.png")
-    await asyncio.to_thread(generate_tournament_signup_card, t, participants, card_path)
-    try:
-        message = await channel.fetch_message(int(t["signup_message_id"]))
-        await message.edit(attachments=[discord.File(card_path, filename="signup.png")])
-    except (discord.NotFound, discord.HTTPException):
-        pass
-
-
-async def _post_tournament_match_view(match, channel=None):
-    if channel is None:
-        channel = bot.get_channel(tournament_bracket_channel_id) if tournament_bracket_channel_id else None
-    if not channel:
-        return
-    a_members = get_tournament_team_members(match["team_a_id"])
-    b_members = get_tournament_team_members(match["team_b_id"])
-    a_label = " / ".join(m["nick"] for m in a_members) or "?"
-    b_label = " / ".join(m["nick"] for m in b_members) or "?"
-    embed = discord.Embed(
-        title=f"⚔️ Raund {match['round_number']} — Matç",
-        description=f"**A:** {a_label}\n**B:** {b_label}\n\nAdmin qalibi elan etsin:",
-        color=discord.Color.from_rgb(138, 92, 230)
-    )
-    message = await channel.send(embed=embed, view=TournamentMatchView(match["id"]))
-    set_tournament_match_message(match["id"], channel.id, message.id)
-
-
-async def _post_tournament_bracket(tournament_id):
-    channel = bot.get_channel(tournament_bracket_channel_id) if tournament_bracket_channel_id else None
-    if not channel:
-        return
-    bracket = get_tournament_bracket(tournament_id)
-    card_path = os.path.join(DATA_DIR or ".", f"tournament_bracket_{tournament_id}.png")
-    await asyncio.to_thread(generate_tournament_bracket_image, bracket, card_path)
-    message = await channel.send(file=discord.File(card_path, filename="bracket.png"))
-    set_tournament_meta(tournament_id, bracket_channel_id=str(channel.id), bracket_message_id=str(message.id))
-    for rnd in bracket["rounds"]:
-        for m in rnd:
-            if m["status"] != "completed" and m["team_a_id"] and m["team_b_id"]:
-                await _post_tournament_match_view(m, channel=channel)
-
-
-async def _refresh_tournament_bracket_image(tournament_id):
-    t = get_tournament(tournament_id)
-    if not t or not t.get("bracket_channel_id") or not t.get("bracket_message_id"):
-        return
-    channel = bot.get_channel(int(t["bracket_channel_id"]))
-    if not channel:
-        return
-    bracket = get_tournament_bracket(tournament_id)
-    card_path = os.path.join(DATA_DIR or ".", f"tournament_bracket_{tournament_id}.png")
-    await asyncio.to_thread(generate_tournament_bracket_image, bracket, card_path)
-    try:
-        message = await channel.fetch_message(int(t["bracket_message_id"]))
-        await message.edit(attachments=[discord.File(card_path, filename="bracket.png")])
-    except (discord.NotFound, discord.HTTPException):
-        pass
-
-
-async def _finish_tournament(tournament_id, winner_team_id, loser_team_id):
-    t = get_tournament(tournament_id)
-    winners = get_tournament_team_members(winner_team_id)
-    prize_winner = t.get("prize_winner") or 0
-    prize_runner_up = t.get("prize_runner_up") or 0
-    for m in winners:
-        if prize_winner > 0:
-            new_bal = add_coins(m["discord_id"], prize_winner)
-            add_coin_log(m["discord_id"], prize_winner, f"Turnir #{tournament_id} Qalibi", "earn", new_bal)
-    if prize_runner_up > 0:
-        for m in get_tournament_team_members(loser_team_id):
-            new_bal = add_coins(m["discord_id"], prize_runner_up)
-            add_coin_log(m["discord_id"], prize_runner_up, f"Turnir #{tournament_id} Finalisti", "earn", new_bal)
-
-    channel = bot.get_channel(tournament_bracket_channel_id) if tournament_bracket_channel_id else None
-    if channel:
-        winner_label = " / ".join(m["nick"] for m in winners)
-        embed = discord.Embed(
-            title="🏆 Turnir Qalibi!",
-            description=(f"**{t['name']}** turnirinin qalibi: **{winner_label}**"
-                         + (f"\n🎁 Mükafat: {prize_winner} coin (hər üzvə)" if prize_winner else "")),
-            color=discord.Color.gold()
-        )
-        await channel.send(content=" ".join(f"<@{m['discord_id']}>" for m in winners), embed=embed)
-
-
-class TournamentSignupView(discord.ui.View):
-    """custom_id tournament_id-ni özündə saxlayır (bax: AuctionBidView) — hər turnir üçün
-    ayrı persistent view, bot restart olsa belə funksional qalır (bax: on_ready-dəki
-    yenidən-qeydiyyat)."""
-    def __init__(self, tournament_id):
-        super().__init__(timeout=None)
-        self.tournament_id = tournament_id
-        join_btn = discord.ui.Button(label="Qatıl", style=discord.ButtonStyle.success, emoji="✅",
-                                      custom_id=f"tourn_join_{tournament_id}")
-        join_btn.callback = self.join_btn_cb
-        leave_btn = discord.ui.Button(label="Ayrıl", style=discord.ButtonStyle.secondary, emoji="🚪",
-                                       custom_id=f"tourn_leave_{tournament_id}")
-        leave_btn.callback = self.leave_btn_cb
-        start_btn = discord.ui.Button(label="Turniri Başlat (Admin)", style=discord.ButtonStyle.danger, emoji="🚀",
-                                       custom_id=f"tourn_start_{tournament_id}")
-        start_btn.callback = self.start_btn_cb
-        self.add_item(join_btn)
-        self.add_item(leave_btn)
-        self.add_item(start_btn)
-
-    async def join_btn_cb(self, interaction: discord.Interaction):
-        t = get_tournament(self.tournament_id)
-        if not t or t["status"] != "signup":
-            await interaction.response.send_message("❌ Bu turnirə artıq qoşulmaq mümkün deyil.", ephemeral=True)
-            return
-        player = get_player(interaction.user.id)
-        if not player:
-            await interaction.response.send_message(
-                "❌ Əvvəlcə qeydiyyatdan keçməlisiniz. `#faceit-qeydiyyat` kanalına keçin.",
-                ephemeral=True
-            )
-            return
-        ok, msg = join_tournament(self.tournament_id, interaction.user.id)
-        await interaction.response.send_message(("✅ " if ok else "⚠️ ") + msg, ephemeral=True)
-        if ok:
-            await _refresh_tournament_signup_message(self.tournament_id)
-
-    async def leave_btn_cb(self, interaction: discord.Interaction):
-        ok, msg = leave_tournament(self.tournament_id, interaction.user.id)
-        await interaction.response.send_message(("✅ " if ok else "⚠️ ") + msg, ephemeral=True)
-        if ok:
-            await _refresh_tournament_signup_message(self.tournament_id)
-
-    async def start_btn_cb(self, interaction: discord.Interaction):
-        if not is_staff(interaction):
-            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
-            return
-        t = get_tournament(self.tournament_id)
-        if not t or t["status"] != "signup":
-            await interaction.response.send_message("❌ Bu turnir artıq başlayıb.", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True)
-        result = start_tournament(self.tournament_id)
-        if result is None:
-            await interaction.followup.send(
-                f"❌ Turniri başlatmaq üçün ən azı 2 tam komanda lazımdır (komanda ölçüsü: {t['team_size']}).",
-                ephemeral=True
-            )
-            return
-        for item in self.children:
-            item.disabled = True
-        try:
-            await interaction.message.edit(view=self)
-        except discord.HTTPException:
-            pass
-        await _post_tournament_bracket(self.tournament_id)
-        await interaction.followup.send(
-            f"✅ Turnir başladı! {result['team_count']} komanda, {result['bracket_size']}-lik bracket.",
-            ephemeral=True
-        )
-
-
-class TournamentMatchView(discord.ui.View):
-    """custom_id match_id-ni saxlayır (bax: AuctionBidView). Hər klikdə DB-dən matçı
-    YENİDƏN oxuyur (bax: TeamReadyView-dəki restart-safe idiom) — instansiya vəziyyətinə
-    etibar etmir."""
-    def __init__(self, match_id):
-        super().__init__(timeout=None)
-        self.match_id = match_id
-        a_btn = discord.ui.Button(label="A Qalib", style=discord.ButtonStyle.primary,
-                                   custom_id=f"tourn_win_a_{match_id}")
-        a_btn.callback = self.declare_a
-        b_btn = discord.ui.Button(label="B Qalib", style=discord.ButtonStyle.primary,
-                                   custom_id=f"tourn_win_b_{match_id}")
-        b_btn.callback = self.declare_b
-        self.add_item(a_btn)
-        self.add_item(b_btn)
-
-    async def _declare(self, interaction: discord.Interaction, side):
-        if not is_staff(interaction):
-            await interaction.response.send_message("❌ Bu düymə yalnız adminlər üçündür.", ephemeral=True)
-            return
-        match = get_tournament_match(self.match_id)
-        if not match or match["status"] == "completed":
-            await interaction.response.send_message("⚠️ Bu matç artıq həll olunub.", ephemeral=True)
-            return
-        winner_team_id = match["team_a_id"] if side == "a" else match["team_b_id"]
-        await interaction.response.defer(ephemeral=True)
-        result = record_tournament_match_winner(self.match_id, winner_team_id)
-        if result is None:
-            await interaction.followup.send("⚠️ Bu matç artıq həll olunub.", ephemeral=True)
-            return
-
-        for item in self.children:
-            item.disabled = True
-        try:
-            await interaction.message.edit(view=self)
-        except discord.HTTPException:
-            pass
-
-        await _refresh_tournament_bracket_image(match["tournament_id"])
-
-        if result["is_final"]:
-            await _finish_tournament(match["tournament_id"], result["winner_team_id"], result["loser_team_id"])
-        elif result["next_match_id"] is not None:
-            next_match = get_tournament_match(result["next_match_id"])
-            if next_match and next_match["team_a_id"] and next_match["team_b_id"]:
-                await _post_tournament_match_view(next_match)
-
-        await interaction.followup.send("✅ Nəticə qeydə alındı.", ephemeral=True)
-
-    async def declare_a(self, interaction: discord.Interaction):
-        await self._declare(interaction, "a")
-
-    async def declare_b(self, interaction: discord.Interaction):
-        await self._declare(interaction, "b")
-
-
-@bot.tree.command(name="turnir_yarat", description="[Admin] Yeni turnir yaradır (bracket sistemi, FACEIT ELO-dan tam müstəqil)")
-@app_commands.describe(
-    ad="Turnirin adı",
-    komanda_olcusu="Komanda ölçüsü: 1 (solo/1v1), 2 (2v2) və ya 5 (5v5)",
-    mukafat_qalib="Qalib komandanın hər üzvünə veriləcək coin (defolt 0)",
-    mukafat_finalist="Finalist (2-ci yer) komandanın hər üzvünə veriləcək coin (defolt 0)"
-)
-@staff_check()
-async def turnir_yarat(interaction: discord.Interaction, ad: str, komanda_olcusu: int,
-                        mukafat_qalib: int = 0, mukafat_finalist: int = 0):
-    if komanda_olcusu not in (1, 2, 5):
-        await interaction.response.send_message("❌ Komanda ölçüsü 1, 2 və ya 5 olmalıdır.", ephemeral=True)
-        return
-    if tournament_signup_channel_id is None:
-        await interaction.response.send_message(
-            "❌ Turnir kanalları hələ qurulmayıb. Əvvəlcə `/server_sifirla` işə salın.", ephemeral=True
-        )
-        return
-    existing = get_active_tournament()
-    if existing:
-        await interaction.response.send_message(
-            f"❌ Artıq aktiv bir turnir var: **{existing['name']}** (status: {existing['status']}). "
-            "Yeni turnir yaratmazdan əvvəl onu bitirin/ləğv edin (`/turnir_legv_et`).", ephemeral=True
-        )
-        return
-    await interaction.response.defer(ephemeral=True)
-    tid = create_tournament(ad, komanda_olcusu, interaction.user.id)
-    if mukafat_qalib or mukafat_finalist:
-        set_tournament_meta(tid, prize_winner=mukafat_qalib, prize_runner_up=mukafat_finalist)
-    channel = bot.get_channel(tournament_signup_channel_id)
-    if channel:
-        await _post_tournament_signup(tid, channel)
-    await interaction.followup.send(
-        f"✅ Turnir yaradıldı: **{ad}** (#{tid}). Qeydiyyat: <#{tournament_signup_channel_id}>", ephemeral=True
-    )
-
-
-@turnir_yarat.error
-async def turnir_yarat_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
-
-
-@bot.tree.command(name="turnir_legv_et", description="[Admin] Cari aktiv turniri ləğv edir")
-@staff_check()
-async def turnir_legv_et(interaction: discord.Interaction):
-    t = get_active_tournament()
-    if not t:
-        await interaction.response.send_message("ℹ️ Aktiv turnir yoxdur.", ephemeral=True)
-        return
-    cancel_tournament(t["id"])
-    await interaction.response.send_message(f"✅ **{t['name']}** turniri ləğv edildi.", ephemeral=True)
-
-
-@turnir_legv_et.error
-async def turnir_legv_et_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
-
-
-async def _submit_report(interaction: discord.Interaction, reporter_id, target_id, target_mention, reason):
-    create_report(reporter_id, target_id, reason)
-    channel = await _get_reports_channel()
-    if channel:
-        embed = discord.Embed(title="🚩 Yeni Şikayət", color=discord.Color.red())
-        embed.add_field(name="Şikayətçi", value=f"<@{reporter_id}>", inline=True)
-        embed.add_field(name="Hədəf", value=target_mention, inline=True)
-        embed.add_field(name="Səbəb", value=reason, inline=False)
-        prior = get_recent_reports_for(target_id, limit=5)
-        if len(prior) > 1:
-            embed.add_field(name="⚠️ Əvvəlki şikayətlər", value=f"Bu oyunçu üçün cəmi **{len(prior)}** şikayət qeydə alınıb.", inline=False)
-        embed.timestamp = datetime.datetime.utcnow()
-        await channel.send(embed=embed)
-
-
-class ReportReasonModal(discord.ui.Modal, title="Şikayət səbəbi"):
-    sebeb = discord.ui.TextInput(label="Şikayətin səbəbi", style=discord.TextStyle.paragraph, max_length=500)
-
-    def __init__(self, reporter_id, target_id, target_mention):
-        super().__init__()
-        self.reporter_id = reporter_id
-        self.target_id = target_id
-        self.target_mention = target_mention
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await _submit_report(interaction, self.reporter_id, self.target_id, self.target_mention, self.sebeb.value)
-        await interaction.response.send_message("✅ Şikayətiniz admin komandasına göndərildi. Təşəkkürlər!", ephemeral=True)
-
-
-class ReportUserSelectView(discord.ui.View):
-    def __init__(self, reporter_id):
-        super().__init__(timeout=120)
-        self.reporter_id = reporter_id
-        self.select = discord.ui.UserSelect(placeholder="Şikayət olunan oyunçunu seçin...")
-        self.select.callback = self._on_select
-        self.add_item(self.select)
-
-    async def _on_select(self, interaction: discord.Interaction):
-        if interaction.user.id != self.reporter_id:
-            await interaction.response.send_message("❌ Bu yalnız sizin üçündür.", ephemeral=True)
-            return
-        target = self.select.values[0]
-        if target.id == self.reporter_id:
-            await interaction.response.send_message("❌ Özünüzü şikayət edə bilməzsiniz.", ephemeral=True)
-            return
-        await interaction.response.send_modal(ReportReasonModal(self.reporter_id, target.id, target.mention))
-
-
 class GiftAmountModal(discord.ui.Modal, title="Hədiyyə miqdarı"):
     meqdar = discord.ui.TextInput(label="Neçə coin göndərmək istəyirsiniz?", placeholder="məs: 100", max_length=10)
 
@@ -4885,14 +4476,6 @@ class MoreOptionsView(discord.ui.View):
             return
         await interaction.response.send_message(
             "🎁 Hədiyyə göndəriləcək oyunçunu seçin:", view=GiftUserSelectView(self.discord_id), ephemeral=True
-        )
-
-    @discord.ui.button(label="Şikayət et", style=discord.ButtonStyle.danger, emoji="🚩")
-    async def report_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not await self._guard(interaction):
-            return
-        await interaction.response.send_message(
-            "🚩 Şikayət olunan oyunçunu seçin:", view=ReportUserSelectView(self.discord_id), ephemeral=True
         )
 
 
@@ -5820,12 +5403,12 @@ class FeedbackModal(discord.ui.Modal, title="Rəy Bildir"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        reports_channel = await _get_reports_channel()
-        if reports_channel:
+        audit_channel = await _get_audit_log_channel()
+        if audit_channel:
             embed = discord.Embed(title="📝 Yeni Rəy/Təklif", description=self.mesaj.value, color=discord.Color.blurple())
             embed.set_footer(text=f"{interaction.user} · {interaction.user.id}")
             try:
-                await reports_channel.send(embed=embed)
+                await audit_channel.send(embed=embed)
             except discord.HTTPException:
                 pass
         await interaction.response.send_message("✅ Rəyiniz göndərildi — təşəkkürlər!", ephemeral=True)
@@ -6410,8 +5993,6 @@ PANEL_CATEGORIES = {
             ("📦 Paketlər", "Market → Paketlər bölməsində bir neçə əşya birlikdə endirimli qiymətə satılır"),
             ("🔨 Hərraclar", "Admin nadir əşyaları coin ilə hərraca çıxara bilər"),
             ("🎉 Bayram Matçları", "Milli bayram günlərində bütün matçlarda avtomatik 2x coin/ELO bonusu aktivdir"),
-            ("🚩 Report sistemi", "Profil → Ayarlar → Digər → Şikayət et düyməsi ilə admin komandasına şikayət göndərə bilərsiniz"),
-            ("👹 Həftəlik Boss Event", "İcma birlikdə matçlardakı kill-lərlə boss-u vurur, məğlub edəndə hamı coin qazanır"),
             ("🎙️ Ən Sosial Reytinq", "Profil → Sosial → Sosial düyməsində səs kanallarında ən çox vaxt keçirənlərin reytinqi"),
             ("☕ Tilt Xəbərdarlığı", "3 ardıcıl məğlubiyyətdən sonra həvəsləndirici DM göndərilir"),
             ("✏️ Ad Dəyişmə", "Profil → Ayarlar → Ad Dəyiş düyməsi ilə hər hesab BİR DƏFƏ pulsuz nickini dəyişə bilər"),
@@ -6444,7 +6025,6 @@ PANEL_CATEGORIES = {
             ("/admin_herrac_baslat", "Coin ilə hərrac başladır"),
             ("/admin_toplu_coin", "Bir neçə oyunçuya eyni anda coin verir/çıxarır"),
             ("🛡️ Audit Log kanalı", "Bütün admin əməliyyatları (ELO düzəlişi, matç silmə/dəyişmə və s.) canlı qeydə alınır"),
-            ("🚩 Reports kanalı", "Profil → Ayarlar → Digər → Şikayət et ilə göndərilən şikayətlər buraya düşür"),
             ("⚠️ Şübhəli fəaliyyət xəbərdarlığı", "Qeyri-adi sürətli coin qazancı avtomatik audit-log kanalına bildirilir"),
         ],
     },
