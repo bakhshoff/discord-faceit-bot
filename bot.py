@@ -217,7 +217,6 @@ MONTHLY_CHAMPION_IMAGE_PATH = os.path.join("assets", "butterfly_legacy.jpg")
 MONTHLY_CHAMPION_SKIN_NAME = "Butterfly | Legacy"
 INACTIVE_REGISTRATION_DAYS = 3
 REWARD_CHANNEL_ID = None
-HALL_OF_FAME_CHANNEL_ID = None
 REPORTS_CHANNEL_ID = None
 AUDIT_LOG_CHANNEL_ID = None
 ACHIEVEMENT_WALL_CHANNEL_ID = None
@@ -378,19 +377,6 @@ async def _get_reward_channel():
         return await bot.fetch_channel(REWARD_CHANNEL_ID)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         print(f"[REWARD_CHANNEL] Kanal tapılmadı: {REWARD_CHANNEL_ID}", flush=True)
-        return None
-
-
-async def _get_hall_of_fame_channel():
-    if not HALL_OF_FAME_CHANNEL_ID:
-        return None
-    channel = bot.get_channel(HALL_OF_FAME_CHANNEL_ID)
-    if channel:
-        return channel
-    try:
-        return await bot.fetch_channel(HALL_OF_FAME_CHANNEL_ID)
-    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
-        print(f"[HALL_OF_FAME_CHANNEL] Kanal tapılmadı: {HALL_OF_FAME_CHANNEL_ID}", flush=True)
         return None
 
 
@@ -604,7 +590,7 @@ async def weekly_mvp_loop():
         return
     _last_weekly_mvp_monday = today_key
 
-    channel = await _get_hall_of_fame_channel()
+    channel = await _get_log_channel_5v5()
     if channel:
         await _post_weekly_mvp(channel)
 
@@ -768,7 +754,7 @@ async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_pre
                 add_coin_log(discord_id, reward, f"{mode_label} Sezon #{current['season_number']} Top-{i+1} mükafatı", "earn", new_bal)
             lines.append(f"**#{i+1}** {nick} — {'+' if elo_gained >= 0 else ''}{elo_gained} ELO ({wins}Q/{losses}M)"
                          + (f" 🎁 +{reward} coin" if reward else ""))
-        channel = await _get_hall_of_fame_channel()
+        channel = await _get_log_channel_5v5()
         if channel:
             progress_msg = await channel.send(f"⏳ {mode_label} sezonu yekunlaşdırılır...\n`░░░░░░░░░░░░░░░░░░░░` 0%")
             await _progress_step(progress_msg, 1, 3, "Mükafatlar hesablanır...")
@@ -2938,7 +2924,7 @@ class MatchmakingView5v5(discord.ui.View):
 
 @bot.event
 async def on_ready():
-    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
+    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
     global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5, leaderboard_message_id_5v5
     global tournament_signup_channel_id, tournament_bracket_channel_id
@@ -2996,9 +2982,6 @@ async def on_ready():
     saved_reward = get_meta("reward_channel_id")
     if saved_reward:
         REWARD_CHANNEL_ID = int(saved_reward)
-    saved_hof = get_meta("hall_of_fame_channel_id")
-    if saved_hof:
-        HALL_OF_FAME_CHANNEL_ID = int(saved_hof)
     saved_reports = get_meta("reports_channel_id")
     if saved_reports:
         REPORTS_CHANNEL_ID = int(saved_reports)
@@ -3018,7 +3001,7 @@ async def on_ready():
     if saved_news:
         STANDOFF2_NEWS_CHANNEL_ID = int(saved_news)
     print(f"[CONFIG] LOG_CHANNEL_ID={LOG_CHANNEL_ID} REWARD_CHANNEL_ID={REWARD_CHANNEL_ID} "
-          f"HALL_OF_FAME_CHANNEL_ID={HALL_OF_FAME_CHANNEL_ID} REPORTS_CHANNEL_ID={REPORTS_CHANNEL_ID} "
+          f"REPORTS_CHANNEL_ID={REPORTS_CHANNEL_ID} "
           f"AUDIT_LOG_CHANNEL_ID={AUDIT_LOG_CHANNEL_ID} ACHIEVEMENT_WALL_CHANNEL_ID={ACHIEVEMENT_WALL_CHANNEL_ID} "
           f"BOSS_EVENT_CHANNEL_ID={BOSS_EVENT_CHANNEL_ID} MAP_MASTERS_CHANNEL_ID={MAP_MASTERS_CHANNEL_ID} "
           f"STANDOFF2_NEWS_CHANNEL_ID={STANDOFF2_NEWS_CHANNEL_ID}", flush=True)
@@ -4055,8 +4038,7 @@ async def setup_register_error(interaction: discord.Interaction, error):
 @bot.tree.command(name="full_setup", description="[Admin] FACEIT 5v5 kanallarını silib yenilənmiş, kataqoriyalaşdırılmış formada təzədən qurur")
 @staff_check()
 async def full_setup(interaction: discord.Interaction):
-    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, HALL_OF_FAME_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID
-    global ACHIEVEMENT_WALL_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID, MAP_MASTERS_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
+    global LOG_CHANNEL_ID, REWARD_CHANNEL_ID, REPORTS_CHANNEL_ID, AUDIT_LOG_CHANNEL_ID, BOSS_EVENT_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5
     global tournament_signup_channel_id, tournament_bracket_channel_id
 
@@ -4101,13 +4083,9 @@ async def full_setup(interaction: discord.Interaction):
     ch_reward = await _recreate_text("ay-sonu-mukafati", category_general, announce_overwrites)
     ch_register = await _recreate_text("faceit-qeydiyyat", category_general, announce_overwrites)
     ch_rules = await _recreate_text("faceit-qaydalari", category_general, announce_overwrites)
-    ch_hof = await _recreate_text("hall-of-fame", category_general, announce_overwrites)
     ch_reports = await _recreate_text("reports", category_general, staff_only_overwrites)
     ch_audit = await _recreate_text("audit-log", category_general, staff_only_overwrites)
-    ch_wall = await _recreate_text("nailiyyet-divari", category_general, announce_overwrites)
     ch_boss = await _recreate_text("boss-event", category_general, announce_overwrites)
-    ch_masters = await _recreate_text("xerite-ustalari", category_general, announce_overwrites)
-    ch_news = await _recreate_text("standoff2-yenilikleri", category_general, announce_overwrites)
     ch_chat_xp = await _recreate_text("umumi-sohbet", category_general)
     ch_chat_lb = await _recreate_text("aktivlik-lovhesi", category_general, announce_overwrites)
 
@@ -4132,20 +4110,12 @@ async def full_setup(interaction: discord.Interaction):
     set_meta("log_channel_id_5v5", ch_log_5v5.id)
     REWARD_CHANNEL_ID = ch_reward.id
     set_meta("reward_channel_id", ch_reward.id)
-    HALL_OF_FAME_CHANNEL_ID = ch_hof.id
-    set_meta("hall_of_fame_channel_id", ch_hof.id)
     REPORTS_CHANNEL_ID = ch_reports.id
     set_meta("reports_channel_id", ch_reports.id)
     AUDIT_LOG_CHANNEL_ID = ch_audit.id
     set_meta("audit_log_channel_id", ch_audit.id)
-    ACHIEVEMENT_WALL_CHANNEL_ID = ch_wall.id
-    set_meta("achievement_wall_channel_id", ch_wall.id)
     BOSS_EVENT_CHANNEL_ID = ch_boss.id
     set_meta("boss_event_channel_id", ch_boss.id)
-    MAP_MASTERS_CHANNEL_ID = ch_masters.id
-    set_meta("map_masters_channel_id", ch_masters.id)
-    STANDOFF2_NEWS_CHANNEL_ID = ch_news.id
-    set_meta("standoff2_news_channel_id", ch_news.id)
     tournament_signup_channel_id = ch_tournament_signup.id
     set_meta("tournament_signup_channel_id", ch_tournament_signup.id)
     tournament_bracket_channel_id = ch_tournament_bracket.id
@@ -4162,22 +4132,7 @@ async def full_setup(interaction: discord.Interaction):
     await _post_rules(ch_rules)
     await _post_leaderboard_5v5(ch_leaderboard_5v5)
     await _post_monthly_reward_card(ch_reward)
-    await ch_hof.send(
-        "🏆 **Həftənin MVP-si** buraya elan olunacaq — hər həftə Bazar ertəsi, "
-        "keçən 7 gündə ən çox qələbə qazanan oyunçu seçilib pinlənmiş kartla təbrik ediləcək."
-    )
-    await ch_wall.send(
-        "🏅 **Nailiyyət Divarı** — nadir nailiyyət/ləqəb qazanan oyunçular avtomatik burada elan olunacaq."
-    )
     await _post_boss_event(ch_boss)
-    await ch_masters.send(
-        "🗺️ **Xəritə Ustaları** — hər xəritənin ən yüksək win-rate-li top-3 oyunçusu bu siyahıda hər həftə yenilənəcək."
-    )
-    await ch_news.send(
-        "🎮 **Standoff 2 Rəsmi Yenilikləri** — help.standoff2.com saytındakı yeni yenilik (patch notes) "
-        "məqalələri aşkarlanan kimi bura Azərbaycan dilinə tərcümə edilib avtomatik göndəriləcək "
-        "(hər 6 saatdan bir yoxlanılır)."
-    )
     await ch_tournament_signup.send(
         "🏆 **Turnirlər** — FACEIT ELO/2v2/5v5 sistemindən TAM MÜSTƏQİL, ayrı bracket turnirlər "
         "burada elan olunacaq. Admin `/turnir_yarat` ilə yeni turnir başladanda qeydiyyat kartı "
@@ -4202,13 +4157,9 @@ async def full_setup(interaction: discord.Interaction):
         f"🔪 Ay sonu mükafatı: {ch_reward.mention}\n"
         f"📋 Qeydiyyat: {ch_register.mention}\n"
         f"📜 Qaydalar: {ch_rules.mention}\n"
-        f"🏆 Hall of Fame: {ch_hof.mention}\n"
         f"🚩 Reports: {ch_reports.mention} (yalnız adminlər)\n"
         f"🛡️ Audit Log: {ch_audit.mention} (yalnız adminlər)\n"
-        f"🏅 Nailiyyət Divarı: {ch_wall.mention}\n"
-        f"👹 Boss Event: {ch_boss.mention}\n"
-        f"🗺️ Xəritə Ustaları: {ch_masters.mention}\n"
-        f"🎮 Standoff 2 Yenilikləri: {ch_news.mention}\n\n"
+        f"👹 Boss Event: {ch_boss.mention}\n\n"
         f"**🎯 FACEIT 5v5**\n"
         f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
         f"🏆 Leaderboard: {ch_leaderboard_5v5.mention}\n"
@@ -6375,13 +6326,10 @@ PANEL_CATEGORIES = {
             ("🎉 Bayram Matçları", "Milli bayram günlərində bütün matçlarda avtomatik 2x coin/ELO bonusu aktivdir"),
             ("🚩 Report sistemi", "Profil → Ayarlar → Digər → Şikayət et düyməsi ilə admin komandasına şikayət göndərə bilərsiniz"),
             ("👹 Həftəlik Boss Event", "İcma birlikdə matçlardakı kill-lərlə boss-u vurur, məğlub edəndə hamı coin qazanır"),
-            ("🏅 Nailiyyət Divarı", "Nadir nailiyyət/ləqəb qazananlar dərhal ayrıca kanalda elan olunur"),
             ("🎙️ Ən Sosial Reytinq", "Profil → Sosial → Sosial düyməsində səs kanallarında ən çox vaxt keçirənlərin reytinqi"),
-            ("🗺️ Xəritə Ustaları", "Hər xəritənin ən yüksək win-rate-li top-3 oyunçusu hər Bazar ertəsi elan olunur"),
             ("☕ Tilt Xəbərdarlığı", "3 ardıcıl məğlubiyyətdən sonra həvəsləndirici DM göndərilir"),
             ("✏️ Ad Dəyişmə", "Profil → Ayarlar → Ad Dəyiş düyməsi ilə hər hesab BİR DƏFƏ pulsuz nickini dəyişə bilər"),
             ("📂 Profil Menyusu", "/profile 5 kateqoriyaya bölünüb: Statistika, İnventar, Mükafatlar, Sosial, Ayarlar — hər biri ayrıca alt-menyu açır"),
-            ("🎮 Standoff 2 Yenilikləri", "help.standoff2.com saytındakı rəsmi yenilik məqalələri avtomatik aşkarlanıb Azərbaycan dilinə tərcümə edilərək kanala göndərilir (hər 6 saatda yoxlanılır)"),
         ],
     },
     "admin": {
