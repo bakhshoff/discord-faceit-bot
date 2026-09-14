@@ -4688,6 +4688,81 @@ def get_activity_heatmap_grid(discord_id, days=90):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# FƏALİYYƏT — SAATLAR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_hourly_activity(days=7) -> dict:
+    """Saat üzrə matç paylanması {hour: count}."""
+    import time as _t, datetime as _dt
+    since  = int(_t.time()) - days * 86400
+    conn   = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT played_at FROM match_history WHERE played_at >= ?", (since,))
+    rows   = cursor.fetchall()
+    conn.close()
+    counts = {}
+    for (ts,) in rows:
+        h = (_dt.datetime.utcfromtimestamp(ts) + _dt.timedelta(hours=4)).hour
+        counts[h] = counts.get(h, 0) + 1
+    return counts
+
+
+def fail_expired_tasks():
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE player_tasks SET failed=1 WHERE completed=0 AND failed=0 AND expires_at <= ?",
+                   (int(time.time()),))
+    conn.commit()
+    conn.close()
+
+
+def full_reset():
+    """Bazadakı hər şeyi silir. Hamı yenidən qeydiyyatdan keçməlidir."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+
+    # Bütün cədvəlləri sil
+    for table in ("players", "match_history", "season_stats", "seasons",
+                  "scan_results", "player_tasks", "daily_tasks",
+                  "coin_logs", "active_boosts", "chat_history",
+                  "inventory", "skin_inventory", "skins", "giveaways",
+                  "warnings", "player_achievements", "match_predictions"):
+        cursor.execute(f"DELETE FROM {table}")
+
+    # Matç sayacını sıfırla
+    cursor.execute("UPDATE match_counter SET last_number = 0 WHERE id = 1")
+
+    # Aktiv matçı sıfırla (yalnız mövcud sütunları yenilə)
+    cursor.execute("PRAGMA table_info(active_match)")
+    am_cols = {r[1] for r in cursor.fetchall()}
+    extra = ", ".join(f"{c}=NULL" for c in
+                      ("team_a","team_b","log_message_id","log_channel_id","selected_map")
+                      if c in am_cols)
+    sql = "UPDATE active_match SET match_number=NULL, status=NULL"
+    if extra:
+        sql += ", " + extra
+    sql += " WHERE id=1"
+    cursor.execute(sql)
+
+    conn.commit()
+    conn.close()
+
+
+def get_lang(discord_id: int) -> str:
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("SELECT lang FROM players WHERE discord_id=?", (discord_id,))
+    row = cur.fetchone(); conn.close()
+    return (row[0] or 'az') if row else 'az'
+
+
+def set_lang(discord_id: int, lang: str):
+    conn = _get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE players SET lang=? WHERE discord_id=?", (lang, discord_id))
+    conn.commit(); conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # FAZA 2 — HƏFTƏLİK ŞƏXSİ XÜLASƏ (DM)
 # ═══════════════════════════════════════════════════════════════════════════════
 
