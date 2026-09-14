@@ -131,6 +131,47 @@
   </header>
 
   <div class="container">
+    <div class="panel reveal" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2 style="margin:0;">Qeydiyyat</h2>
+        <div style="color:var(--text-dim); font-size:13px; margin-top:4px;" id="regStatusText">
+          Hazırkı vəziyyət: <strong style="color:{{ 'var(--green)' if registration_open else 'var(--red)' }}">{{ 'AÇIQ' if registration_open else 'BAĞLI' }}</strong>
+        </div>
+      </div>
+      <button id="regToggleBtn"
+        style="background:{{ 'var(--red)' if registration_open else 'var(--green)' }}; color:#0b0a0d; border:none; border-radius:8px; padding:10px 18px; font-weight:700; font-size:13px; cursor:pointer;"
+        onclick="toggleRegistration()">
+        {{ 'Qeydiyyatı Bağla' if registration_open else 'Qeydiyyatı Aç' }}
+      </button>
+    </div>
+    <script>
+      let _regOpen = {{ 'true' if registration_open else 'false' }};
+      async function toggleRegistration() {
+        const btn = document.getElementById('regToggleBtn');
+        const statusText = document.getElementById('regStatusText');
+        const action = _regOpen ? 'close' : 'open';
+        btn.disabled = true;
+        try {
+          const params = new URLSearchParams(window.location.search);
+          const key = params.get('key') || '';
+          const resp = await fetch(`/admin/registration?key=${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `action=${action}`
+          });
+          if (!resp.ok) throw new Error('request failed');
+          const data = await resp.json();
+          _regOpen = data.registration_open;
+          btn.textContent = _regOpen ? 'Qeydiyyatı Bağla' : 'Qeydiyyatı Aç';
+          btn.style.background = _regOpen ? 'var(--red)' : 'var(--green)';
+          statusText.innerHTML = `Hazırkı vəziyyət: <strong style="color:${_regOpen ? 'var(--green)' : 'var(--red)'}">${_regOpen ? 'AÇIQ' : 'BAĞLI'}</strong>`;
+        } catch (e) {
+          alert('Xəta baş verdi, yenidən cəhd edin.');
+        } finally {
+          btn.disabled = false;
+        }
+      }
+    </script>
     <div class="stats-bar">
       <div class="stat-chip"><div class="val" data-target="{{ stats.match_count }}">0</div><div class="lbl">Matç (7 gün)</div></div>
       <div class="stat-chip"><div class="val" data-target="{{ stats.player_count }}">0</div><div class="lbl">Qeydiyyatlı oyunçu</div></div>

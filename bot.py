@@ -1750,6 +1750,9 @@ class RegisterView(discord.ui.View):
 
     @discord.ui.button(label="Qeydiyyat", style=discord.ButtonStyle.success, emoji="✅", custom_id="reg_open")
     async def open_register(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if get_meta("registration_open") == "0":
+            await interaction.response.send_message("❌ Qeydiyyat hazırda bağlıdır.", ephemeral=True)
+            return
         existing = get_player(interaction.user.id)
         if existing:
             await interaction.response.send_message(

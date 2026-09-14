@@ -563,12 +563,26 @@ def admin_dashboard():
     match_volume = database.get_match_volume_trend(days=30)
     moderation = database.get_moderation_summary(days=30)
 
+    registration_open = database.get_meta("registration_open") != "0"
+
     return render_template(
         "admin.html",
         stats=stats, hourly=hourly, matches=matches,
         players=players, total_matches=get_total_matches(),
-        economy=economy, growth=growth, match_volume=match_volume, moderation=moderation
+        economy=economy, growth=growth, match_volume=match_volume, moderation=moderation,
+        registration_open=registration_open, admin_token=request.args.get("key")
     )
+
+
+@app.route("/admin/registration", methods=["POST"])
+def admin_toggle_registration():
+    if not ADMIN_DASHBOARD_TOKEN or request.args.get("key") != ADMIN_DASHBOARD_TOKEN:
+        abort(403)
+    action = request.form.get("action")
+    if action not in ("open", "close"):
+        abort(400)
+    database.set_meta("registration_open", "1" if action == "open" else "0")
+    return jsonify({"ok": True, "registration_open": action == "open"})
 
 
 def run_web_server():
