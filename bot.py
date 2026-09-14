@@ -40,7 +40,7 @@ from database import (
     get_player_stats_dict, get_player_match_history,
     get_recent_matches, get_match_by_number, delete_match_and_revert, get_match_coin_total,
     get_weekly_mvp,
-    admin_set_player_field, log_admin_action, is_banned,
+    admin_set_player_field, admin_set_player_field_5v5, log_admin_action, is_banned,
     get_map_stats, get_all_players,
     get_squad, get_pending_squad_invite, create_squad_invite,
     accept_squad_invite, reject_squad_invite, record_squad_win, wipe_squads,
@@ -72,6 +72,7 @@ from database import (
     add_teammate_rating, get_teammate_rating_summary,
     mark_anniversary_greeted, get_players_with_anniversary_today,
     ensure_5v5_stats_row, get_player_5v5, get_player_stats_dict_5v5, update_team_elo_5v5,
+    set_player_5v5_elo,
     update_streak_5v5, get_loss_streak_5v5, add_to_queue_5v5, remove_from_queue_5v5,
     queue_size_5v5, get_queue_list_5v5, clear_queue_5v5, is_in_queue_5v5, pop_10_and_balance,
     get_leaderboard_5v5, get_all_players_5v5,
@@ -3694,36 +3695,6 @@ async def profile(interaction: discord.Interaction):
     )
 
 
-@bot.tree.command(name="matchresult", description="[Admin] Matç nəticəsini qeyd edir və ELO-nu yeniləyir")
-@app_commands.describe(qalib="Qalib oyunçu", məğlub="Məğlub oyunçu")
-@staff_check()
-async def matchresult(interaction: discord.Interaction, qalib: discord.Member, məğlub: discord.Member):
-    if not get_player(qalib.id) or not get_player(məğlub.id):
-        await interaction.response.send_message("❌ Hər iki oyunçu əvvəlcə `/register` etməlidir.", ephemeral=True)
-        return
-
-    result = update_elo(qalib.id, məğlub.id)
-
-    embed = discord.Embed(title="🏆 Matç nəticəsi qeyd edildi", color=discord.Color.from_rgb(138, 92, 230))
-    embed.add_field(
-        name=f"✅ Qalib: {qalib.display_name}",
-        value=f"{result['winner_old_elo']} → **{result['winner_new_elo']}** ELO (+{result['winner_new_elo'] - result['winner_old_elo']})",
-        inline=False
-    )
-    embed.add_field(
-        name=f"❌ Məğlub: {məğlub.display_name}",
-        value=f"{result['loser_old_elo']} → **{result['loser_new_elo']}** ELO ({result['loser_new_elo'] - result['loser_old_elo']})",
-        inline=False
-    )
-    await interaction.response.send_message(embed=embed)
-
-
-@matchresult.error
-async def matchresult_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
-
-
 RULES_SECTIONS = [
     {
         "title": "Qeydiyyat qaydası",
@@ -5515,12 +5486,13 @@ async def admin_oyuncu_cmd(interaction: discord.Interaction, oyunçu: discord.Me
     if not data:
         await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
         return
+    stats5 = get_player_5v5(oyunçu.id) or {"elo": 1000, "wins": 0, "losses": 0, "kills": 0, "assists": 0, "deaths": 0, "win_streak": 0, "max_streak": 0}
     embed = discord.Embed(title=f"🔧 Admin — {oyunçu.display_name}", color=discord.Color.blurple())
     embed.add_field(name="Nick / SO2 ID", value=f"{data['nick']} / {data['so2_id']}", inline=False)
-    embed.add_field(name="ELO", value=str(data["elo"]), inline=True)
-    embed.add_field(name="Qələbə/Məğlub", value=f"{data['wins']}/{data['losses']}", inline=True)
-    embed.add_field(name="K/A/D", value=f"{data['kills']}/{data['assists']}/{data['deaths']}", inline=True)
-    embed.add_field(name="Seriya", value=f"{data['win_streak']} (max {data['max_streak']})", inline=True)
+    embed.add_field(name="ELO (5v5)", value=str(stats5["elo"]), inline=True)
+    embed.add_field(name="Qələbə/Məğlub (5v5)", value=f"{stats5['wins']}/{stats5['losses']}", inline=True)
+    embed.add_field(name="K/A/D (5v5)", value=f"{stats5['kills']}/{stats5['assists']}/{stats5['deaths']}", inline=True)
+    embed.add_field(name="Seriya (5v5)", value=f"{stats5['win_streak']} (max {stats5['max_streak']})", inline=True)
     embed.add_field(name="Coin", value=str(data["coins"]), inline=True)
     embed.add_field(name="Ban", value="🔴 Bəli" if is_banned(oyunçu.id) else "🟢 Xeyr", inline=True)
     embed.set_footer(text=f"Discord ID: {oyunçu.id}")
@@ -5547,6 +5519,7 @@ ADMIN_FIELD_CHOICES = [
 ]
 ADMIN_NUMERIC_FIELDS = {"elo", "coins", "wins", "losses", "kills", "assists", "deaths"}
 ADMIN_FLOAT_FIELDS = {"zm_balance"}
+ADMIN_5V5_STAT_FIELDS = {"elo", "wins", "losses", "kills", "assists", "deaths"}
 
 
 @bot.tree.command(name="admin_duzelt", description="[Admin] Oyunçunun bir sahəsini dəyişir")
@@ -5575,12 +5548,16 @@ async def admin_duzelt_cmd(interaction: discord.Interaction, oyunçu: discord.Me
     else:
         value = dəyər
 
-    old_data = get_player_stats_dict(oyunçu.id)
-    old_val = old_data.get("nick" if field == "so2_nick" else field, "?")
-
-    if not admin_set_player_field(oyunçu.id, field, value):
-        await interaction.response.send_message("❌ Bu sahə dəyişdirilə bilməz.", ephemeral=True)
-        return
+    if field in ADMIN_5V5_STAT_FIELDS:
+        stats5 = get_player_5v5(oyunçu.id) or {"elo": 1000, "wins": 0, "losses": 0, "kills": 0, "assists": 0, "deaths": 0}
+        old_val = stats5.get(field, 0)
+        admin_set_player_field_5v5(oyunçu.id, field, value)
+    else:
+        old_data = get_player_stats_dict(oyunçu.id)
+        old_val = old_data.get("nick" if field == "so2_nick" else field, "?")
+        if not admin_set_player_field(oyunçu.id, field, value):
+            await interaction.response.send_message("❌ Bu sahə dəyişdirilə bilməz.", ephemeral=True)
+            return
 
     log_admin_action("admin_duzelt", oyunçu.id, field, str(old_val), str(value), "-", interaction.user.id)
     await _post_audit_log("admin_duzelt", oyunçu.id, field, old_val, value, "-", interaction.user.id)
@@ -5729,7 +5706,8 @@ class ConfirmSwapMatchView(discord.ui.View):
             return
 
         # Yeni (dəyişdirilmiş) nəticəni tətbiq et — köhnə uduzanlar indi qalib
-        results = update_team_elo(old_loser_ids, old_winner_ids)
+        elo_updater = update_team_elo_5v5 if match["match_type"] == "5v5" else update_team_elo
+        results = elo_updater(old_loser_ids, old_winner_ids)
         if not results:
             await interaction.edit_original_response(
                 content="❌ Yeni nəticə tətbiq edilə bilmədi (oyunçu(lar) tapılmadı).", embed=None, view=self

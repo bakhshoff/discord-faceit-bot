@@ -1765,16 +1765,30 @@ def get_total_match_count():
 
 def admin_set_player_field(discord_id, field, value):
     """
-    Admin panel Ã¼Ã§Ã¼n: bir oyunÃ§unun tÉ™k bir sahÉ™sini dÉ™yiÅŸir.
-    field: 'so2_nick', 'so2_id', 'elo', 'coins', 'wins', 'losses'
+    Admin panel üçün: bir oyunçunun kimlik/valyuta sahəsini dəyişir (players cədvəli).
+    field: 'so2_nick', 'so2_id', 'coins', 'zm_balance'. ELO/wins/losses/kills/assists/deaths
+    üçün bax: admin_set_player_field_5v5 (bu sahələr artıq players_5v5-də saxlanılır).
     """
-    allowed_fields = {"so2_nick", "so2_id", "elo", "coins", "zm_balance", "wins", "losses",
-                      "kills", "assists", "deaths"}
+    allowed_fields = {"so2_nick", "so2_id", "coins", "zm_balance"}
     if field not in allowed_fields:
         return False
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(f"UPDATE players SET {field} = ? WHERE discord_id = ?", (value, discord_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def admin_set_player_field_5v5(discord_id, field, value):
+    """Admin panel üçün: bir oyunçunun 5v5 statistika sahəsini (players_5v5) dəyişir."""
+    allowed_fields = {"elo", "wins", "losses", "kills", "assists", "deaths"}
+    if field not in allowed_fields:
+        return False
+    ensure_5v5_stats_row(discord_id)
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE players_5v5 SET {field} = ? WHERE discord_id = ?", (value, discord_id))
     conn.commit()
     conn.close()
     return True
@@ -1903,38 +1917,47 @@ def delete_match_and_revert(match_number):
     Matçı silir, hər oyunçunun ELO-sunu elo_before-a qaytarır, wins/losses-i 1
     azaldır. Coin/kill-assist-death/nailiyyət dəyişiklikləri geri alınmır.
     Təsirlənən oyunçuların siyahısını qaytarır, tapılmasa None.
+    `match_type`-a görə düzgün cədvələ (5v5 -> players_5v5, köhnə 2v2 tarixi
+    qeydlər -> players) yazır ki, leaderboard/rank rolu ilə uyğunsuzluq yaranmasın.
     """
     match = get_match_by_number(match_number)
     if not match:
         return None
 
+    table = "players_5v5" if match["match_type"] == "5v5" else "players"
+
     conn = _get_conn()
     cursor = conn.cursor()
     affected = []
 
+    def _nick_for(did):
+        cursor.execute("SELECT so2_nick FROM players WHERE discord_id=?", (did,))
+        row = cursor.fetchone()
+        return row[0] if row else str(did)
+
     for did, elo_before in zip(match["winner_ids"], match["winner_elo_before"]):
-        cursor.execute("SELECT so2_nick, elo FROM players WHERE discord_id=?", (did,))
+        cursor.execute(f"SELECT elo FROM {table} WHERE discord_id=?", (did,))
         row = cursor.fetchone()
         if not row:
             continue
-        nick, old_elo = row
+        old_elo = row[0]
         cursor.execute(
-            "UPDATE players SET elo=?, wins=MAX(wins-1,0) WHERE discord_id=?",
+            f"UPDATE {table} SET elo=?, wins=MAX(wins-1,0) WHERE discord_id=?",
             (elo_before, did)
         )
-        affected.append({"discord_id": did, "nick": nick, "old_elo": old_elo, "new_elo": elo_before})
+        affected.append({"discord_id": did, "nick": _nick_for(did), "old_elo": old_elo, "new_elo": elo_before})
 
     for did, elo_before in zip(match["loser_ids"], match["loser_elo_before"]):
-        cursor.execute("SELECT so2_nick, elo FROM players WHERE discord_id=?", (did,))
+        cursor.execute(f"SELECT elo FROM {table} WHERE discord_id=?", (did,))
         row = cursor.fetchone()
         if not row:
             continue
-        nick, old_elo = row
+        old_elo = row[0]
         cursor.execute(
-            "UPDATE players SET elo=?, losses=MAX(losses-1,0) WHERE discord_id=?",
+            f"UPDATE {table} SET elo=?, losses=MAX(losses-1,0) WHERE discord_id=?",
             (elo_before, did)
         )
-        affected.append({"discord_id": did, "nick": nick, "old_elo": old_elo, "new_elo": elo_before})
+        affected.append({"discord_id": did, "nick": _nick_for(did), "old_elo": old_elo, "new_elo": elo_before})
 
     cursor.execute("DELETE FROM match_history WHERE id=?", (match["id"],))
     cursor.execute("DELETE FROM scan_results WHERE match_number=?", (match_number,))
