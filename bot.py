@@ -1628,6 +1628,7 @@ class RegisterModal(discord.ui.Modal, title="FACEIT Qeydiyyat"):
     async def on_submit(self, interaction: discord.Interaction):
         success = register_player(interaction.user.id, str(self.nick), str(self.so2_id))
         if success:
+            ensure_5v5_stats_row(interaction.user.id)
             embed = discord.Embed(
                 title="✅ Qeydiyyat tamamlandı!",
                 description=f"**Nick:** {self.nick}\n**ID:** {self.so2_id}\n**Başlanğıc ELO:** 1000",
@@ -2851,6 +2852,18 @@ async def on_ready():
         except Exception as e:
             print(f"[SEASON-FIX] Xəta: {e}")
         set_meta("season_correction_2026_09_01", "1")
+
+    if not get_meta("backfill_5v5_stats_rows_2026_09_14"):
+        try:
+            backfilled = 0
+            for p in get_all_players(limit=100000):
+                if not get_player_5v5(p["discord_id"]):
+                    ensure_5v5_stats_row(p["discord_id"])
+                    backfilled += 1
+            print(f"[BACKFILL] {backfilled} qeydiyyatlı oyunçu üçün players_5v5 sətri yaradıldı (leaderboard-da görünmə problemi düzəldildi).")
+        except Exception as e:
+            print(f"[BACKFILL] Xəta: {e}")
+        set_meta("backfill_5v5_stats_rows_2026_09_14", "1")
 
     saved_log = get_meta("log_channel_id")
     if saved_log:
@@ -5948,6 +5961,49 @@ async def hamisina_rol_ver_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
+@bot.tree.command(name="kanallari_yenile", description="[Admin] Ay sonu mükafatı/leaderboard/matchmaking/aktivlik lövhəsi mesajlarını dərhal yeniləyir")
+@staff_check()
+async def kanallari_yenile_cmd(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    results = []
+
+    try:
+        await refresh_reward_card.coro()
+        results.append("✅ Ay sonu mükafatı")
+    except Exception as e:
+        results.append(f"❌ Ay sonu mükafatı ({e})")
+
+    try:
+        await refresh_leaderboard_5v5.coro()
+        results.append("✅ Leaderboard")
+    except Exception as e:
+        results.append(f"❌ Leaderboard ({e})")
+
+    try:
+        await update_queue_status_message_5v5()
+        results.append("✅ Matchmaking (sıra statusu)")
+    except Exception as e:
+        results.append(f"❌ Matchmaking ({e})")
+
+    try:
+        await refresh_chat_activity_leaderboard.coro()
+        results.append("✅ Aktivlik lövhəsi")
+    except Exception as e:
+        results.append(f"❌ Aktivlik lövhəsi ({e})")
+
+    await interaction.followup.send(
+        "🔄 **Kanallar yeniləndi:**\n" + "\n".join(results) +
+        "\n\nℹ️ Qeydiyyat mesajı statik bannerdir (dinamik məlumat göstərmir) — yeniləmə tələb etmir, həmişə aktualdır.",
+        ephemeral=True
+    )
+
+
+@kanallari_yenile_cmd.error
+async def kanallari_yenile_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # KOMANDA PANELİ
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -6049,6 +6105,7 @@ PANEL_CATEGORIES = {
             ("🎮 Paralel matçlar", f"Eyni anda {MAX_PARALLEL_MATCHES} matça qədər paralel oynanıla bilər, hər biri öz thread/səs kanalları ilə"),
             ("/rank_rollari_qur", "ELO rütbə rollarını serverdə yaradır və bütün oyunçulara təyin edir"),
             ("/hamisina_rol_ver", "Seçilmiş rolu serverdəki bütün üzvlərə (botlar xaric) tək dəfəyə verir"),
+            ("/kanallari_yenile", "Ay sonu mükafatı/leaderboard/matchmaking/aktivlik lövhəsi mesajlarını dərhal yeniləyir"),
             ("📊 Aktivlik (aşağıdakı düymə)", "Son 7 günün aktivlik statistikasını göstərir"),
             ("📋 Günlük hesabat", "Bot hər gün AZ vaxtı ilə 00:00-da avtomatik günlük statistikanı bu kanala göndərir"),
             ("📰 Nextlevelaz Xəbərləri", "Gündəlik hesabatın ardınca AI (Claude) yazılmış qısa icmal göndərilir"),
