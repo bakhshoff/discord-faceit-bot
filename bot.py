@@ -3053,6 +3053,153 @@ async def server_sifirla_error(interaction: discord.Interaction, error):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
 
+async def _execute_faceit_reset(interaction: discord.Interaction):
+    """`/faceit_kanallari_sifirla` təsdiqləndikdən sonra əsl işi görür: YALNIZ
+    `🎯 FACEIT 5V5` kataqoriyasını (və içindəki bütün kanalları) silib yenidən qurur —
+    digər kataqoriyalara, rollara və oyunçu datasına toxunmur."""
+    global LOG_CHANNEL_ID, LOG_CHANNEL_ID_5V5, MATCH_HISTORY_CHANNEL_ID, SEASON_REWARD_CHANNEL_ID
+
+    guild = interaction.guild
+    admin_user = interaction.user
+
+    category = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
+    deleted_channels = 0
+    if category:
+        for channel in list(category.channels):
+            try:
+                await channel.delete(reason="faceit_kanallari_sifirla")
+                deleted_channels += 1
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+        try:
+            await category.delete(reason="faceit_kanallari_sifirla")
+        except (discord.Forbidden, discord.HTTPException):
+            pass
+
+    category_5v5 = await guild.create_category(CATEGORY_5V5_NAME)
+    announce_overwrites = {guild.default_role: discord.PermissionOverwrite(send_messages=False)}
+
+    ch_register = await guild.create_text_channel("registration", category=category_5v5, overwrites=announce_overwrites)
+    ch_rules = await guild.create_text_channel("rules", category=category_5v5, overwrites=announce_overwrites)
+    ch_matchmaking_5v5 = await guild.create_text_channel("matchmaking", category=category_5v5, overwrites=announce_overwrites)
+    ch_log_5v5 = await guild.create_text_channel("match-results", category=category_5v5)
+    ch_history = await guild.create_text_channel("match-history", category=category_5v5, overwrites=announce_overwrites)
+    current_season_5v5 = get_or_create_current_season("5v5")
+    ch_leaderboard_5v5 = await guild.create_text_channel(
+        f"season-leaderboard-{current_season_5v5['season_number']}", category=category_5v5, overwrites=announce_overwrites
+    )
+    ch_general_leaderboard = await guild.create_text_channel("general-leaderboard", category=category_5v5, overwrites=announce_overwrites)
+    ch_season_reward = await guild.create_text_channel("season-rewards", category=category_5v5, overwrites=announce_overwrites)
+    await _get_or_create_warmup_channel(guild, mode="5v5")
+
+    LOG_CHANNEL_ID = ch_log_5v5.id
+    set_meta("log_channel_id", ch_log_5v5.id)
+    LOG_CHANNEL_ID_5V5 = ch_log_5v5.id
+    set_meta("log_channel_id_5v5", ch_log_5v5.id)
+    MATCH_HISTORY_CHANNEL_ID = ch_history.id
+    set_meta("match_history_channel_id", ch_history.id)
+    SEASON_REWARD_CHANNEL_ID = ch_season_reward.id
+    set_meta("season_reward_channel_id", ch_season_reward.id)
+
+    await _post_register(ch_register)
+    await _post_matchmaking_5v5(ch_matchmaking_5v5)
+    await _post_rules(ch_rules)
+    await _post_leaderboard_5v5(ch_leaderboard_5v5)
+    await _post_leaderboard_5v5_alltime(ch_general_leaderboard)
+    await ch_season_reward.send(
+        "🏆 **Sezon Mükafatları** — hər sezon sonunda Top-3 ELO sırası Gold qazanır:\n"
+        "🥇 1-ci yer: **3000 Gold**  ·  🥈 2-ci yer: **2000 Gold**  ·  🥉 3-cü yer: **1000 Gold**\n"
+        "Nəticələr burada avtomatik elan olunacaq."
+    )
+    await ch_history.send("📜 **Match History** — bitmiş bütün 5v5 matçların yekun nəticələri burada arxivlənir.")
+
+    summary = (
+        "✅ **FACEIT 5V5 kanalları tam yenidən quruldu!**\n\n"
+        f"🗑️ Silinən kanal sayı: {deleted_channels}\n\n"
+        f"📋 Registration: {ch_register.mention}\n"
+        f"📜 Rules: {ch_rules.mention}\n"
+        f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
+        f"🏁 Match results: {ch_log_5v5.mention}\n"
+        f"📜 Match history: {ch_history.mention}\n"
+        f"🏆 Season leaderboard: {ch_leaderboard_5v5.mention}\n"
+        f"🏆 General leaderboard: {ch_general_leaderboard.mention}\n"
+        f"🎁 Season rewards: {ch_season_reward.mention}\n\n"
+        "⚠️ Digər kataqoriyalar, rollar və oyunçu datası TOXUNULMADI."
+    )
+    try:
+        await interaction.followup.send(summary, ephemeral=True)
+    except discord.HTTPException:
+        pass
+    try:
+        await admin_user.send(summary)
+    except discord.HTTPException:
+        pass
+
+
+class FaceitChannelsResetConfirmView(discord.ui.View):
+    def __init__(self, requester_id):
+        super().__init__(timeout=60)
+        self.requester_id = requester_id
+
+    @discord.ui.button(label="Bəli, FACEIT kanallarını sıfırla", style=discord.ButtonStyle.danger, emoji="⚠️")
+    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı çağıran şəxs üçündür.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content="⏳ FACEIT kanalları sıfırlanır...", view=self
+        )
+        await _execute_faceit_reset(interaction)
+
+    @discord.ui.button(label="Ləğv et", style=discord.ButtonStyle.secondary)
+    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.requester_id:
+            await interaction.response.send_message("❌ Bu təsdiq yalnız komandanı çağıran şəxs üçündür.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="❌ Ləğv edildi, heç nə silinmədi.", view=self)
+
+
+@bot.tree.command(name="faceit_kanallari_sifirla", description="[Admin] TƏHLÜKƏLİ: yalnız FACEIT 5V5 kataqoriyasını silib yenidən qurur")
+@staff_check()
+async def faceit_kanallari_sifirla_cmd(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
+        return
+
+    active_matches = get_all_active_matches()
+    if active_matches:
+        nums = ", ".join(str(m["match_number"]) for m in active_matches)
+        await interaction.response.send_message(
+            f"⚠️ Hazırda aktiv matç(lar) var ({nums}). Zəhmət olmasa əvvəlcə onları bitirin/ləğv edin, "
+            "sonra bu komandanı yenidən işlədin — aktiv matçın thread/səs kanalları bu kataqoriyadadır.",
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.send_message(
+        "⚠️ **DİQQƏT — GERİ QAYTARILA BİLMƏZ!**\n\n"
+        f"Bu əməliyyat **{CATEGORY_5V5_NAME}** kataqoriyasındakı BÜTÜN kanalları (registration, rules, "
+        "matchmaking, match-results, match-history, leaderboard-lar, season-rewards, warmup) həmişəlik "
+        "siləcək və onların yerinə təzə, boş versiyalarını quracaq.\n\n"
+        "🚫 **İtiriləcəklər:** bu kanallardakı bütün mesaj tarixçəsi (o cümlədən matç-nəticə logları).\n"
+        "✅ **TOXUNULMAYACAQ:** digər kataqoriyalar (Announcements/Community/Staff/Tickets), rollar, "
+        "oyunçu qeydiyyatı/statistika/coin/sezon.\n\n"
+        "Davam etmək istədiyinizə **əminsiniz**?",
+        view=FaceitChannelsResetConfirmView(interaction.user.id),
+        ephemeral=True
+    )
+
+
+@faceit_kanallari_sifirla_cmd.error
+async def faceit_kanallari_sifirla_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # TICKET SİSTEMİ — klan qoşulma (NLA/Calestify/K4GE/ELE1) + Gold/Boost/Emulator satışı
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -4084,6 +4231,12 @@ class AdminServerMenuView(discord.ui.View):
             return
         await server_sifirla_cmd.callback(interaction)
 
+    @discord.ui.button(label="⚠️ FACEIT kanallarını sıfırla", style=discord.ButtonStyle.danger, emoji="🎯", row=1)
+    async def faceit_reset_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        await faceit_kanallari_sifirla_cmd.callback(interaction)
+
     @discord.ui.button(label="⚠️ Bütün datanı sıfırla", style=discord.ButtonStyle.danger, emoji="🗑️", row=1)
     async def full_reset_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._guard(interaction):
@@ -4236,6 +4389,7 @@ PANEL_CATEGORIES = {
             ("📰 Nextlevelaz Xəbərləri", "Gündəlik hesabatın ardınca AI (Claude) yazılmış qısa icmal göndərilir"),
             ("🚫 Ləğv et (matç mesajında)", "Asılı qalan matçı ləğv edir, gəlməyənə ELO cəzası verə bilər"),
             ("/server_sifirla", "⚠️ TƏHLÜKƏLİ: serverin BÜTÜN kanal/rollarını silib yenidən qurur"),
+            ("/faceit_kanallari_sifirla", "⚠️ TƏHLÜKƏLİ: yalnız FACEIT 5V5 kanallarını silib yenidən qurur"),
             ("/setup_register", "Qeydiyyat mesajını yaradır"),
             ("/setup_rules", "Qaydalar mesajını yaradır"),
             ("/giveaway_create", "Giveaway yaradır — gizli qalib təyin edə, ya da boş buraxıb əsl-random seçim edə bilərsiniz"),
