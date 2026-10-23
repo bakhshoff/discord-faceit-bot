@@ -1360,6 +1360,108 @@ def _build_scan_embed(match_number, parsed):
     return embed
 
 
+class PlayerClaimView(discord.ui.View):
+    """Scan edildikdən sonra matçdakı oyunçuların ÖZLƏRİNİN hansı sətirin onlara aid
+    olduğunu seçməsi üçün 60 saniyəlik panel — OCR-un nick-oxşarlığına görə etdiyi
+    təxmini uyğunlaşdırmadan daha dəqiqdir. Vaxt bitəndə seçilməyən sətir/oyunçular
+    `match_to_registered`/`apply_defaults_for_missing` ilə geri-plan olaraq həll olunur."""
+
+    def __init__(self, match_number, ocr_rows, all_players):
+        super().__init__(timeout=60)
+        self.match_number = match_number
+        self.ocr_rows = ocr_rows[:10]
+        self.all_players = all_players
+        self.player_ids = {p["discord_id"] for p in all_players}
+        self.claims = {}  # row_index -> discord_id
+        self.message = None
+        self.finished = asyncio.Event()
+
+        for i, row in enumerate(self.ocr_rows):
+            btn = discord.ui.Button(
+                label=f"{i+1}. {row['kills']}K/{row['assists']}A/{row['deaths']}D",
+                style=discord.ButtonStyle.secondary, row=i // 5
+            )
+            btn.callback = self._make_callback(i)
+            self.add_item(btn)
+
+    def _make_callback(self, row_index):
+        async def _callback(interaction: discord.Interaction):
+            await self._claim(interaction, row_index)
+        return _callback
+
+    def _nick_for(self, discord_id):
+        return next((p["nick"] for p in self.all_players if p["discord_id"] == discord_id), "?")
+
+    async def _claim(self, interaction: discord.Interaction, row_index: int):
+        user_id = interaction.user.id
+        if user_id not in self.player_ids:
+            await interaction.response.send_message(
+                "❌ Bu düymələr yalnız bu matçda oynayan oyunçular üçündür.", ephemeral=True
+            )
+            return
+
+        existing_claimant = self.claims.get(row_index)
+        if existing_claimant and existing_claimant != user_id:
+            await interaction.response.send_message(
+                f"⚠️ Bu sətir artıq **{self._nick_for(existing_claimant)}** tərəfindən seçilib.", ephemeral=True
+            )
+            return
+
+        if existing_claimant == user_id:
+            del self.claims[row_index]  # eyni sətirə yenidən basmaq — seçimi geri götürür
+        else:
+            for r, did in list(self.claims.items()):
+                if did == user_id:
+                    del self.claims[r]  # köhnə seçimini ləğv et, yenisinə keç
+            self.claims[row_index] = user_id
+
+        self._refresh_buttons()
+        await interaction.response.edit_message(embed=self._build_embed(), view=self)
+
+    def _refresh_buttons(self):
+        for i, child in enumerate(self.children):
+            row = self.ocr_rows[i]
+            claimant_id = self.claims.get(i)
+            if claimant_id:
+                child.label = f"{i+1}. {self._nick_for(claimant_id)} — {row['kills']}K/{row['assists']}A/{row['deaths']}D"
+                child.style = discord.ButtonStyle.success
+            else:
+                child.label = f"{i+1}. {row['kills']}K/{row['assists']}A/{row['deaths']}D"
+                child.style = discord.ButtonStyle.secondary
+
+    def _build_embed(self):
+        lines = []
+        for i, row in enumerate(self.ocr_rows):
+            claimant_id = self.claims.get(i)
+            if claimant_id:
+                lines.append(f"**{i+1}.** {row['kills']}K/{row['assists']}A/{row['deaths']}D — ✅ {self._nick_for(claimant_id)}")
+            else:
+                lines.append(f"**{i+1}.** {row['kills']}K/{row['assists']}A/{row['deaths']}D — ⏳ seçilməyib")
+        unclaimed_nicks = [p["nick"] for p in self.all_players if p["discord_id"] not in self.claims.values()]
+        embed = discord.Embed(
+            title=f"🧍 Matç No{self.match_number} — Statistikanı özün seç!",
+            description=(
+                "\n".join(lines)
+                + ("\n\n⏳ Hələ seçmədi: " + ", ".join(unclaimed_nicks) if unclaimed_nicks else "\n\n✅ Hamı seçdi!")
+            ),
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        embed.set_footer(text="60 saniyə ərzində öz sətirinizi seçin — vaxt bitəndə seçilməyənlər avtomatik təyin olunacaq.")
+        return embed
+
+    async def on_timeout(self):
+        for child in self.children:
+            child.disabled = True
+        if self.message:
+            try:
+                embed = self._build_embed()
+                embed.set_footer(text="⏰ Vaxt bitdi — seçimlər dayandırıldı, qalanlar avtomatik təyin olundu.")
+                await self.message.edit(embed=embed, view=self)
+            except discord.HTTPException:
+                pass
+        self.finished.set()
+
+
 class StatEditModal(discord.ui.Modal, title="Stat Düzəliş"):
     kills_inp = discord.ui.TextInput(label="Kill", required=True, max_length=4)
     assists_inp = discord.ui.TextInput(label="Asist", required=True, max_length=4)
@@ -1451,7 +1553,7 @@ class ScanEditView(discord.ui.View):
         await interaction.response.edit_message(content="❌ Scan ləğv edildi.", embed=None, view=self)
 
 
-@bot.tree.command(name="scan", description="[Admin] Skor ekranını scan edir (şəkli göndərib sonra /scan yazın)")
+@bot.tree.command(name="scan", description="[Admin] Skor ekranını scan edir — sonra oyunçular 60 saniyə öz statlarını özü seçir")
 @app_commands.describe(matc_no="Birdən çox matç paralel aktivdirsə, hansının skanı olduğunu göstərin")
 @staff_check()
 async def scan_cmd(interaction: discord.Interaction, matc_no: int = None):
@@ -1506,8 +1608,35 @@ async def scan_cmd(interaction: discord.Interaction, matc_no: int = None):
     match_number = active["match_number"]
     all_players = active.get("team_a", []) + active.get("team_b", [])
 
-    parsed = match_to_registered(ocr_results, all_players)
-    parsed = apply_defaults_for_missing(all_players, parsed)
+    if ocr_results:
+        claim_view = PlayerClaimView(match_number, ocr_results, all_players)
+        claim_msg = await interaction.followup.send(
+            content=" ".join(f"<@{p['discord_id']}>" for p in all_players),
+            embed=claim_view._build_embed(), view=claim_view
+        )
+        claim_view.message = claim_msg
+        await claim_view.finished.wait()
+
+        claimed_rows = set(claim_view.claims.keys())
+        claimed_ids = set(claim_view.claims.values())
+        parsed = {}
+        for row_index, discord_id in claim_view.claims.items():
+            row = ocr_results[row_index]
+            player = next((p for p in all_players if p["discord_id"] == discord_id), None)
+            parsed[discord_id] = {
+                "nick": player["nick"] if player else row["nick"],
+                "ocr_nick": row["nick"],
+                "kills": row["kills"], "assists": row["assists"], "deaths": row["deaths"],
+                "matched": True,
+            }
+        remaining_rows = [r for i, r in enumerate(ocr_results) if i not in claimed_rows]
+        remaining_players = [p for p in all_players if p["discord_id"] not in claimed_ids]
+        fallback = match_to_registered(remaining_rows, remaining_players)
+        fallback = apply_defaults_for_missing(remaining_players, fallback)
+        parsed.update(fallback)  # "unknown_*" (seçilməyib/uyğun tapılmayıb) açıq-aşkar admin üçün görünən qalır
+    else:
+        parsed = match_to_registered(ocr_results, all_players)
+        parsed = apply_defaults_for_missing(all_players, parsed)
 
     embed = _build_scan_embed(match_number, parsed)
     view = ScanEditView(match_number, parsed)
@@ -4092,7 +4221,7 @@ PANEL_CATEGORIES = {
         "title": "🔧 Admin (Founder / Admin / Moderator)",
         "items": [
             ("/admin_panel", "🛠️ Bütün admin əməliyyatlarına vizual, düymə-əsaslı panel (tövsiyə olunur)"),
-            ("/scan", "Skor ekranı şəklindən K/A/D oxuyur"),
+            ("/scan", "Skor ekranı şəklindən K/A/D oxuyur, sonra oyunçular 60 saniyə ərzində öz sətirini özü seçir"),
             ("/admin_oyuncu", "Oyunçunun tam profil məlumatını göstərir"),
             ("/admin_duzelt", "Oyunçunun ELO/coin/stat və s. sahəsini dəyişir"),
             ("/admin_matclar", "Son matçların siyahısı"),
