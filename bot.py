@@ -353,7 +353,10 @@ async def _post_audit_log(action, target_id, field, old_val, new_val, reason, ad
 # KARYERA YOLU — Aylıq ELO Sezonları
 # ═══════════════════════════════════════════════════════════════════════════════
 
-_last_season_rotation_month = None
+SEASON_START_DATE = datetime.date(2026, 10, 23)  # FACEIT-in başladığı tarix (AZ vaxtı) — sezon dövrləri bundan hesablanır
+SEASON_LENGTH_DAYS = 30
+
+_last_season_rotation_cycle = None
 
 
 REWARDS_5V5_TOP3 = [3000, 2000, 1000]  # sezon sonu Top-3 Gold mükafatı
@@ -405,25 +408,26 @@ async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_pre
 
 @tasks.loop(minutes=30)
 async def season_rotation_loop():
-    """Ayın 1-ində (AZ vaxtı ilə) 5v5 sezonunu bağlayıb yeni sezon açır — öz mükafat
-    cədvəli və öz statistika cədvəli ilə (bax: _rotate_season_for_mode, reset_all_players_for_new_season).
-    30 dəqiqəlik interval (bax: weekly_mvp_loop-dakı eyni izah) bot-un son restart vaxtından
-    asılı olmadan ayın 1-i başlayan kimi tezliklə aşkarlanmasını təmin edir. Bayraq DB-də
-    (get_meta/set_meta) saxlanılır — YALNIZ yaddaşda saxlansaydı, ayın 1-ində bot bir neçə dəfə
-    restart olduqda (deploy və s.) hər restart eyni günü YENİDƏN rotasiya edərdi (sezon nömrəsi
-    lazımsız yerə bir neçə dəfə artardı)."""
-    global _last_season_rotation_month
+    """FACEIT-in başladığı tarixdən (SEASON_START_DATE, AZ vaxtı) etibarən sabit 30-günlük
+    dövrlərlə 5v5 sezonunu bağlayıb yeni sezon açır — AYIN SONUNA görə YOX (bax:
+    _rotate_season_for_mode, reset_all_players_for_new_season). 30 dəqiqəlik interval bot-un son
+    restart vaxtından asılı olmadan dövrün bitdiyini tezliklə aşkarlanmasını təmin edir. Bayraq
+    DB-də (get_meta/set_meta) saxlanılır — YALNIZ yaddaşda saxlansaydı, dövr bitən gün bot bir
+    neçə dəfə restart olduqda (deploy və s.) hər restart eyni dövrü YENİDƏN rotasiya edərdi
+    (sezon nömrəsi lazımsız yerə bir neçə dəfə artardı)."""
+    global _last_season_rotation_cycle
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
-    if now.day != 1:
+    days_elapsed = (now.date() - SEASON_START_DATE).days
+    if days_elapsed < SEASON_LENGTH_DAYS:
         return
-    month_key = now.strftime("%Y-%m")
-    if _last_season_rotation_month == month_key:
+    cycle_key = str(days_elapsed // SEASON_LENGTH_DAYS)
+    if _last_season_rotation_cycle == cycle_key:
         return
-    if get_meta("last_season_rotation_month") == month_key:
-        _last_season_rotation_month = month_key
+    if get_meta("last_season_rotation_cycle") == cycle_key:
+        _last_season_rotation_cycle = cycle_key
         return
-    _last_season_rotation_month = month_key
-    set_meta("last_season_rotation_month", month_key)
+    _last_season_rotation_cycle = cycle_key
+    set_meta("last_season_rotation_cycle", cycle_key)
 
     await _rotate_season_for_mode("5v5", REWARDS_5V5_TOP3, leaderboard_channel_id_5v5, "leaderboard-5v5-sezon")
 
@@ -2214,18 +2218,12 @@ class StatsMenuView(_ProfileSubMenuBase):
     def __init__(self, discord_id, lang="az"):
         super().__init__(discord_id, lang)
         self._add_buttons([
-            ("btn.stats", "📊", self.stats_btn),
+            ("btn.stats_5v5", "📊", self.stats_5v5_btn),
             ("btn.history", "📜", self.history_btn),
             ("btn.chart", "📈", self.elo_chart_btn),
             ("btn.maps", "🗺️", self.maps_btn),
             ("btn.coach", "🤖", self.coach_btn),
-            ("btn.stats_5v5", "🎯", self.stats_5v5_btn),
         ])
-
-    async def stats_btn(self, interaction: discord.Interaction):
-        if not await self._guard(interaction):
-            return
-        await _render_stats(interaction, self.discord_id)
 
     async def stats_5v5_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -2424,8 +2422,11 @@ async def profile(interaction: discord.Interaction):
 
     await interaction.response.defer()
 
-    discord_id, nick, so2_id, elo, wins, losses = player[:6]
-    stats = get_player_stats_dict(discord_id) or {}
+    discord_id, nick, so2_id = player[0], player[1], player[2]
+    stats = get_player_stats_dict_5v5(discord_id) or {}
+    elo = stats.get("elo", 1000)
+    wins = stats.get("wins", 0)
+    losses = stats.get("losses", 0)
 
     avatar_bytes = None
     try:
@@ -3500,15 +3501,6 @@ async def _render_coins(interaction: discord.Interaction, discord_id: int):
     card_path = os.path.join(DATA_DIR or ".", f"coins_{discord_id}.png")
     await asyncio.to_thread(generate_coin_logs_card, logs, balance, None, card_path)
     await interaction.followup.send(file=discord.File(card_path, filename="coins.png"), ephemeral=True)
-
-
-async def _render_stats(interaction: discord.Interaction, target_id: int):
-    await interaction.response.defer(ephemeral=True)
-    player_data = get_player_stats_dict(target_id)
-    achievements = []
-    card_path = os.path.join(DATA_DIR or ".", f"stats_{target_id}.png")
-    await asyncio.to_thread(generate_stats_card, player_data, achievements, card_path)
-    await interaction.followup.send(file=discord.File(card_path, filename="stats.png"), ephemeral=True)
 
 
 async def _render_history(interaction: discord.Interaction, target_id: int):
