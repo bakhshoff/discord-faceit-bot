@@ -69,6 +69,7 @@ from visual_cards import (
     generate_map_stats_card,
     generate_activity_card, generate_elo_chart_card,
     generate_announcement_card, generate_chat_activity_card,
+    generate_season_reward_card,
     RANKS, get_rank
 )
 import requests
@@ -370,14 +371,13 @@ async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_pre
     mode_label = "5v5" if mode == "5v5" else "2v2"
     icon = "🎯" if mode == "5v5" else "🛤️"
     if leaderboard:
-        lines = []
+        top3 = []
         for i, (nick, so2_id, elo_gained, kills, assists, deaths, wins, losses, discord_id) in enumerate(leaderboard):
             reward = rewards[i] if i < len(rewards) else 0
             if reward:
                 new_bal = add_coins(discord_id, reward)
                 add_coin_log(discord_id, reward, f"{mode_label} Sezon #{current['season_number']} Top-{i+1} mükafatı", "earn", new_bal)
-            lines.append(f"**#{i+1}** {nick} — {'+' if elo_gained >= 0 else ''}{elo_gained} ELO ({wins}Q/{losses}M)"
-                         + (f" 🎁 +{reward} Gold" if reward else ""))
+            top3.append({"nick": nick, "elo_gained": elo_gained, "wins": wins, "losses": losses, "reward": reward})
         channel = await _get_season_reward_channel() or await _get_log_channel_5v5()
         if channel:
             progress_msg = await channel.send(f"⏳ {mode_label} sezonu yekunlaşdırılır...\n`░░░░░░░░░░░░░░░░░░░░` 0%")
@@ -386,13 +386,13 @@ async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_pre
             await _progress_step(progress_msg, 2, 3, "Bütün oyunçuların statistikası sıfırlanır...")
             await asyncio.sleep(1.0)
             await _progress_step(progress_msg, 3, 3, "Yeni sezon başlayır!")
-            embed = discord.Embed(
-                title=f"{icon} {mode_label} Sezon #{current['season_number']} başa çatdı!",
-                description="\n".join(lines),
-                color=discord.Color.from_rgb(138, 92, 230)
+            card_path = os.path.join(DATA_DIR or ".", f"season_reward_{mode}_{current['season_number']}.png")
+            await asyncio.to_thread(generate_season_reward_card, mode_label, current["season_number"], top3, card_path)
+            await channel.send(
+                content=f"{icon} **{mode_label} Sezon #{current['season_number']} başa çatdı!** "
+                        f"Bütün {mode_label} oyunçularının ELO/statistikası sıfırlandı — yeni sezon başladı.",
+                file=discord.File(card_path, filename="season_reward.png")
             )
-            embed.set_footer(text=f"Bütün {mode_label} oyunçularının ELO/statistikası sıfırlandı — yeni sezon başladı.")
-            await channel.send(embed=embed)
     close_season(current["id"])
     reset_all_players_for_new_season(mode=mode)
     new_season = get_or_create_current_season(mode)
@@ -539,6 +539,7 @@ leaderboard_channel_id_5v5 = None
 leaderboard_message_id_5v5 = None
 queue_status_channel_id_5v5 = None
 queue_status_message_id_5v5 = None
+matchmaking_banner_message_id_5v5 = None
 
 
 LEADERBOARD_IMAGE_PATH_5V5 = "leaderboard_5v5.png"
@@ -1332,6 +1333,7 @@ class MatchResultView5v5(discord.ui.View):
                             pass
                         await _post_thread_summary_and_archive(thread)
 
+        await _cleanup_matchmaking_channel_5v5()
         await _start_match_if_ready_5v5(log_channel or interaction.channel, interaction.guild)
 
     @discord.ui.button(label="Komanda A qalib", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="result_a_5v5")
@@ -1379,6 +1381,7 @@ class PlayerClaimView(discord.ui.View):
         self.claims = {}  # row_index -> discord_id
         self.message = None
         self.finished = asyncio.Event()
+        self.row_buttons = []
 
         for i, row in enumerate(self.ocr_rows):
             btn = discord.ui.Button(
@@ -1387,6 +1390,14 @@ class PlayerClaimView(discord.ui.View):
             )
             btn.callback = self._make_callback(i)
             self.add_item(btn)
+            self.row_buttons.append(btn)
+
+        confirm_row = (len(self.ocr_rows) - 1) // 5 + 1
+        self.confirm_button = discord.ui.Button(
+            label="✅ İndi təsdiqlə (heyət)", style=discord.ButtonStyle.primary, row=confirm_row
+        )
+        self.confirm_button.callback = self._confirm_now
+        self.add_item(self.confirm_button)
 
     def _make_callback(self, row_index):
         async def _callback(interaction: discord.Interaction):
@@ -1423,15 +1434,27 @@ class PlayerClaimView(discord.ui.View):
         await interaction.response.edit_message(embed=self._build_embed(), view=self)
 
     def _refresh_buttons(self):
-        for i, child in enumerate(self.children):
+        for i, btn in enumerate(self.row_buttons):
             row = self.ocr_rows[i]
             claimant_id = self.claims.get(i)
             if claimant_id:
-                child.label = f"{i+1}. {self._nick_for(claimant_id)} — {row['kills']}K/{row['assists']}A/{row['deaths']}D"
-                child.style = discord.ButtonStyle.success
+                btn.label = f"{i+1}. {self._nick_for(claimant_id)} — {row['kills']}K/{row['assists']}A/{row['deaths']}D"
+                btn.style = discord.ButtonStyle.success
             else:
-                child.label = f"{i+1}. {row['kills']}K/{row['assists']}A/{row['deaths']}D"
-                child.style = discord.ButtonStyle.secondary
+                btn.label = f"{i+1}. {row['kills']}K/{row['assists']}A/{row['deaths']}D"
+                btn.style = discord.ButtonStyle.secondary
+
+    async def _confirm_now(self, interaction: discord.Interaction):
+        if not is_staff(interaction):
+            await interaction.response.send_message("❌ Bu düymə yalnız heyət üçündür.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        embed = self._build_embed()
+        embed.set_footer(text=f"✅ {interaction.user.display_name} tərəfindən vaxtından əvvəl təsdiqləndi — qalanlar avtomatik təyin olundu.")
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.stop()
+        self.finished.set()
 
     def _build_embed(self):
         lines = []
@@ -1450,7 +1473,7 @@ class PlayerClaimView(discord.ui.View):
             ),
             color=discord.Color.from_rgb(138, 92, 230)
         )
-        embed.set_footer(text="60 saniyə ərzində öz sətirinizi seçin — vaxt bitəndə seçilməyənlər avtomatik təyin olunacaq.")
+        embed.set_footer(text="60 saniyə ərzində öz sətirinizi seçin (vaxt bitəndə qalanlar avtomatik təyin olunur) — heyət istədiyi vaxt \"İndi təsdiqlə\" düyməsi ilə dayandıra bilər.")
         return embed
 
     async def on_timeout(self):
@@ -2004,6 +2027,7 @@ async def on_ready():
     global MATCH_HISTORY_CHANNEL_ID, SEASON_REWARD_CHANNEL_ID, JOIN_LEAVE_LOG_CHANNEL_ID
     global LOG_CHANNEL_ID_5V5, leaderboard_channel_id_5v5, leaderboard_message_id_5v5
     global leaderboard_alltime_channel_id_5v5, leaderboard_alltime_message_id_5v5
+    global queue_status_channel_id_5v5, queue_status_message_id_5v5, matchmaking_banner_message_id_5v5
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     global TICKET_PANEL_CHANNEL_ID, TICKET_CATEGORY_ID
     init_db()
@@ -2032,6 +2056,15 @@ async def on_ready():
     saved_lb_msg_5v5 = get_meta("leaderboard_message_id_5v5")
     if saved_lb_msg_5v5:
         leaderboard_message_id_5v5 = int(saved_lb_msg_5v5)
+    saved_queue_status_channel = get_meta("queue_status_channel_id_5v5")
+    if saved_queue_status_channel:
+        queue_status_channel_id_5v5 = int(saved_queue_status_channel)
+    saved_queue_status_msg = get_meta("queue_status_message_id_5v5")
+    if saved_queue_status_msg:
+        queue_status_message_id_5v5 = int(saved_queue_status_msg)
+    saved_banner_msg = get_meta("matchmaking_banner_message_id_5v5")
+    if saved_banner_msg:
+        matchmaking_banner_message_id_5v5 = int(saved_banner_msg)
     saved_social = get_meta("social_channel_id")
     if saved_social:
         SOCIAL_CHANNEL_ID = int(saved_social)
@@ -2669,12 +2702,12 @@ async def _post_register(channel):
 
 
 async def _post_matchmaking_5v5(channel):
-    global queue_status_channel_id_5v5, queue_status_message_id_5v5
+    global queue_status_channel_id_5v5, queue_status_message_id_5v5, matchmaking_banner_message_id_5v5
 
     banner_path = os.path.join(DATA_DIR or ".", "matchmaking_banner_5v5.png")
     await asyncio.to_thread(generate_matchmaking_banner, QUEUE_OPEN_HOUR, QUEUE_CLOSE_HOUR, LOGO_PATH, banner_path, "5v5")
     view = MatchmakingView5v5()
-    await channel.send(
+    banner_message = await channel.send(
         content="🎯 **FACEIT 5v5** — bu kanaldan yalnız 5v5 sırasına qoşulun.",
         file=discord.File(banner_path, filename="matchmaking_banner_5v5.png"), view=view
     )
@@ -2684,6 +2717,26 @@ async def _post_matchmaking_5v5(channel):
     status_message = await channel.send(file=discord.File(status_image_path, filename="queue_status_5v5.png"))
     queue_status_channel_id_5v5 = channel.id
     queue_status_message_id_5v5 = status_message.id
+    matchmaking_banner_message_id_5v5 = banner_message.id
+    set_meta("queue_status_channel_id_5v5", channel.id)
+    set_meta("queue_status_message_id_5v5", status_message.id)
+    set_meta("matchmaking_banner_message_id_5v5", banner_message.id)
+
+
+async def _cleanup_matchmaking_channel_5v5():
+    """Matç bitdikdən sonra matchmaking kanalını təmizləyir — yalnız sabit banner (Sıraya
+    qoşul düyməsi) və sıra-statusu mesajları qalır, bütün digər mesajlar (köhnə matç kartları,
+    kapitan elanları və s.) silinir."""
+    if not queue_status_channel_id_5v5:
+        return
+    channel = bot.get_channel(queue_status_channel_id_5v5)
+    if channel is None:
+        return
+    keep_ids = {mid for mid in (matchmaking_banner_message_id_5v5, queue_status_message_id_5v5) if mid}
+    try:
+        await channel.purge(limit=200, check=lambda m: m.id not in keep_ids)
+    except (discord.Forbidden, discord.HTTPException):
+        pass
 
 
 @bot.tree.command(name="setup_rules", description="[Admin] FACEIT qaydaları mesajını bu kanalda yaradır")

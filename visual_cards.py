@@ -686,3 +686,63 @@ def generate_chat_activity_card(rows, output_path):
               font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
+
+
+# ── SEZON SONU MÜKAFATI ─────────────────────────────────────────────────────
+
+def generate_season_reward_card(mode_label, season_number, top3, output_path):
+    """top3: [{"nick", "elo_gained", "wins", "losses", "reward"}, ...] — sıralı (0-cı = 1-ci yer),
+    ən çoxu 3 element."""
+    RANK_COLORS = [(255, 215, 0), (192, 192, 192), (205, 127, 50)]
+    RANK_MEDALS = ["🥇", "🥈", "🥉"]
+
+    PAD = 28
+    HEADER_H = 92
+    ROW_H = 96
+    FOOTER_H = 26
+    entries = top3[:3]
+    n = max(len(entries), 1)
+    height = HEADER_H + n * ROW_H + FOOTER_H
+
+    img = _bg(height)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=GOLD, width=2)
+
+    draw.text((PAD, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
+    draw.text((PAD, 34), f"{mode_label} SEZON #{season_number} — YEKUN NƏTİCƏ", font=_font(24, True), fill=WHITE)
+    draw.text((PAD, 68), "Sezon bağlandı, Top-3 Gold mükafatı qazandı!", font=_font(12), fill=GRAY)
+    draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)
+
+    y = HEADER_H
+    if entries:
+        for i, p in enumerate(entries):
+            if i % 2 == 0:
+                draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=PANEL)
+            accent = RANK_COLORS[i]
+            _bar(draw, 20, y, ROW_H, accent)
+
+            draw.text((48, y + ROW_H // 2), RANK_MEDALS[i], font=_font(36), fill=WHITE, anchor="lm")
+            draw.text((108, y + 24), p["nick"][:22], font=_font(22, True), fill=WHITE, anchor="lm")
+
+            chg = p.get("elo_gained", 0)
+            sign = "+" if chg >= 0 else ""
+            chg_color = GREEN if chg >= 0 else RED
+            draw.text((108, y + 58), f"{sign}{chg} ELO", font=_font(14, True), fill=chg_color, anchor="lm")
+            wl_txt = f"{p.get('wins', 0)}Q / {p.get('losses', 0)}M"
+            draw.text((108 + _tw(draw, f"{sign}{chg} ELO  ", _font(14, True)), y + 58), wl_txt,
+                      font=_font(14), fill=GRAY, anchor="lm")
+
+            reward = p.get("reward", 0)
+            reward_txt = f"+{reward} Gold" if reward else "-"
+            draw.text((WIDTH - PAD, y + ROW_H // 2), reward_txt, font=_font(22, True), fill=accent, anchor="rm")
+
+            y += ROW_H
+    else:
+        draw.text((WIDTH // 2, y + ROW_H // 2), "Bu sezon qeydə alınmış statistika yoxdur.",
+                  font=_font(14), fill=GRAY, anchor="mm")
+        y += ROW_H
+
+    draw.text((PAD, height - FOOTER_H + 6), "Nextlevelaz — yeni sezon başladı, uğurlar!",
+              font=_font(10), fill=GRAY)
+    _finalize(img).save(output_path)
+    return output_path
