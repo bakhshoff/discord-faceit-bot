@@ -260,6 +260,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     ex = WIDTH - 220
     draw.text((ex, 82),  t("profile.elo", lang),    font=f_elolbl, fill=GRAY)
     draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
+    draw.text((ex, 140), f"{t('profile.kd', lang)}: {kd}", font=f_elolbl, fill=t_text2)
 
     # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
     # Ümumi statistika (ÜMUMİ paneli + Kill/Asist/Ölüm/K-D qutuları) qəsdən BURADA

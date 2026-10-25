@@ -982,11 +982,35 @@ def is_in_queue_5v5(discord_id):
     return row is not None
 
 
-def pop_10_and_balance():
-    """`pop_4_and_balance`-ın 5v5 analoqu — sıradan ən əvvəl qoşulan 10 nəfəri ATOMİK
-    götürüb tam təsadüfi olaraq iki 5-nəfərlik komandaya bölür."""
+def _balance_5v5_teams(players):
+    """10 oyunçunu ELO-ya görə ən balanslaşdırılmış 2x5 komandaya bölür — mümkün bütün
+    C(10,5)=252 bölgü arasında komandaların ümumi ELO fərqini minimuma endirəni tapır.
+    Bərabər (ən balanslaşdırılmış) bölgülər arasında təsadüfi seçim edilir ki, eyni ELO
+    profilində hər dəfə eyni qruplaşma təkrarlanmasın."""
     import random
+    from itertools import combinations
 
+    total_elo = sum(p["elo"] for p in players)
+    best_diff = None
+    best_splits = []
+    for combo in combinations(range(len(players)), 5):
+        team_a_elo = sum(players[i]["elo"] for i in combo)
+        diff = abs(team_a_elo - (total_elo - team_a_elo))
+        if best_diff is None or diff < best_diff:
+            best_diff = diff
+            best_splits = [combo]
+        elif diff == best_diff:
+            best_splits.append(combo)
+
+    chosen = set(random.choice(best_splits))
+    team_a = [players[i] for i in range(len(players)) if i in chosen]
+    team_b = [players[i] for i in range(len(players)) if i not in chosen]
+    return team_a, team_b
+
+
+def pop_10_and_balance():
+    """Sıradan ən əvvəl qoşulan 10 nəfəri ATOMİK götürüb ELO-ya görə balanslaşdırılmış iki
+    5-nəfərlik komandaya bölür (bax: _balance_5v5_teams)."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
@@ -1014,8 +1038,7 @@ def pop_10_and_balance():
     conn.close()
 
     players = [{"discord_id": r[0], "nick": r[1], "elo": r[2], "so2_id": r[3]} for r in rows]
-    random.shuffle(players)
-    team_a, team_b = players[:5], players[5:]
+    team_a, team_b = _balance_5v5_teams(players)
 
     captain_a = max(team_a, key=lambda p: p["elo"])
     captain_b = max(team_b, key=lambda p: p["elo"])

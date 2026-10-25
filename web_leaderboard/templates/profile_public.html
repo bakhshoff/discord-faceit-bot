@@ -956,10 +956,11 @@
           · {{ matches }} matç · {{ win_rate }}% qazanma
         </div>
 
-        <div class="grid">
+        <div class="grid" style="grid-template-columns: repeat(4, 1fr);">
           <div class="chip"><div class="v" data-target="{{ kills }}">0</div><div class="l">Kill</div></div>
           <div class="chip"><div class="v" data-target="{{ assists }}">0</div><div class="l">Assist</div></div>
           <div class="chip"><div class="v" data-target="{{ deaths }}">0</div><div class="l">Death</div></div>
+          <div class="chip"><div class="v">{{ '%.2f'|format(kills / deaths if deaths else kills) }}</div><div class="l">K/D</div></div>
         </div>
 
         <div class="so2id">SO2 ID: {{ so2_id }}</div>
