@@ -690,9 +690,10 @@ def generate_chat_activity_card(rows, output_path):
 
 # ── SEZON SONU MÜKAFATI ─────────────────────────────────────────────────────
 
-def generate_season_reward_card(mode_label, season_number, top3, output_path):
+def generate_season_reward_card(mode_label, season_number, top3, output_path, preview=False):
     """top3: [{"nick", "elo_gained", "wins", "losses", "reward"}, ...] — sıralı (0-cı = 1-ci yer),
-    ən çoxu 3 element."""
+    ən çoxu 3 element. preview=True olanda hələ heç bir sezon bağlanmadan kanalın necə görünəcəyini
+    göstərən nümunə kart kimi işarələnir (başlıq fərqli olur)."""
     RANK_COLORS = [(255, 215, 0), (192, 192, 192), (205, 127, 50)]
     RANK_MEDALS = ["🥇", "🥈", "🥉"]
 
@@ -708,9 +709,11 @@ def generate_season_reward_card(mode_label, season_number, top3, output_path):
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=GOLD, width=2)
 
+    title = f"{mode_label} SEZON MÜKAFATLARI — NÜMUNƏ" if preview else f"{mode_label} SEZON #{season_number} — YEKUN NƏTİCƏ"
+    subtitle = "Sezon bağlananda Top-3 bu formada elan olunacaq" if preview else "Sezon bağlandı, Top-3 Gold mükafatı qazandı!"
     draw.text((PAD, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
-    draw.text((PAD, 34), f"{mode_label} SEZON #{season_number} — YEKUN NƏTİCƏ", font=_font(24, True), fill=WHITE)
-    draw.text((PAD, 68), "Sezon bağlandı, Top-3 Gold mükafatı qazandı!", font=_font(12), fill=GRAY)
+    draw.text((PAD, 34), title, font=_font(24, True), fill=WHITE)
+    draw.text((PAD, 68), subtitle, font=_font(12), fill=GRAY)
     draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)
 
     y = HEADER_H

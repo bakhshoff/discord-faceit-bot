@@ -406,6 +406,21 @@ async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_pre
                 pass
 
 
+async def _post_season_reward_intro(channel):
+    """Season-rewards kanalı yaradılanda bir dəfə göndərilir — Top-3 Gold mükafatının necə
+    görünəcəyini NÜMUNƏ vizual kart kimi göstərir (əsl nəticə yalnız sezon bağlananda gəlir)."""
+    preview_top3 = [
+        {"nick": "—", "elo_gained": 0, "wins": 0, "losses": 0, "reward": r} for r in REWARDS_5V5_TOP3
+    ]
+    card_path = os.path.join(DATA_DIR or ".", "season_reward_preview.png")
+    await asyncio.to_thread(generate_season_reward_card, "5v5", 0, preview_top3, card_path, preview=True)
+    await channel.send(
+        content="🏆 **Sezon Mükafatları** — hər sezon sonunda Top-3 ELO sırası Gold qazanır. "
+                "Nəticələr burada avtomatik, aşağıdakı kimi bir kartla elan olunacaq:",
+        file=discord.File(card_path, filename="season_reward_preview.png")
+    )
+
+
 @tasks.loop(minutes=30)
 async def season_rotation_loop():
     """FACEIT-in başladığı tarixdən (SEASON_START_DATE, AZ vaxtı) etibarən sabit 30-günlük
@@ -2965,11 +2980,7 @@ async def _execute_server_reset(interaction: discord.Interaction):
     await _post_rules(ch_rules)
     await _post_leaderboard_5v5(ch_leaderboard_5v5)
     await _post_leaderboard_5v5_alltime(ch_general_leaderboard)
-    await ch_season_reward.send(
-        "🏆 **Sezon Mükafatları** — hər sezon sonunda Top-3 ELO sırası Gold qazanır:\n"
-        "🥇 1-ci yer: **3000 Gold**  ·  🥈 2-ci yer: **2000 Gold**  ·  🥉 3-cü yer: **1000 Gold**\n"
-        "Nəticələr burada avtomatik elan olunacaq."
-    )
+    await _post_season_reward_intro(ch_season_reward)
     await ch_history.send("📜 **Match History** — bitmiş bütün 5v5 matçların yekun nəticələri burada arxivlənir.")
     await ch_news.send("📰 **News** — Standoff 2 rəsmi yenilikləri və gündəlik AI xülasəsi burada paylaşılır.")
     await ch_join_leave.send("📥 **Join/Leave Log** — üzv serverə qoşulanda/ayrılanda bura avtomatik qeyd düşür.")
@@ -3160,11 +3171,7 @@ async def _execute_faceit_reset(interaction: discord.Interaction):
     await _post_rules(ch_rules)
     await _post_leaderboard_5v5(ch_leaderboard_5v5)
     await _post_leaderboard_5v5_alltime(ch_general_leaderboard)
-    await ch_season_reward.send(
-        "🏆 **Sezon Mükafatları** — hər sezon sonunda Top-3 ELO sırası Gold qazanır:\n"
-        "🥇 1-ci yer: **3000 Gold**  ·  🥈 2-ci yer: **2000 Gold**  ·  🥉 3-cü yer: **1000 Gold**\n"
-        "Nəticələr burada avtomatik elan olunacaq."
-    )
+    await _post_season_reward_intro(ch_season_reward)
     await ch_history.send("📜 **Match History** — bitmiş bütün 5v5 matçların yekun nəticələri burada arxivlənir.")
 
     summary = (
