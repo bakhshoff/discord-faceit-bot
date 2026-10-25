@@ -27,7 +27,7 @@ from database import (
     is_player_in_active_match, set_active_match_voice,
     add_combat_stats, get_combat_stats, record_match_history,
     save_scan_result, get_scan_result, confirm_scan,
-    add_coins, get_coins,
+    add_coins, get_coins, spend_coins,
     add_coin_log, get_coin_logs,
     get_streak_bonus,
     get_player_stats_dict, get_player_match_history,
@@ -52,6 +52,9 @@ from database import (
     check_suspicious_activity,
     add_chat_xp, get_chat_leaderboard, get_top_chat_activity, reset_weekly_chat_xp,
     create_ticket, get_open_ticket, get_ticket_by_channel, close_ticket,
+    get_inventory, owns_item, add_to_inventory, set_active_banner, get_active_banner,
+    set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
+    add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_daily_news, generate_personal_coach_report
@@ -63,6 +66,7 @@ from match_card import generate_match_card
 from matchmaking_visuals import generate_matchmaking_banner, generate_queue_status_card
 from rules_card import generate_rules_card, generate_register_banner
 from scan_system import ocr_scoreboard, match_to_registered, apply_defaults_for_missing
+from market_assets import ensure_market_assets
 from visual_cards import (
     generate_coin_logs_card,
     generate_stats_card, generate_match_history_card,
@@ -76,6 +80,8 @@ import requests
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+
+_MARKET_ASSET_PATHS = ensure_market_assets()
 
 DATA_DIR = os.environ.get("DATA_DIR")
 if DATA_DIR and not os.path.exists(DATA_DIR):
@@ -159,6 +165,7 @@ STANDOFF2_NEWS_CHANNEL_ID = None
 MATCH_HISTORY_CHANNEL_ID = None
 SEASON_REWARD_CHANNEL_ID = None
 JOIN_LEAVE_LOG_CHANNEL_ID = None
+ANNOUNCEMENTS_CHANNEL_ID = None
 
 # ── Xəritə Veto ──────────────────────────────────────────────────────────────
 MAP_VETO_MAX_REROLLS_PER_CAPTAIN = 1
@@ -324,6 +331,18 @@ async def _get_join_leave_log_channel():
         return None
 
 
+async def _get_announcements_channel():
+    if not ANNOUNCEMENTS_CHANNEL_ID:
+        return None
+    channel = bot.get_channel(ANNOUNCEMENTS_CHANNEL_ID)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(ANNOUNCEMENTS_CHANNEL_ID)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        return None
+
+
 async def _post_audit_log(action, target_id, field, old_val, new_val, reason, admin_id):
     """log_admin_action ilə EYNİ anda çağırılır — DB-yə yazılan admin əməliyyatını canlı
     olaraq audit-log kanalına da göndərir. Kanal qurulmayıbsa sakitcə heç nə etmir."""
@@ -361,6 +380,43 @@ _last_season_rotation_cycle = None
 
 
 REWARDS_5V5_TOP3 = [3000, 2000, 1000]  # sezon sonu Top-3 Gold mükafatı
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKET — kosmetik banner/çərçivə (coin) + ELO kartları (AZN, matçda avtomatik işləyir)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+MARKET_BANNERS = [
+    {"id": "banner_violet", "name": "Violet Pulse", "price": 500},
+    {"id": "banner_emerald", "name": "Emerald Rise", "price": 500},
+    {"id": "banner_crimson", "name": "Crimson Blaze", "price": 500},
+]
+MARKET_FRAMES = [
+    {"id": "frame_gold", "name": "Gold Ring", "price": 750},
+]
+
+# card_type: players cədvəlindəki boost50_cards/protect_cards sütunlarına uyğun gəlir
+# (bax: database.py-dəki apply_elo_modifiers/consume_boost_card — matç nəticəsində AVTOMATİK
+# istifadə olunur, əlavə kod lazım deyil).
+ELO_CARD_PACKS = [
+    {"id": "boost_10", "name": "ELO Boost ×10", "card_type": "boost50", "qty": 10, "price_azn": 5,
+     "desc": "Qələbə zamanı ELO qazancını 1.5x edir"},
+    {"id": "boost_50", "name": "ELO Boost ×50", "card_type": "boost50", "qty": 50, "price_azn": 20,
+     "desc": "Qələbə zamanı ELO qazancını 1.5x edir"},
+    {"id": "protect_10", "name": "ELO Qoruma ×10", "card_type": "protect", "qty": 10, "price_azn": 7,
+     "desc": "Məğlubiyyətdə ELO itkisinin qarşısını alır"},
+    {"id": "protect_50", "name": "ELO Qoruma ×50", "card_type": "protect", "qty": 50, "price_azn": 30,
+     "desc": "Məğlubiyyətdə ELO itkisinin qarşısını alır"},
+]
+
+
+def _market_banner_path(item_id):
+    return _MARKET_ASSET_PATHS.get(item_id)
+
+
+def _market_frame_path(item_id):
+    return _MARKET_ASSET_PATHS.get(item_id)
+
 
 
 async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_prefix):
@@ -1198,7 +1254,7 @@ class CancelMatchView5v5(discord.ui.View):
 
 
 MATCH_CANCEL_ELO_PENALTY = 15
-
+WIN_STREAK_MILESTONES = {3, 5, 10, 15, 20, 25, 30}  # announcements-da elan olunan seriya dəyərləri
 
 
 class MatchResultView5v5(discord.ui.View):
@@ -1255,6 +1311,7 @@ class MatchResultView5v5(discord.ui.View):
 
         current_season = get_or_create_current_season("5v5")
 
+        streak_milestones = []  # [(nick, streak), ...] — matç bitəndən sonra announcements-a elan olunur
         for p, r in zip(winner_team, results["winners"]):
             did = p["discord_id"]
             add_season_stat(did, current_season["id"], kills=stats_by_id.get(did, {}).get("kills", 0),
@@ -1262,6 +1319,8 @@ class MatchResultView5v5(discord.ui.View):
                              deaths=stats_by_id.get(did, {}).get("deaths", 0),
                              wins=1, elo_gained=r["new_elo"] - r["old_elo"], elo_start=r["old_elo"], mode="5v5")
             streak, _ = update_streak_5v5(did, True)
+            if streak in WIN_STREAK_MILESTONES:
+                streak_milestones.append((p["nick"], streak))
             bonus_coins, _bonus_elo = get_streak_bonus(streak)
             earned = random.randint(5, 10) + bonus_coins
             new_bal = add_coins(did, earned)
@@ -1308,6 +1367,18 @@ class MatchResultView5v5(discord.ui.View):
         if selected_map:
             embed.add_field(name="🗺️ Xəritə", value=selected_map, inline=False)
 
+        mvp_player = None
+        if stats_by_id:
+            mvp_id = max(stats_by_id, key=lambda did: stats_by_id[did].get("kills", 0) / max(stats_by_id[did].get("deaths", 0), 1))
+            mvp_player = next((p for p in winner_team + loser_team if p["discord_id"] == mvp_id), None)
+            mvp_stats = stats_by_id.get(mvp_id, {})
+            if mvp_player:
+                embed.add_field(
+                    name="🌟 Matçın MVP-si",
+                    value=f"**{mvp_player['nick']}** — {mvp_stats.get('kills',0)}K/{mvp_stats.get('assists',0)}A/{mvp_stats.get('deaths',0)}D",
+                    inline=False
+                )
+
         await asyncio.to_thread(
             record_match_history, "5v5", winner_ids, loser_ids,
             [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
@@ -1323,6 +1394,12 @@ class MatchResultView5v5(discord.ui.View):
         history_channel = await _get_match_history_channel()
         if history_channel:
             await history_channel.send(embed=embed)
+
+        if streak_milestones:
+            ann_channel = await _get_announcements_channel()
+            if ann_channel:
+                for nick, streak in streak_milestones:
+                    await ann_channel.send(f"🔥 **{nick}** artıq **{streak}** ardıcıl qələbə seriyasındadır!")
 
         clear_active_match(self.match_number)
 
@@ -2045,6 +2122,7 @@ async def on_ready():
     global queue_status_channel_id_5v5, queue_status_message_id_5v5, matchmaking_banner_message_id_5v5
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     global TICKET_PANEL_CHANNEL_ID, TICKET_CATEGORY_ID
+    global ANNOUNCEMENTS_CHANNEL_ID
     init_db()
 
     if not get_meta("backfill_5v5_stats_rows_2026_09_14"):
@@ -2119,6 +2197,9 @@ async def on_ready():
     saved_ticket_category = get_meta("ticket_category_id")
     if saved_ticket_category:
         TICKET_CATEGORY_ID = int(saved_ticket_category)
+    saved_announcements = get_meta("announcements_channel_id")
+    if saved_announcements:
+        ANNOUNCEMENTS_CHANNEL_ID = int(saved_announcements)
     print(f"[CONFIG] LOG_CHANNEL_ID={LOG_CHANNEL_ID} "
           f"AUDIT_LOG_CHANNEL_ID={AUDIT_LOG_CHANNEL_ID} STANDOFF2_NEWS_CHANNEL_ID={STANDOFF2_NEWS_CHANNEL_ID} "
           f"MATCH_HISTORY_CHANNEL_ID={MATCH_HISTORY_CHANNEL_ID} SEASON_REWARD_CHANNEL_ID={SEASON_REWARD_CHANNEL_ID}", flush=True)
@@ -2145,6 +2226,8 @@ async def on_ready():
         refresh_chat_activity_leaderboard.start()
     if not weekly_chat_activity_loop.is_running():
         weekly_chat_activity_loop.start()
+    if not weekly_most_improved_loop.is_running():
+        weekly_most_improved_loop.start()
     if not refresh_leaderboard_5v5.is_running():
         refresh_leaderboard_5v5.start()
     if not refresh_leaderboard_5v5_alltime.is_running():
@@ -2336,6 +2419,7 @@ class RewardsMenuView(_ProfileSubMenuBase):
         super().__init__(discord_id, lang)
         self._add_buttons([
             ("btn.coins", "💰", self.coins_btn),
+            ("btn.market", "🛒", self.market_btn),
             ("btn.career", "🛤️", self.career_btn),
         ])
 
@@ -2343,6 +2427,12 @@ class RewardsMenuView(_ProfileSubMenuBase):
         if not await self._guard(interaction):
             return
         await _render_coins(interaction, self.discord_id)
+
+    async def market_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        embed = await _build_market_embed(self.discord_id)
+        await interaction.response.send_message(embed=embed, view=MarketView(self.discord_id), ephemeral=True)
 
     async def career_btn(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
@@ -2485,10 +2575,16 @@ async def profile(interaction: discord.Interaction):
         avatar_bytes = None
 
     player_lang = get_lang(discord_id)
+    banner_id = get_active_banner(discord_id)
+    frame_id = get_active_frame(discord_id)
+    banner_path = _market_banner_path(banner_id) if banner_id else None
+    frame_path = _market_frame_path(frame_id) if frame_id else None
+
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
     await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
-        coins=stats.get("coins", 0),
+        banner_path=banner_path, frame_path=frame_path,
+        coins=stats.get("coins", 0), zm_balance=get_zm_balance(discord_id),
         kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
         lang=player_lang,
     )
@@ -2709,6 +2805,41 @@ async def weekly_chat_activity_loop():
         await refresh_chat_activity_leaderboard()
 
 
+_last_weekly_improved_sunday = None
+
+
+@tasks.loop(minutes=5)
+async def weekly_most_improved_loop():
+    """Hər Bazar günü (AZ vaxtı) saat 23:00-23:59 aralığında bu həftə ən çox ELO qazanan
+    oyunçunu announcements kanalında elan edir (bax: weekly_chat_activity_loop-dakı eyni
+    dedup-bayraq izahı)."""
+    global _last_weekly_improved_sunday
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+    if now.weekday() != 6 or now.hour != 23:
+        return
+    today_key = now.strftime("%Y-%m-%d")
+    if _last_weekly_improved_sunday == today_key:
+        return
+    if get_meta("last_weekly_improved_announce") == today_key:
+        _last_weekly_improved_sunday = today_key
+        return
+    _last_weekly_improved_sunday = today_key
+    set_meta("last_weekly_improved_announce", today_key)
+
+    since_ts = int((datetime.datetime.utcnow() - datetime.timedelta(days=7)).timestamp())
+    top = get_weekly_elo_gainers(since_ts, limit=3)
+    channel = await _get_announcements_channel()
+    if top and channel:
+        lines = [f"**#{i+1}** <@{p['discord_id']}> (**{p['nick']}**) — +{p['elo_gained']} ELO" for i, p in enumerate(top)]
+        embed = discord.Embed(
+            title="📈 Həftənin Ən Çox İnkişaf Edəni!",
+            description="\n".join(lines),
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text="Son 7 gündəki ümumi ELO artımına görə")
+        await channel.send(embed=embed)
+
+
 async def _post_register(channel):
     banner_path = os.path.join(DATA_DIR or ".", "register_banner.png")
     await asyncio.to_thread(generate_register_banner, LOGO_PATH, banner_path)
@@ -2791,6 +2922,7 @@ async def _execute_server_reset(interaction: discord.Interaction):
     global LOG_CHANNEL_ID_5V5, SOCIAL_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
     global MATCH_HISTORY_CHANNEL_ID, SEASON_REWARD_CHANNEL_ID, JOIN_LEAVE_LOG_CHANNEL_ID
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id
+    global ANNOUNCEMENTS_CHANNEL_ID
 
     guild = interaction.guild
     admin_user = interaction.user
@@ -2932,6 +3064,8 @@ async def _execute_server_reset(interaction: discord.Interaction):
     set_meta("standoff2_news_channel_id", ch_news.id)
     JOIN_LEAVE_LOG_CHANNEL_ID = ch_join_leave.id
     set_meta("join_leave_log_channel_id", ch_join_leave.id)
+    ANNOUNCEMENTS_CHANNEL_ID = ch_duyuru.id
+    set_meta("announcements_channel_id", ch_duyuru.id)
     CHAT_XP_CHANNEL_ID = ch_chat_xp.id
     set_meta("chat_xp_channel_id", ch_chat_xp.id)
     chat_activity_channel_id = ch_chat_lb.id
@@ -3563,6 +3697,163 @@ async def _render_coins(interaction: discord.Interaction, discord_id: int):
     await interaction.followup.send(file=discord.File(card_path, filename="coins.png"), ephemeral=True)
 
 
+async def _build_market_embed(discord_id):
+    coins = get_coins(discord_id)
+    azn = get_zm_balance(discord_id)
+    cards = get_boost_card_counts(discord_id)
+    embed = discord.Embed(
+        title="🛒 Market",
+        description=(
+            f"🪙 Coin: **{coins}**  ·  💵 AZN: **{azn:.2f}**\n"
+            f"⚡ ELO Boost kartı: **{cards['boost50']}**  ·  🛡️ ELO Qoruma kartı: **{cards['protect']}**"
+        ),
+        color=discord.Color.from_rgb(138, 92, 230)
+    )
+    embed.add_field(
+        name="🖼️ Bannerlər (Coin)",
+        value="\n".join(f"**{b['name']}** — {b['price']} coin" for b in MARKET_BANNERS),
+        inline=False
+    )
+    embed.add_field(
+        name="🖼️ Çərçivə (Coin)",
+        value="\n".join(f"**{f['name']}** — {f['price']} coin" for f in MARKET_FRAMES),
+        inline=False
+    )
+    embed.add_field(
+        name="⚡ ELO Boost (AZN)",
+        value="\n".join(f"**{p['name']}** — {p['price_azn']} AZN" for p in ELO_CARD_PACKS if p["card_type"] == "boost50"),
+        inline=True
+    )
+    embed.add_field(
+        name="🛡️ ELO Qoruma (AZN)",
+        value="\n".join(f"**{p['name']}** — {p['price_azn']} AZN" for p in ELO_CARD_PACKS if p["card_type"] == "protect"),
+        inline=True
+    )
+    embed.set_footer(text="ELO kartları matçda AVTOMATİK işlənir (ən öncə AVTOMATİK, əl ilə heç nə etmirsiniz). AZN balansı üçün heyətlə əlaqə saxlayın.")
+    return embed
+
+
+class MarketInventoryView(discord.ui.View):
+    """Sahib olunan banner/çərçivələri aktiv etmək üçün — yalnız artıq alınmış əşyalar göstərilir."""
+    def __init__(self, discord_id):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+        owned = set(get_inventory(discord_id))
+        options = []
+        for b in MARKET_BANNERS:
+            if b["id"] in owned:
+                options.append(discord.SelectOption(label=f"🖼️ {b['name']}", value=f"banner:{b['id']}"))
+        for f in MARKET_FRAMES:
+            if f["id"] in owned:
+                options.append(discord.SelectOption(label=f"🖼️ {f['name']}", value=f"frame:{f['id']}"))
+        if options:
+            select = discord.ui.Select(placeholder="Aktiv etmək üçün seçin...", options=options[:25])
+            select.callback = self._on_equip
+            self.add_item(select)
+
+    async def _on_equip(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu yalnız sizin üçündür.", ephemeral=True)
+            return
+        kind, item_id = self.children[0].values[0].split(":", 1)
+        if kind == "banner":
+            set_active_banner(self.discord_id, item_id)
+            name = next(b["name"] for b in MARKET_BANNERS if b["id"] == item_id)
+            await interaction.response.send_message(f"✅ Banner **{name}** aktiv edildi — `/profile` ilə yoxlayın.", ephemeral=True)
+        else:
+            set_active_frame(self.discord_id, item_id)
+            name = next(f["name"] for f in MARKET_FRAMES if f["id"] == item_id)
+            await interaction.response.send_message(f"✅ Çərçivə **{name}** aktiv edildi — `/profile` ilə yoxlayın.", ephemeral=True)
+
+
+class MarketView(discord.ui.View):
+    def __init__(self, discord_id):
+        super().__init__(timeout=180)
+        self.discord_id = discord_id
+        options = []
+        for b in MARKET_BANNERS:
+            options.append(discord.SelectOption(label=f"🖼️ {b['name']}", value=f"banner:{b['id']}", description=f"{b['price']} coin"))
+        for f in MARKET_FRAMES:
+            options.append(discord.SelectOption(label=f"🖼️ {f['name']}", value=f"frame:{f['id']}", description=f"{f['price']} coin"))
+        for p in ELO_CARD_PACKS:
+            emoji = "⚡" if p["card_type"] == "boost50" else "🛡️"
+            options.append(discord.SelectOption(label=f"{emoji} {p['name']}", value=f"card:{p['id']}", description=f"{p['price_azn']} AZN"))
+        select = discord.ui.Select(placeholder="Satın alınacaq əşyanı seçin...", options=options)
+        select.callback = self._on_buy
+        self.add_item(select)
+
+    async def _guard(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu market yalnız sizin üçündür — `/market` ilə özününüzü açın.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="🎒 İnventarım (aktivləşdir)", style=discord.ButtonStyle.secondary, row=1)
+    async def inventory_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        view = MarketInventoryView(self.discord_id)
+        if not view.children:
+            await interaction.response.send_message("ℹ️ Hələ heç bir banner/çərçivə almamısınız.", ephemeral=True)
+            return
+        await interaction.response.send_message("🎒 Aktiv etmək istədiyiniz əşyanı seçin:", view=view, ephemeral=True)
+
+    async def _on_buy(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        select = self.children[0]
+        kind, item_id = select.values[0].split(":", 1)
+
+        if kind in ("banner", "frame"):
+            catalog = MARKET_BANNERS if kind == "banner" else MARKET_FRAMES
+            item = next((x for x in catalog if x["id"] == item_id), None)
+            if not item:
+                await interaction.response.send_message("❌ Əşya tapılmadı.", ephemeral=True)
+                return
+            if owns_item(self.discord_id, item_id):
+                await interaction.response.send_message(f"⚠️ Artıq **{item['name']}** sahibisiniz.", ephemeral=True)
+                return
+            if not spend_coins(self.discord_id, item["price"]):
+                await interaction.response.send_message(
+                    f"❌ Kifayət qədər coin yoxdur (lazımdır: {item['price']} coin).", ephemeral=True
+                )
+                return
+            add_to_inventory(self.discord_id, item_id)
+            new_bal = get_coins(self.discord_id)
+            add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_bal)
+            await interaction.response.send_message(
+                f"✅ **{item['name']}** alındı! Qalan balans: **{new_bal}** coin.\n"
+                "🎒 İnventarım düyməsindən aktiv edə bilərsiniz.",
+                ephemeral=True
+            )
+        else:  # kind == "card"
+            pack = next((p for p in ELO_CARD_PACKS if p["id"] == item_id), None)
+            if not pack:
+                await interaction.response.send_message("❌ Paket tapılmadı.", ephemeral=True)
+                return
+            if not spend_zm(self.discord_id, pack["price_azn"]):
+                await interaction.response.send_message(
+                    f"❌ Kifayət qədər AZN yoxdur (lazımdır: {pack['price_azn']} AZN).", ephemeral=True
+                )
+                return
+            add_boost_cards(self.discord_id, pack["card_type"], pack["qty"])
+            new_azn = get_zm_balance(self.discord_id)
+            await interaction.response.send_message(
+                f"✅ **{pack['name']}** alındı! Qalan AZN balansı: **{new_azn:.2f}**.\n"
+                f"ℹ️ {pack['desc']} — növbəti uyğun matçda AVTOMATİK tətbiq olunacaq.",
+                ephemeral=True
+            )
+
+
+@bot.tree.command(name="market", description="Market — banner/çərçivə (coin) və ELO kartları (AZN) satın alın")
+async def market_cmd(interaction: discord.Interaction):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    embed = await _build_market_embed(interaction.user.id)
+    await interaction.response.send_message(embed=embed, view=MarketView(interaction.user.id), ephemeral=True)
+
+
 async def _render_history(interaction: discord.Interaction, target_id: int):
     await interaction.response.defer(ephemeral=True)
     history = get_player_match_history(target_id, limit=10)
@@ -3622,6 +3913,7 @@ async def admin_oyuncu_error(interaction: discord.Interaction, error):
 ADMIN_FIELD_CHOICES = [
     app_commands.Choice(name="ELO", value="elo"),
     app_commands.Choice(name="Coin", value="coins"),
+    app_commands.Choice(name="AZN Balans", value="zm_balance"),
     app_commands.Choice(name="Qələbə (wins)", value="wins"),
     app_commands.Choice(name="Məğlubiyyət (losses)", value="losses"),
     app_commands.Choice(name="Kill", value="kills"),
@@ -3631,6 +3923,7 @@ ADMIN_FIELD_CHOICES = [
     app_commands.Choice(name="SO2 ID", value="so2_id"),
 ]
 ADMIN_NUMERIC_FIELDS = {"elo", "coins", "wins", "losses", "kills", "assists", "deaths"}
+ADMIN_FLOAT_FIELDS = {"zm_balance"}
 ADMIN_5V5_STAT_FIELDS = {"elo", "wins", "losses", "kills", "assists", "deaths"}
 
 
@@ -3650,6 +3943,12 @@ async def admin_duzelt_cmd(interaction: discord.Interaction, oyunçu: discord.Me
             value = int(dəyər)
         except ValueError:
             await interaction.response.send_message("❌ Bu sahə üçün rəqəm daxil edin.", ephemeral=True)
+            return
+    elif field in ADMIN_FLOAT_FIELDS:
+        try:
+            value = round(float(dəyər), 2)
+        except ValueError:
+            await interaction.response.send_message("❌ Bu sahə üçün rəqəm daxil edin (məs: 12.5).", ephemeral=True)
             return
     else:
         value = dəyər
@@ -3679,6 +3978,31 @@ async def admin_duzelt_cmd(interaction: discord.Interaction, oyunçu: discord.Me
 
 @admin_duzelt_cmd.error
 async def admin_duzelt_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
+
+
+@bot.tree.command(name="admin_azn_elave_et", description="[Admin] Oyunçunun AZN balansına məbləğ əlavə edir (ödəniş alındıqdan sonra)")
+@app_commands.describe(oyunçu="AZN əlavə ediləcək oyunçu", meqdar="Əlavə ediləcək AZN məbləği")
+@staff_check()
+async def admin_azn_elave_et_cmd(interaction: discord.Interaction, oyunçu: discord.Member, meqdar: float):
+    if not get_player(oyunçu.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    if meqdar <= 0:
+        await interaction.response.send_message("❌ Məbləğ müsbət olmalıdır.", ephemeral=True)
+        return
+    new_balance = add_zm(oyunçu.id, round(meqdar, 2))
+    log_admin_action("admin_azn_elave_et", oyunçu.id, "zm_balance", "+", str(meqdar), "-", interaction.user.id)
+    await _post_audit_log("admin_azn_elave_et", oyunçu.id, "zm_balance", "+", meqdar, "-", interaction.user.id)
+    await interaction.response.send_message(
+        f"✅ **{oyunçu.display_name}**-ə **{meqdar} AZN** əlavə edildi. Yeni balans: **{new_balance:.2f} AZN**.",
+        ephemeral=True
+    )
+
+
+@admin_azn_elave_et_cmd.error
+async def admin_azn_elave_et_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.CheckFailure):
         await interaction.response.send_message("❌ Bu komandanı yalnız adminlər istifadə edə bilər.", ephemeral=True)
 
@@ -4400,6 +4724,7 @@ PANEL_CATEGORIES = {
             ("🔗 Paylaş (profil düyməsi)", "Profilinizin ictimai (Discorddan kənar) linkini göndərir"),
             ("🧠 AI Coach (profil düyməsi)", "Son matçlarınıza əsaslanan şəxsi məsləhət göstərir"),
             ("🌐 Dil (profil düyməsi)", "Profil kartınızı və menyu düymələrini Azərbaycan/English/Русский dilində göstərir"),
+            ("/market", "Banner/çərçivə (coin) və ELO Boost/Qoruma kartları (AZN) satın alırsınız"),
         ],
     },
     "diger": {
@@ -4416,6 +4741,9 @@ PANEL_CATEGORIES = {
              f"Qeydiyyatdan {INACTIVE_REGISTRATION_DAYS} gün keçməsinə baxmayaraq heç bir matç oynamayan "
              "oyunçunun qeydiyyatı avtomatik silinir (istəsə yenidən qeydiyyatdan keçə bilər)"),
             ("🏆 Sezon mükafatı", "Hər sezon sonunda Top-3 Gold mükafatı qazanır, nəticə sezon-mükafat kanalında elan olunur"),
+            ("🌟 Matçın MVP-si", "Hər matç bitəndə ən yaxşı K/D-yə sahib oyunçu nəticə kartında elan olunur"),
+            ("🔥 Qələbə seriyası elanı", "3/5/10/15/20/25/30 ardıcıl qələbədə announcements kanalında avtomatik elan olunur"),
+            ("📈 Həftəlik ən çox inkişaf", "Hər Bazar 23:00-da son 7 gündə ən çox ELO qazanan Top-3 announcements-da elan olunur"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
             ("🎫 Ticket sistemi", "Ticket kanalında mövzu seçərək (klan qoşulma / Gold / Boost / Emulator) özəl ticket kanalı açırsınız"),
@@ -4428,7 +4756,8 @@ PANEL_CATEGORIES = {
             ("/admin_panel", "🛠️ Bütün admin əməliyyatlarına vizual, düymə-əsaslı panel (tövsiyə olunur)"),
             ("/scan", "Skor ekranı şəklindən K/A/D oxuyur, sonra oyunçular 60 saniyə ərzində öz sətirini özü seçir"),
             ("/admin_oyuncu", "Oyunçunun tam profil məlumatını göstərir"),
-            ("/admin_duzelt", "Oyunçunun ELO/coin/stat və s. sahəsini dəyişir"),
+            ("/admin_duzelt", "Oyunçunun ELO/coin/AZN/stat və s. sahəsini dəyişir"),
+            ("/admin_azn_elave_et", "Ödəniş alındıqdan sonra oyunçunun AZN balansına məbləğ əlavə edir"),
             ("/admin_matclar", "Son matçların siyahısı"),
             ("/admin_matc_sil", "Bir matçı silib ELO-nu geri qaytarır"),
             ("/admin_matc_netice", f"Aktiv matç üçün nəticə düymələrini yenidən göstərir (2 matç paralel gedirsə `matc_no` göstərin)"),

@@ -1227,6 +1227,133 @@ def spend_coins(discord_id, amount):
     return True
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MARKET — kosmetik inventar (banner/çərçivə, coin) + ELO kartları (AZN)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_inventory(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT item_id FROM inventory WHERE discord_id = ?", (discord_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def owns_item(discord_id, item_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM inventory WHERE discord_id = ? AND item_id = ?", (discord_id, item_id))
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def add_to_inventory(discord_id, item_id):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO inventory (discord_id, item_id, acquired_at) VALUES (?, ?, ?)",
+        (discord_id, item_id, int(time.time()))
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_active_banner(discord_id, item_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET active_banner = ? WHERE discord_id = ?", (item_id, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_active_banner(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT active_banner FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def set_active_frame(discord_id, item_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET active_frame = ? WHERE discord_id = ?", (item_id, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_active_frame(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT active_frame FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def get_zm_balance(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else 0
+
+
+def add_zm(discord_id, amount):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET zm_balance = zm_balance + ? WHERE discord_id = ?", (amount, discord_id))
+    conn.commit()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def spend_zm(discord_id, amount):
+    """Balans kifayətdirsə AZN çıxır və True qaytarır, yoxdursa False qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT zm_balance FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    if not row or row[0] < amount:
+        conn.close()
+        return False
+    cursor.execute("UPDATE players SET zm_balance = zm_balance - ? WHERE discord_id = ?", (amount, discord_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def add_boost_cards(discord_id, card_type, qty):
+    """card_type: 'boost50', 'boost100', 'protect' (bax: _BOOST_CARD_COLS)."""
+    col = _BOOST_CARD_COLS[card_type]
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE players SET {col} = {col} + ? WHERE discord_id = ?", (qty, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_boost_card_counts(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT boost50_cards, boost100_cards, protect_cards FROM players WHERE discord_id = ?",
+        (discord_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return {"boost50": 0, "boost100": 0, "protect": 0}
+    return {"boost50": row[0], "boost100": row[1], "protect": row[2]}
+
+
 
 
 
@@ -1270,6 +1397,39 @@ def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, w
     )
     conn.commit()
     conn.close()
+
+
+def get_weekly_elo_gainers(since_ts, limit=3, match_type="5v5"):
+    """Verilən vaxtdan (unix timestamp) bəri `match_type` matçlarında hər oyunçunun cəmi ELO
+    artımını hesablayır, ən çox artıranları sıralı qaytarır: [{discord_id, nick, elo_gained}, ...]
+    (0 və ya mənfi nəticəli oyunçular siyahıya düşmür)."""
+    import json as _json
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT winner_ids, winner_elo_before, winner_elo_after, loser_ids, loser_elo_before, loser_elo_after "
+        "FROM match_history WHERE match_type = ? AND played_at >= ?",
+        (match_type, since_ts)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+
+    gains = {}
+    for w_ids, w_before, w_after, l_ids, l_before, l_after in rows:
+        for did, before, after in zip(_json.loads(w_ids), _json.loads(w_before), _json.loads(w_after)):
+            gains[did] = gains.get(did, 0) + (after - before)
+        for did, before, after in zip(_json.loads(l_ids), _json.loads(l_before), _json.loads(l_after)):
+            gains[did] = gains.get(did, 0) + (after - before)
+
+    top = sorted(gains.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    result = []
+    for discord_id, gained in top:
+        if gained <= 0:
+            continue
+        p = get_player(discord_id)
+        nick = p[1] if p else str(discord_id)
+        result.append({"discord_id": discord_id, "nick": nick, "elo_gained": gained})
+    return result
 
 
 def get_map_stats(discord_id):
