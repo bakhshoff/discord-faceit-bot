@@ -3492,10 +3492,10 @@ class TicketSelectView(discord.ui.View):
         )
         select.callback = self._on_select
         self.add_item(select)
+        self.select_menu = select
 
     async def _on_select(self, interaction: discord.Interaction):
-        select = self.children[0]
-        await _open_ticket(interaction, select.values[0])
+        await _open_ticket(interaction, self.select_menu.values[0])
 
 
 class TicketCloseView(discord.ui.View):
@@ -3746,16 +3746,18 @@ class MarketInventoryView(discord.ui.View):
         for f in MARKET_FRAMES:
             if f["id"] in owned:
                 options.append(discord.SelectOption(label=f"🖼️ {f['name']}", value=f"frame:{f['id']}"))
+        self.select_menu = None
         if options:
             select = discord.ui.Select(placeholder="Aktiv etmək üçün seçin...", options=options[:25])
             select.callback = self._on_equip
             self.add_item(select)
+            self.select_menu = select
 
     async def _on_equip(self, interaction: discord.Interaction):
         if interaction.user.id != self.discord_id:
             await interaction.response.send_message("❌ Bu yalnız sizin üçündür.", ephemeral=True)
             return
-        kind, item_id = self.children[0].values[0].split(":", 1)
+        kind, item_id = self.select_menu.values[0].split(":", 1)
         if kind == "banner":
             set_active_banner(self.discord_id, item_id)
             name = next(b["name"] for b in MARKET_BANNERS if b["id"] == item_id)
@@ -3781,6 +3783,7 @@ class MarketView(discord.ui.View):
         select = discord.ui.Select(placeholder="Satın alınacaq əşyanı seçin...", options=options)
         select.callback = self._on_buy
         self.add_item(select)
+        self.select_menu = select
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.discord_id:
@@ -3801,8 +3804,7 @@ class MarketView(discord.ui.View):
     async def _on_buy(self, interaction: discord.Interaction):
         if not await self._guard(interaction):
             return
-        select = self.children[0]
-        kind, item_id = select.values[0].split(":", 1)
+        kind, item_id = self.select_menu.values[0].split(":", 1)
 
         if kind in ("banner", "frame"):
             catalog = MARKET_BANNERS if kind == "banner" else MARKET_FRAMES
