@@ -86,6 +86,10 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN birthday_day INTEGER DEFAULT NULL")
     if "last_birthday_announced_year" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN last_birthday_announced_year INTEGER DEFAULT NULL")
+    if "task_streak" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN task_streak INTEGER DEFAULT 0")
+    if "last_perfect_task_day" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN last_perfect_task_day TEXT DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scheduled_announcements (
@@ -1859,6 +1863,37 @@ def claim_daily_task(discord_id, date_key, task_id):
     ok = cursor.rowcount > 0
     conn.close()
     return ok
+
+
+def record_perfect_task_day(discord_id, date_key):
+    """Oyunçu eyni gündə HƏR 3 gündəlik tapşırığı claim edəndə çağırılır (bax: bot.py-dəki
+    DailyTasksClaimView) — ardıcıl "mükəmməl gün" seriyasını yeniləyir, yeni seriya ədədini
+    qaytarır. Bir gün buraxılırsa seriya 1-dən yenidən başlayır."""
+    import datetime as _dt
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT task_streak, last_perfect_task_day FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    streak, last_day = (row[0] or 0, row[1]) if row else (0, None)
+
+    if last_day == date_key:
+        conn.close()
+        return streak
+
+    today = _dt.datetime.strptime(date_key, "%Y-%m-%d").date()
+    if last_day:
+        last = _dt.datetime.strptime(last_day, "%Y-%m-%d").date()
+        new_streak = streak + 1 if (today - last).days == 1 else 1
+    else:
+        new_streak = 1
+
+    cursor.execute(
+        "UPDATE players SET task_streak=?, last_perfect_task_day=? WHERE discord_id=?",
+        (new_streak, date_key, discord_id)
+    )
+    conn.commit()
+    conn.close()
+    return new_streak
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

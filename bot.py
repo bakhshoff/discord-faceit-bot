@@ -59,7 +59,7 @@ from database import (
     set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
     add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
     claim_daily_reward, is_in_queue_5v5,
-    get_daily_task_progress, advance_daily_task, claim_daily_task,
+    get_daily_task_progress, advance_daily_task, claim_daily_task, record_perfect_task_day,
     set_target_elo, get_target_elo, set_birthday, get_birthday,
     get_todays_birthday_players, mark_birthday_announced,
     set_profile_theme, get_profile_theme,
@@ -470,6 +470,23 @@ def _item_price_label(item):
     if "price_azn" in item:
         return f"{item['price_azn']} AZN"
     return f"{item['price']} coin"
+
+
+def _is_banner_available(item):
+    """Mövsümi (yalnız müəyyən tarix aralığında satılan) bannerlər üçün — item-ə
+    `"season_window": (başlanğıc_ay, başlanğıc_gün, bitmə_ay, bitmə_gün)` əlavə etməklə
+    bir banner yalnız o pəncərədə Market-də görünür/satıla bilir (bax: MARKET_BANNERS).
+    Pəncərəsi olmayan bannerlər həmişə mövcuddur."""
+    window = item.get("season_window")
+    if not window:
+        return True
+    start_month, start_day, end_month, end_day = window
+    today = datetime.date.today()
+    in_start = (today.month, today.day) >= (start_month, start_day)
+    in_end = (today.month, today.day) <= (end_month, end_day)
+    if (start_month, start_day) <= (end_month, end_day):
+        return in_start and in_end
+    return in_start or in_end  # il sonu/başı arasında keçən pəncərə (məs. Dek-Yan)
 
 
 def _market_banner_path(item_id):
@@ -2755,6 +2772,7 @@ class StatsMenuView(_ProfileSubMenuBase):
             ("btn.compare", "🆚", self.compare_btn),
             ("btn.match_search", "🔍", self.match_search_btn),
             ("btn.badges", "🏅", self.badges_btn),
+            ("btn.who_online", "👥", self.who_online_btn),
         ])
 
     async def stats_5v5_btn(self, interaction: discord.Interaction):
@@ -2842,6 +2860,30 @@ class StatsMenuView(_ProfileSubMenuBase):
             embed.add_field(name="Hələ qazanılmayan", value="\n".join(locked_lines), inline=False)
         if not earned_lines and not locked_lines:
             embed.description = "Hələ nişan kataloqu boşdur."
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def who_online_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        queue = get_queue_list_5v5()
+        matches = [m for m in get_all_active_matches() if m.get("mode") == "5v5"]
+        embed = discord.Embed(title="👥 Kim onlayndır?", color=discord.Color.from_rgb(80, 160, 255))
+        if queue:
+            lines = [f"{i+1}. {p['nick']} ({p['elo']} ELO)" for i, p in enumerate(queue)]
+            embed.add_field(name=f"🎯 Sırada ({len(queue)}/10)", value="\n".join(lines), inline=False)
+        else:
+            embed.add_field(name="🎯 Sırada", value="Hazırda sırada heç kim yoxdur.", inline=False)
+        if matches:
+            for m in matches:
+                team_a_names = ", ".join(p["nick"] for p in m["team_a"]) or "-"
+                team_b_names = ", ".join(p["nick"] for p in m["team_b"]) or "-"
+                embed.add_field(
+                    name=f"⚔️ Matç No{m['match_number']} — {m.get('selected_map') or '?'}",
+                    value=f"🔵 {team_a_names}\n🔴 {team_b_names}",
+                    inline=False
+                )
+        else:
+            embed.add_field(name="⚔️ Aktiv matçlar", value="Hazırda aktiv matç yoxdur.", inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
@@ -3034,10 +3076,24 @@ class DailyTasksClaimView(discord.ui.View):
                 return
             new_bal = add_coins(self.discord_id, task["reward"])
             add_coin_log(self.discord_id, task["reward"], f"Gündəlik tapşırıq: {task['label']}", "earn", new_bal)
+            msg = f"✅ **{task['label']}** tapşırığı tamamlandı! +{task['reward']} coin qazandınız."
+
+            fresh_progress = get_daily_task_progress(self.discord_id, self.date_key)
+            all_claimed = all(fresh_progress[f"claimed_{t['id']}"] for t in DAILY_TASKS)
+            if all_claimed:
+                streak = record_perfect_task_day(self.discord_id, self.date_key)
+                bonus = min(10 * streak, 100)
+                bonus_bal = add_coins(self.discord_id, bonus)
+                add_coin_log(self.discord_id, bonus, f"Mükəmməl gün seriyası ({streak} gün)", "earn", bonus_bal)
+                msg += (
+                    f"\n\n🌟 **Bütün tapşırıqları tamamladınız!** Mükəmməl gün seriyanız: "
+                    f"**{streak} gün** — bonus: **+{bonus} coin**!"
+                )
+
             for child in self.children:
                 child.disabled = True
             await interaction.response.edit_message(
-                content=f"✅ **{task['label']}** tapşırığı tamamlandı! +{task['reward']} coin qazandınız.",
+                content=msg,
                 embed=None, view=self
             )
         return _callback
@@ -3276,6 +3332,7 @@ async def profile(interaction: discord.Interaction):
     frame_path = _market_frame_path(frame_id) if frame_id else None
     theme_id = get_profile_theme(discord_id)
     theme_colors = {"accent": PROFILE_THEMES[theme_id]} if theme_id in PROFILE_THEMES else None
+    badge_ids = [a["id"] for a in get_player_achievements(discord_id)]
 
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
     final_path = await asyncio.to_thread(
@@ -3283,7 +3340,7 @@ async def profile(interaction: discord.Interaction):
         banner_path=banner_path, frame_path=frame_path,
         coins=stats.get("coins", 0), zm_balance=get_zm_balance(discord_id),
         kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
-        lang=player_lang, theme_colors=theme_colors,
+        lang=player_lang, theme_colors=theme_colors, badges=badge_ids,
     )
 
     filename = "profile.gif" if final_path.lower().endswith(".gif") else "profile.png"
@@ -4416,13 +4473,15 @@ async def _build_market_embed(discord_id):
         ),
         color=discord.Color.from_rgb(138, 92, 230)
     )
+    available_banners = [b for b in MARKET_BANNERS if _is_banner_available(b)]
     embed.add_field(
         name="🖼️ Bannerlər",
         value="\n".join(
             f"{'🎬 ' if b.get('gif') else ''}**{b['name']}** — {_item_price_label(b)}"
             + (" (animasiyalı)" if b.get("gif") else "")
-            for b in MARKET_BANNERS
-        ),
+            + (" 🌟 (mövsümi)" if b.get("season_window") else "")
+            for b in available_banners
+        ) or "Hazırda satışda banner yoxdur.",
         inline=False
     )
     embed.add_field(
@@ -4485,6 +4544,8 @@ class MarketView(discord.ui.View):
         self.discord_id = discord_id
         options = []
         for b in MARKET_BANNERS:
+            if not _is_banner_available(b):
+                continue
             emoji = "🎬" if b.get("gif") else "🖼️"
             desc = _item_price_label(b) + (" — animasiyalı" if b.get("gif") else "")
             options.append(discord.SelectOption(label=f"{emoji} {b['name']}", value=f"banner:{b['id']}", description=desc))
@@ -4524,6 +4585,9 @@ class MarketView(discord.ui.View):
             item = next((x for x in catalog if x["id"] == item_id), None)
             if not item:
                 await interaction.response.send_message("❌ Əşya tapılmadı.", ephemeral=True)
+                return
+            if kind == "banner" and not _is_banner_available(item):
+                await interaction.response.send_message("❌ Bu mövsümi banner hazırda satışda deyil.", ephemeral=True)
                 return
             if owns_item(self.discord_id, item_id):
                 await interaction.response.send_message(f"⚠️ Artıq **{item['name']}** sahibisiniz.", ephemeral=True)
@@ -6548,6 +6612,10 @@ PANEL_CATEGORIES = {
             ("👤 Profil → Stats → Müqayisə", "İki oyunçunun ELO/W-L/K-D statistikasını yan-yana vizual kartda müqayisə edir"),
             ("👤 Profil → Mükafatlar → Gündəlik Bonus", "Gündə 1 dəfə: ardıcıl gün seriyasına görə artan bonus + gündəlik çarx (coin/ELO kartı/AZN)"),
             ("👤 Profil → Mükafatlar → Gündəlik Tapşırıqlar", "3 sabit gündəlik tapşırıq (oyna/qazan/kill et) — hər biri üçün ayrıca coin mükafatı"),
+            ("🌟 Mükəmməl Gün Seriyası", "Eyni gündə bütün 3 tapşırığı tamamlayanlara ardıcıl gün seriyasına görə bonus coin"),
+            ("🏅 Nişanlar profil kartında", "Qazanılan nişanlar artıq /profile kartının özündə kiçik rəngli dairə kimi görünür"),
+            ("👤 Profil → Stats → Kim onlayndır?", "Hazırda matchmaking sırasında və aktiv matçlarda olanları göstərir"),
+            ("🌟 Mövsümi Market bannerləri", "Bəzi bannerlər yalnız müəyyən tarix aralığında satışda ola bilər (admin təyin edir)"),
             ("🗺️ Xəritə İstiliyi", "Xəritə statistikası indi qazanma faizinə görə qırmızı→sarı→yaşıl rənglə (heatmap) göstərilir"),
             ("📈 ELO/K-D Trend Qrafiki", "Stats → Qrafik indi ELO ilə yanaşı son matçların K/D trendini də (mavi xətt) göstərir"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),

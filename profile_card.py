@@ -31,6 +31,27 @@ BLUE      = (80, 150, 230)
 CYAN      = (60, 200, 200)
 PURPLE    = (160, 90, 255)
 
+# achievement_id -> (qısa etiket, dairə rəngi) — emoji fontda render olunmadığı üçün
+# (DejaVuSans-da rəngli emoji glyph-ı yoxdur) hər nişan kiçik rəngli dairə + qısa hərf/rəqəm
+# kimi göstərilir (bax: _draw_badges, generate_profile_card-ın `badges` parametri).
+BADGE_DISPLAY = {
+    "first_match": ("M1", (95, 208, 122)),
+    "win_10":      ("W10", (210, 170, 60)),
+    "win_50":      ("W50", (230, 190, 40)),
+    "kill_50":     ("K50", (190, 100, 90)),
+    "kill_100":    ("K1C", (205, 75, 75)),
+    "kill_500":    ("K5C", (220, 50, 50)),
+    "mvp_3":       ("M3", (210, 170, 230)),
+    "mvp_10":      ("M10", (230, 190, 250)),
+    "streak_3":    ("S3", (230, 140, 40)),
+    "streak_5":    ("S5", (230, 110, 30)),
+    "streak_10":   ("S10", (230, 80, 20)),
+    "kd_2":        ("KD", (120, 150, 230)),
+    "task_10":     ("T10", (150, 200, 150)),
+    "elo_1200":    ("E12", (90, 200, 230)),
+    "elo_1500":    ("E15", (160, 120, 255)),
+}
+
 FONT_CANDIDATES_REGULAR = [
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts", "DejaVuSans.ttf"),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -113,7 +134,8 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           season_wins=0, season_losses=0,
                           season_kills=0, season_assists=0, season_deaths=0,
                           pass_status=None, pass_level=0,
-                          theme_colors=None, show_season=False, title=None, lang="az"):
+                          theme_colors=None, show_season=False, title=None, lang="az",
+                          badges=None):
 
     # ── Banner kadrları ─────────────────────────────────────────────────────
     # Banner animasiyalı GIF-dirsə (bax: market_assets.py-dəki ANIMATED_BANNER_DEFS),
@@ -285,6 +307,20 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         # "Stats" düyməsinin öz kartında (generate_stats_card, visual_cards.py) onsuz da
         # tam göstərilir. Burada yalnız yuxarıdakı yığcam profil zolağı qalır, qalan
         # bütün kart (aşağı ~2/3) banner üçün tam açıqdır.
+
+        # ── Nişanlar (bax: database.get_player_achievements, BADGE_DISPLAY) ────────
+        # Emoji DejaVuSans-da render olunmur (rəngli glyph yoxdur), ona görə hər nişan
+        # kiçik rəngli dairə + qısa hərf/rəqəm etiketi kimi göstərilir.
+        if badges:
+            bx, by, bsize, gap = 28, HEIGHT - 68, 28, 8
+            f_badge_lbl = _load_font(9, bold=True)
+            for bid in badges:
+                label, bcolor = BADGE_DISPLAY.get(bid, (bid[:3].upper(), GRAY))
+                if bx > WIDTH - 60:
+                    break
+                draw.ellipse([(bx, by), (bx + bsize, by + bsize)], fill=bcolor, outline=BG_BOTTOM, width=2)
+                draw.text((bx + bsize / 2, by + bsize / 2), label, font=f_badge_lbl, fill=(20, 18, 22), anchor="mm")
+                bx += bsize + gap
 
         # ── Footer ────────────────────────────────────────────────────────────────
         draw.text((28, HEIGHT-26), "Nextlevelaz", font=_load_font(11), fill=GRAY)
