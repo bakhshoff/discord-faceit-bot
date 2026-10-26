@@ -2491,6 +2491,7 @@ class RewardsMenuView(_ProfileSubMenuBase):
             ("btn.coins", "💰", self.coins_btn),
             ("btn.market", "🛒", self.market_btn),
             ("btn.career", "🛤️", self.career_btn),
+            ("btn.team", "🤝", self.team_btn),
         ])
 
     async def coins_btn(self, interaction: discord.Interaction):
@@ -2532,6 +2533,10 @@ class RewardsMenuView(_ProfileSubMenuBase):
             embed.set_footer(text="Aşağıdan keçmiş bir ELO sezonunu seçib final sıralamasına baxa bilərsiniz.")
         await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
+    async def team_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_team_panel(interaction, self.discord_id)
 
 
 class SeasonHistoryView(discord.ui.View):
@@ -4003,6 +4008,165 @@ class TeamInviteView(discord.ui.View):
         await interaction.response.edit_message(content="❌ Dəvət rədd edildi.", embed=None, view=self)
 
 
+class TeamCreateView(discord.ui.View):
+    """/profile → Mükafatlar → Komanda panelindən, müddət seçib komanda qurmaq üçün."""
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        select = discord.ui.Select(
+            placeholder="Müddət seçin...",
+            options=[
+                discord.SelectOption(label=f"10 gün — {TEAM_PRICING[10]} AZN", value="10"),
+                discord.SelectOption(label=f"30 gün — {TEAM_PRICING[30]} AZN", value="30"),
+            ]
+        )
+        select.callback = self._on_select
+        self.select_menu = select
+        self.add_item(select)
+
+    async def _on_select(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu panel sizin üçün deyil.", ephemeral=True)
+            return
+        if is_in_duo_team(self.discord_id):
+            await interaction.response.send_message("❌ Siz artıq aktiv bir komandadasınız.", ephemeral=True)
+            return
+        duration_days = int(self.select_menu.values[0])
+        price = TEAM_PRICING[duration_days]
+        if not spend_zm(self.discord_id, price):
+            await interaction.response.send_message(f"❌ Kifayət qədər AZN yoxdur (lazımdır: {price} AZN).", ephemeral=True)
+            return
+        create_duo_team(self.discord_id, duration_days)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(
+            content=f"✅ **{duration_days} günlük** komandanız quruldu! (-{price} AZN)\n"
+                    "İndi profildəki Komanda panelindən üzv dəvət edə bilərsiniz.",
+            embed=None, view=self
+        )
+
+
+class TeamInviteUserSelectView(discord.ui.View):
+    """Komanda panelindəki 'Üzv dəvət et' düyməsindən açılan, dəvət ediləcək oyunçunu seçmək üçün."""
+    def __init__(self, team_id, owner_id):
+        super().__init__(timeout=120)
+        self.team_id = team_id
+        self.owner_id = owner_id
+        select = discord.ui.UserSelect(placeholder="Dəvət ediləcək oyunçunu seçin...")
+        select.callback = self._on_pick
+        self.user_select = select
+        self.add_item(select)
+
+    async def _on_pick(self, interaction: discord.Interaction):
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("❌ Bu panel sizin üçün deyil.", ephemeral=True)
+            return
+        target = self.user_select.values[0]
+        team = get_duo_team(self.team_id)
+        if not team or team["owner_id"] != self.owner_id or team["member_id"] is not None:
+            await interaction.response.send_message("❌ Dəvət göndərmək mümkün deyil (komanda dolu/etibarsızdır).", ephemeral=True)
+            return
+        if target.id == self.owner_id:
+            await interaction.response.send_message("❌ Özünüzü dəvət edə bilməzsiniz.", ephemeral=True)
+            return
+        if target.bot:
+            await interaction.response.send_message("❌ Botu dəvət edə bilməzsiniz.", ephemeral=True)
+            return
+        if not get_player(target.id):
+            await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+            return
+        if is_in_duo_team(target.id):
+            await interaction.response.send_message("❌ Bu oyunçu artıq başqa bir komandadadır.", ephemeral=True)
+            return
+
+        invite_view = TeamInviteView(self.team_id, self.owner_id, target.id)
+        embed = discord.Embed(
+            title="🤝 Komanda Dəvəti",
+            description=(
+                f"<@{self.owner_id}> sizi öz komandasına dəvət edir!\n"
+                "Eyni anda matchmaking sırasında olduğunuzda avtomatik eyni komandaya düşəcəksiniz."
+            ),
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content=f"✅ Dəvət {target.mention}-ə göndərildi.", view=self)
+        await interaction.channel.send(content=target.mention, embed=embed, view=invite_view)
+
+
+class TeamPanelView(discord.ui.View):
+    """/profile → Mükafatlar → Komanda panelinin əsas görünüşü (mövcud komanda varsa)."""
+    def __init__(self, discord_id, team):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.team_id = team["id"]
+        self.is_owner = team["owner_id"] == discord_id
+        if self.is_owner and team["member_id"] is None:
+            invite_btn = discord.ui.Button(label="Üzv dəvət et", style=discord.ButtonStyle.primary, emoji="✉️")
+            invite_btn.callback = self._on_invite
+            self.add_item(invite_btn)
+        if self.is_owner:
+            disband_btn = discord.ui.Button(label="Komandanı ləğv et", style=discord.ButtonStyle.danger, emoji="🚫")
+            disband_btn.callback = self._on_disband
+            self.add_item(disband_btn)
+
+    async def _on_invite(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu panel sizin üçün deyil.", ephemeral=True)
+            return
+        team = get_duo_team(self.team_id)
+        if not team or team["owner_id"] != self.discord_id or team["member_id"] is not None:
+            await interaction.response.send_message("❌ Dəvət göndərmək mümkün deyil (komanda dolu/etibarsızdır).", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            "Dəvət etmək istədiyiniz oyunçunu seçin:",
+            view=TeamInviteUserSelectView(self.team_id, self.discord_id), ephemeral=True
+        )
+
+    async def _on_disband(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu panel sizin üçün deyil.", ephemeral=True)
+            return
+        team = get_duo_team(self.team_id)
+        if not team or team["owner_id"] != interaction.user.id or team["status"] != "active":
+            await interaction.response.send_message("❌ Bu əməliyyat üçün icazəniz yoxdur.", ephemeral=True)
+            return
+        disband_duo_team(self.team_id)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="🚫 Komanda ləğv edildi.", embed=None, view=self)
+
+
+async def _render_team_panel(interaction: discord.Interaction, discord_id: int):
+    team = get_duo_team_for_player(discord_id)
+    if not team:
+        embed = discord.Embed(
+            title="🤝 Komanda",
+            description=(
+                "Aktiv bir komandanız yoxdur.\n\n"
+                f"**10 gün** — {TEAM_PRICING[10]} AZN\n"
+                f"**30 gün** — {TEAM_PRICING[30]} AZN\n\n"
+                "Komandaya TƏK bir üzv əlavə edə bilərsiniz. Eyni anda matchmaking sırasında "
+                "olduğunuzda avtomatik eyni tərəfə düşəcəksiniz.\n"
+                "ℹ️ Ödəniş geri qaytarılmır, müddət seçim anında başlayır."
+            ),
+            color=discord.Color.from_rgb(138, 92, 230)
+        )
+        await interaction.response.send_message(embed=embed, view=TeamCreateView(discord_id), ephemeral=True)
+        return
+
+    owner = interaction.guild.get_member(team["owner_id"]) if interaction.guild else None
+    member = interaction.guild.get_member(team["member_id"]) if interaction.guild and team["member_id"] else None
+    now = int(datetime.datetime.utcnow().timestamp())
+    days_left = max(0, (team["expires_at"] - now) // 86400)
+
+    embed = discord.Embed(title="🤝 Komandanız", color=discord.Color.from_rgb(138, 92, 230))
+    embed.add_field(name="Sahib", value=(owner.mention if owner else f"<@{team['owner_id']}>"), inline=True)
+    embed.add_field(name="Üzv", value=(member.mention if member else "— hələ yoxdur —"), inline=True)
+    embed.add_field(name="Qalan müddət", value=f"{days_left} gün", inline=True)
+    await interaction.response.send_message(embed=embed, view=TeamPanelView(discord_id, team), ephemeral=True)
+
+
 @bot.tree.command(name="team_qur", description=f"Müddətli komanda (duo) qurun — {TEAM_PRICING[10]} AZN/10 gün və ya {TEAM_PRICING[30]} AZN/30 gün")
 @app_commands.describe(muddet="Komandanın müddəti")
 @app_commands.choices(muddet=[
@@ -5048,6 +5212,7 @@ PANEL_CATEGORIES = {
             ("/team_qur", f"Müddətli komanda (duo) qurur — {TEAM_PRICING[10]} AZN/10 gün və ya {TEAM_PRICING[30]} AZN/30 gün"),
             ("/team_devet_et", "Komandanıza TƏK bir üzv dəvət edir (qəbul/rədd düymələri ilə)"),
             ("/team", "Komandanızın statusunu (üzv, qalan müddət) göstərir, sahib ləğv edə bilər"),
+            ("👤 Profil → Mükafatlar → Komanda", "Komanda qurma/dəvət/ləğv indi tam buton-əsaslı, profildən də əlçatandır"),
             ("🤝 Komanda matchmaking qarantiyası", "Komanda üzvləri eyni anda sırada olanda avtomatik eyni tərəfə düşür"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
