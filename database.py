@@ -2049,10 +2049,13 @@ def get_active_boost(discord_id, boost_type, cursor=None):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def add_combat_stats(discord_id, kills=0, assists=0, deaths=0):
+    """5v5 matçdan sonra çağırılır (bax: MatchResultView5v5._finish) — ona görə `players_5v5`-ə
+    yazır. (Əvvəllər səhvən `players`-ə yazırdı — /profile, website və `players_5v5`-dən oxuyan
+    hər yer bunu HEÇ görmürdü; bax: migrate_combat_stats_to_5v5 bu köhnə datanı bərpa edir.)"""
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE players SET kills=kills+?, assists=assists+?, deaths=deaths+? WHERE discord_id=?",
+        "UPDATE players_5v5 SET kills=kills+?, assists=assists+?, deaths=deaths+? WHERE discord_id=?",
         (kills, assists, deaths, discord_id)
     )
     conn.commit()
@@ -2062,10 +2065,34 @@ def add_combat_stats(discord_id, kills=0, assists=0, deaths=0):
 def get_combat_stats(discord_id):
     conn = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT kills, assists, deaths FROM players WHERE discord_id=?", (discord_id,))
+    cursor.execute("SELECT kills, assists, deaths FROM players_5v5 WHERE discord_id=?", (discord_id,))
     row = cursor.fetchone()
     conn.close()
     return {"kills": row[0], "assists": row[1], "deaths": row[2]} if row else {"kills": 0, "assists": 0, "deaths": 0}
+
+
+def migrate_combat_stats_to_5v5():
+    """Birdəfəlik miqrasiya: `add_combat_stats`-ın əvvəlki (səhv) hədəfi olan köhnə
+    `players.kills/assists/deaths` sayğaclarını `players_5v5`-ə köçürür ki, indiyə qədər
+    oynanılmış bütün matçların K/A/D-si /profile və saytda görünsün. Qeyd: `players.kills/
+    assists/deaths` tarixən həm 2v2, həm 5v5 matçları eyni sayğacda toplayırdı (2v2 silinənə
+    qədər) — bu ayrıla bilmədiyi üçün köçürülən rəqəm bəzi köhnə hesablarda əsl 5v5 K/A/D-dən
+    bir qədər yüksək ola bilər, amma mövcud ən yaxşı məlumatdır (0-dan qat-qat dəqiqdir).
+    Təsirlənən sətir sayını qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE players_5v5
+        SET kills = (SELECT kills FROM players WHERE players.discord_id = players_5v5.discord_id),
+            assists = (SELECT assists FROM players WHERE players.discord_id = players_5v5.discord_id),
+            deaths = (SELECT deaths FROM players WHERE players.discord_id = players_5v5.discord_id)
+        WHERE EXISTS (SELECT 1 FROM players WHERE players.discord_id = players_5v5.discord_id)
+          AND kills = 0 AND assists = 0 AND deaths = 0
+    """)
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

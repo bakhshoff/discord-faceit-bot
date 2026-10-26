@@ -54,7 +54,7 @@ from database import (
     create_ticket, get_open_ticket, get_ticket_by_channel, close_ticket,
     is_in_duo_team, create_duo_team, get_duo_team_for_player, get_duo_team,
     join_duo_team, disband_duo_team, get_active_duo_teams, mark_team_reminder_sent,
-    expire_due_teams,
+    expire_due_teams, migrate_combat_stats_to_5v5,
     get_inventory, owns_item, add_to_inventory, set_active_banner, get_active_banner,
     set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
     add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
@@ -2196,6 +2196,14 @@ async def on_ready():
         except Exception as e:
             print(f"[BACKFILL] Xəta: {e}")
         set_meta("backfill_5v5_stats_rows_2026_09_14", "1")
+
+    if not get_meta("backfill_5v5_combat_stats_2026_10_26"):
+        try:
+            affected = migrate_combat_stats_to_5v5()
+            print(f"[BACKFILL] {affected} oyunçu üçün K/A/D players_5v5-ə köçürüldü (K/D profil/sayt bug-ı düzəldildi).")
+        except Exception as e:
+            print(f"[BACKFILL] Xəta: {e}")
+        set_meta("backfill_5v5_combat_stats_2026_10_26", "1")
 
     saved_log = get_meta("log_channel_id")
     if saved_log:
