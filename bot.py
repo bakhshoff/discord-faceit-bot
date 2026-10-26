@@ -2428,6 +2428,36 @@ async def on_ready():
             print(f"[BACKFILL] Xəta: {e}")
         set_meta("backfill_5v5_combat_stats_2026_10_26", "1")
 
+    if not get_meta("backfill_achievements_2026_10_26"):
+        try:
+            awarded = 0
+            for row in get_all_players_5v5(limit=10000):
+                p5 = get_player_5v5(row["discord_id"])
+                if not p5:
+                    continue
+                if p5["wins"] + p5["losses"] >= 1 and award_achievement(row["discord_id"], "first_match"):
+                    awarded += 1
+                best_streak = p5.get("max_streak", 0)
+                streak_ach = "streak_10" if best_streak >= 10 else "streak_5" if best_streak >= 5 else "streak_3" if best_streak >= 3 else None
+                if streak_ach and award_achievement(row["discord_id"], streak_ach):
+                    awarded += 1
+                win_ach = "win_50" if p5["wins"] >= 50 else "win_10" if p5["wins"] >= 10 else None
+                if win_ach and award_achievement(row["discord_id"], win_ach):
+                    awarded += 1
+                kill_ach = "kill_500" if p5["kills"] >= 500 else "kill_100" if p5["kills"] >= 100 else "kill_50" if p5["kills"] >= 50 else None
+                if kill_ach and award_achievement(row["discord_id"], kill_ach):
+                    awarded += 1
+                if p5["deaths"] > 0 and p5["kills"] / p5["deaths"] >= 2.0 and award_achievement(row["discord_id"], "kd_2"):
+                    awarded += 1
+                peak = p5.get("peak_elo", p5["elo"])
+                elo_ach = "elo_1500" if peak >= 1500 else "elo_1200" if peak >= 1200 else None
+                if elo_ach and award_achievement(row["discord_id"], elo_ach):
+                    awarded += 1
+            print(f"[BACKFILL] {awarded} nişan geriyə doğru verildi (mövcud statistikaya əsasən).")
+        except Exception as e:
+            print(f"[BACKFILL] Xəta: {e}")
+        set_meta("backfill_achievements_2026_10_26", "1")
+
     saved_log = get_meta("log_channel_id")
     if saved_log:
         LOG_CHANNEL_ID = int(saved_log)
