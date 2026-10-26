@@ -434,10 +434,18 @@ MARKET_BANNERS = [
     {"id": "banner_crimson", "name": "Crimson Blaze", "price": 500},
     {"id": "banner_aurora", "name": "Aurora Flow", "price": 1000, "gif": True},
     {"id": "banner_inferno", "name": "Inferno Surge", "price": 1000, "gif": True},
+    {"id": "banner_victorian_london", "name": "Viktoriya Londonu — Sirli Araşdırma", "price_azn": 3},
 ]
 MARKET_FRAMES = [
     {"id": "frame_gold", "name": "Gold Ring", "price": 750},
 ]
+
+# Əl ilə (prosedural YARADILMAYAN) banner faylları — bax: market_assets_custom/
+CUSTOM_BANNER_PATHS = {
+    "banner_victorian_london": os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "market_assets_custom", "banner_victorian_london.gif"
+    ),
+}
 
 # card_type: players cədvəlindəki boost50_cards/protect_cards sütunlarına uyğun gəlir
 # (bax: database.py-dəki apply_elo_modifiers/consume_boost_card — matç nəticəsində AVTOMATİK
@@ -454,8 +462,14 @@ ELO_CARD_PACKS = [
 ]
 
 
+def _item_price_label(item):
+    if "price_azn" in item:
+        return f"{item['price_azn']} AZN"
+    return f"{item['price']} coin"
+
+
 def _market_banner_path(item_id):
-    return _MARKET_ASSET_PATHS.get(item_id)
+    return CUSTOM_BANNER_PATHS.get(item_id) or _MARKET_ASSET_PATHS.get(item_id)
 
 
 def _market_frame_path(item_id):
@@ -4369,9 +4383,9 @@ async def _build_market_embed(discord_id):
         color=discord.Color.from_rgb(138, 92, 230)
     )
     embed.add_field(
-        name="🖼️ Bannerlər (Coin)",
+        name="🖼️ Bannerlər",
         value="\n".join(
-            f"{'🎬 ' if b.get('gif') else ''}**{b['name']}** — {b['price']} coin"
+            f"{'🎬 ' if b.get('gif') else ''}**{b['name']}** — {_item_price_label(b)}"
             + (" (animasiyalı)" if b.get("gif") else "")
             for b in MARKET_BANNERS
         ),
@@ -4438,7 +4452,7 @@ class MarketView(discord.ui.View):
         options = []
         for b in MARKET_BANNERS:
             emoji = "🎬" if b.get("gif") else "🖼️"
-            desc = f"{b['price']} coin" + (" — animasiyalı" if b.get("gif") else "")
+            desc = _item_price_label(b) + (" — animasiyalı" if b.get("gif") else "")
             options.append(discord.SelectOption(label=f"{emoji} {b['name']}", value=f"banner:{b['id']}", description=desc))
         for f in MARKET_FRAMES:
             options.append(discord.SelectOption(label=f"🖼️ {f['name']}", value=f"frame:{f['id']}", description=f"{f['price']} coin"))
@@ -4480,22 +4494,34 @@ class MarketView(discord.ui.View):
             if owns_item(self.discord_id, item_id):
                 await interaction.response.send_message(f"⚠️ Artıq **{item['name']}** sahibisiniz.", ephemeral=True)
                 return
-            if not spend_coins(self.discord_id, item["price"]):
-                await interaction.response.send_message(
-                    f"❌ Kifayət qədər coin yoxdur (lazımdır: {item['price']} coin).", ephemeral=True
-                )
-                return
+
+            is_azn = "price_azn" in item
+            if is_azn:
+                if not spend_zm(self.discord_id, item["price_azn"]):
+                    await interaction.response.send_message(
+                        f"❌ Kifayət qədər AZN yoxdur (lazımdır: {item['price_azn']} AZN).", ephemeral=True
+                    )
+                    return
+                new_bal_txt = f"{get_zm_balance(self.discord_id):.2f} AZN"
+            else:
+                if not spend_coins(self.discord_id, item["price"]):
+                    await interaction.response.send_message(
+                        f"❌ Kifayət qədər coin yoxdur (lazımdır: {item['price']} coin).", ephemeral=True
+                    )
+                    return
+                new_bal = get_coins(self.discord_id)
+                add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_bal)
+                new_bal_txt = f"{new_bal} coin"
+
             add_to_inventory(self.discord_id, item_id)
-            new_bal = get_coins(self.discord_id)
-            add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_bal)
             msg = (
-                f"✅ **{item['name']}** alındı! Qalan balans: **{new_bal}** coin.\n"
+                f"✅ **{item['name']}** alındı! Qalan balans: **{new_bal_txt}**.\n"
                 "🎒 İnventarım düyməsindən aktiv edə bilərsiniz."
             )
             if item.get("gif"):
                 msg += (
-                    "\n\n🎬 Bu banner animasiyalıdır — tam animasiyasını aşağıda görə bilərsiniz. "
-                    "Qeyd: profil kartınız statik şəkil olduğu üçün orada bannerin YALNIZ bir karı görünəcək."
+                    "\n\n🎬 Bu banner animasiyalıdır — `/profile` kartınızın özü də hərəkətli görünəcək! "
+                    "Tam animasiyasını aşağıda da görə bilərsiniz."
                 )
                 gif_path = _market_banner_path(item_id)
                 if gif_path and os.path.exists(gif_path):
