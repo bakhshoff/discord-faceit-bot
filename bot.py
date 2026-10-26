@@ -435,6 +435,7 @@ MARKET_BANNERS = [
     {"id": "banner_aurora", "name": "Aurora Flow", "price": 1000, "gif": True},
     {"id": "banner_inferno", "name": "Inferno Surge", "price": 1000, "gif": True},
     {"id": "banner_victorian_london", "name": "Viktoriya Londonu — Sirli Araşdırma", "price_azn": 3},
+    {"id": "banner_test_orb", "name": "Test Orb (sınaq)", "price": 1, "gif": True},
 ]
 MARKET_FRAMES = [
     {"id": "frame_gold", "name": "Gold Ring", "price": 750},
@@ -444,6 +445,9 @@ MARKET_FRAMES = [
 CUSTOM_BANNER_PATHS = {
     "banner_victorian_london": os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "market_assets_custom", "banner_victorian_london.gif"
+    ),
+    "banner_test_orb": os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "market_assets_custom", "banner_test_orb.gif"
     ),
 }
 
