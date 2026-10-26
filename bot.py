@@ -432,6 +432,8 @@ MARKET_BANNERS = [
     {"id": "banner_violet", "name": "Violet Pulse", "price": 500},
     {"id": "banner_emerald", "name": "Emerald Rise", "price": 500},
     {"id": "banner_crimson", "name": "Crimson Blaze", "price": 500},
+    {"id": "banner_aurora", "name": "Aurora Flow", "price": 1000, "gif": True},
+    {"id": "banner_inferno", "name": "Inferno Surge", "price": 1000, "gif": True},
 ]
 MARKET_FRAMES = [
     {"id": "frame_gold", "name": "Gold Ring", "price": 750},
@@ -4367,7 +4369,11 @@ async def _build_market_embed(discord_id):
     )
     embed.add_field(
         name="🖼️ Bannerlər (Coin)",
-        value="\n".join(f"**{b['name']}** — {b['price']} coin" for b in MARKET_BANNERS),
+        value="\n".join(
+            f"{'🎬 ' if b.get('gif') else ''}**{b['name']}** — {b['price']} coin"
+            + (" (animasiyalı)" if b.get("gif") else "")
+            for b in MARKET_BANNERS
+        ),
         inline=False
     )
     embed.add_field(
@@ -4430,7 +4436,9 @@ class MarketView(discord.ui.View):
         self.discord_id = discord_id
         options = []
         for b in MARKET_BANNERS:
-            options.append(discord.SelectOption(label=f"🖼️ {b['name']}", value=f"banner:{b['id']}", description=f"{b['price']} coin"))
+            emoji = "🎬" if b.get("gif") else "🖼️"
+            desc = f"{b['price']} coin" + (" — animasiyalı" if b.get("gif") else "")
+            options.append(discord.SelectOption(label=f"{emoji} {b['name']}", value=f"banner:{b['id']}", description=desc))
         for f in MARKET_FRAMES:
             options.append(discord.SelectOption(label=f"🖼️ {f['name']}", value=f"frame:{f['id']}", description=f"{f['price']} coin"))
         for p in ELO_CARD_PACKS:
@@ -4479,11 +4487,22 @@ class MarketView(discord.ui.View):
             add_to_inventory(self.discord_id, item_id)
             new_bal = get_coins(self.discord_id)
             add_coin_log(self.discord_id, -item["price"], f"Market alışı: {item['name']}", "spend", new_bal)
-            await interaction.response.send_message(
+            msg = (
                 f"✅ **{item['name']}** alındı! Qalan balans: **{new_bal}** coin.\n"
-                "🎒 İnventarım düyməsindən aktiv edə bilərsiniz.",
-                ephemeral=True
+                "🎒 İnventarım düyməsindən aktiv edə bilərsiniz."
             )
+            if item.get("gif"):
+                msg += (
+                    "\n\n🎬 Bu banner animasiyalıdır — tam animasiyasını aşağıda görə bilərsiniz. "
+                    "Qeyd: profil kartınız statik şəkil olduğu üçün orada bannerin YALNIZ bir karı görünəcək."
+                )
+                gif_path = _market_banner_path(item_id)
+                if gif_path and os.path.exists(gif_path):
+                    await interaction.response.send_message(
+                        msg, file=discord.File(gif_path, filename=f"{item_id}.gif"), ephemeral=True
+                    )
+                    return
+            await interaction.response.send_message(msg, ephemeral=True)
         else:  # kind == "card"
             pack = next((p for p in ELO_CARD_PACKS if p["id"] == item_id), None)
             if not pack:

@@ -20,6 +20,12 @@ FRAME_DEFS = {
     "frame_gold": (255, 205, 60),
 }
 
+# item_id -> (üst rəng, alt rəng) — animasiyalı (GIF) bannerlər, hərəkətli işıq zolağı ilə
+ANIMATED_BANNER_DEFS = {
+    "banner_aurora": ((60, 30, 130), (10, 8, 20)),
+    "banner_inferno": ((170, 45, 20), (22, 9, 6)),
+}
+
 
 def _gradient(w, h, top, bottom):
     img = Image.new("RGB", (w, h), top)
@@ -40,6 +46,27 @@ def _make_banner(top, bottom):
     return img
 
 
+def _make_animated_banner(top, bottom, n_frames=24):
+    """Bir statik qradiyent üzərində soldan-sağa hərəkət edən işıq zolağı effekti olan
+    GIF çərçivələri qaytarır (bax: ensure_market_assets — animasiyalı bannerlər üçün)."""
+    base = _gradient(BANNER_W, BANNER_H, top, bottom)
+    accent = tuple(min(255, c + 90) for c in top)
+    sweep_w = 240
+    total_span = BANNER_W + sweep_w * 2
+    frames = []
+    for i in range(n_frames):
+        frame = base.copy()
+        draw = ImageDraw.Draw(frame)
+        offset = int((i / n_frames) * total_span) - sweep_w
+        for dx in range(-sweep_w, sweep_w, 10):
+            x = offset + dx
+            brightness = max(0.0, 1 - abs(dx) / sweep_w)
+            col = tuple(int(bottom[c] + (accent[c] - bottom[c]) * brightness) for c in range(3))
+            draw.line([(x, 0), (x + BANNER_H, BANNER_H)], fill=col, width=5)
+        frames.append(frame)
+    return frames
+
+
 def _make_frame(color, size=150):
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -58,6 +85,12 @@ def ensure_market_assets():
         path = os.path.join(ASSET_DIR, f"{item_id}.png")
         if not os.path.exists(path):
             _make_banner(top, bottom).save(path)
+        paths[item_id] = path
+    for item_id, (top, bottom) in ANIMATED_BANNER_DEFS.items():
+        path = os.path.join(ASSET_DIR, f"{item_id}.gif")
+        if not os.path.exists(path):
+            frames = _make_animated_banner(top, bottom)
+            frames[0].save(path, format="GIF", save_all=True, append_images=frames[1:], duration=70, loop=0)
         paths[item_id] = path
     for item_id, color in FRAME_DEFS.items():
         path = os.path.join(ASSET_DIR, f"{item_id}.png")
