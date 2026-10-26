@@ -54,7 +54,7 @@ from database import (
     create_ticket, get_open_ticket, get_ticket_by_channel, close_ticket,
     is_in_duo_team, create_duo_team, get_duo_team_for_player, get_duo_team,
     join_duo_team, disband_duo_team, get_active_duo_teams, mark_team_reminder_sent,
-    expire_due_teams, migrate_combat_stats_to_5v5,
+    expire_due_teams, migrate_combat_stats_to_5v5, apply_inactivity_elo_decay,
     get_inventory, owns_item, add_to_inventory, set_active_banner, get_active_banner,
     set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
     add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
@@ -2298,6 +2298,8 @@ async def on_ready():
         weekly_most_improved_loop.start()
     if not team_expiry_loop.is_running():
         team_expiry_loop.start()
+    if not inactivity_elo_decay_loop.is_running():
+        inactivity_elo_decay_loop.start()
     if not refresh_leaderboard_5v5.is_running():
         refresh_leaderboard_5v5.start()
     if not refresh_leaderboard_5v5_alltime.is_running():
@@ -4316,6 +4318,45 @@ async def team_expiry_loop():
         await _dm_team_members(team, "📭 Komandanızın müddəti bitdi və dağıldı. Yeni komanda qurmaq üçün `/team_qur` istifadə edə bilərsiniz.")
 
 
+INACTIVITY_DECAY_DAYS = 14
+INACTIVITY_DECAY_INTERVAL_DAYS = 7
+INACTIVITY_DECAY_AMOUNT = 10
+
+
+@tasks.loop(hours=24)
+async def inactivity_elo_decay_loop():
+    """Liderlik lövhəsinin real-aktiv oyunçuları əks etdirməsi üçün: {INACTIVITY_DECAY_DAYS}+
+    gündür 5v5 oynamayan oyunçuların ELO-su hər {INACTIVITY_DECAY_INTERVAL_DAYS} gündə bir
+    {INACTIVITY_DECAY_AMOUNT} azalır (başlanğıc ELO-dan aşağı düşmür) — bax: apply_inactivity_elo_decay.
+    Hər təsirlənən oyunçuya rütbə rolu yenilənir və şəxsi mesajla bildirilir."""
+    decayed = apply_inactivity_elo_decay(
+        inactive_days=INACTIVITY_DECAY_DAYS,
+        decay_interval_days=INACTIVITY_DECAY_INTERVAL_DAYS,
+        decay_amount=INACTIVITY_DECAY_AMOUNT,
+    )
+    for entry in decayed:
+        discord_id, old_elo, new_elo = entry["discord_id"], entry["old_elo"], entry["new_elo"]
+        for guild in bot.guilds:
+            member = guild.get_member(discord_id)
+            if member:
+                await _sync_rank_role_5v5(guild, discord_id, new_elo)
+        user = bot.get_user(discord_id)
+        if not user:
+            try:
+                user = await bot.fetch_user(discord_id)
+            except (discord.NotFound, discord.HTTPException):
+                user = None
+        if user:
+            try:
+                await user.send(
+                    f"📉 **{INACTIVITY_DECAY_DAYS}+ gündür** 5v5 oynamadığınız üçün ELO-nuz "
+                    f"**{old_elo} → {new_elo}** azaldı. Liderlik lövhəsində yerinizi qorumaq üçün "
+                    "matchmaking sırasına qoşulun!"
+                )
+            except discord.Forbidden:
+                pass
+
+
 async def _render_history(interaction: discord.Interaction, target_id: int):
     await interaction.response.defer(ephemeral=True)
     history = get_player_match_history(target_id, limit=10)
@@ -5214,6 +5255,7 @@ PANEL_CATEGORIES = {
             ("/team", "Komandanızın statusunu (üzv, qalan müddət) göstərir, sahib ləğv edə bilər"),
             ("👤 Profil → Mükafatlar → Komanda", "Komanda qurma/dəvət/ləğv indi tam buton-əsaslı, profildən də əlçatandır"),
             ("🤝 Komanda matchmaking qarantiyası", "Komanda üzvləri eyni anda sırada olanda avtomatik eyni tərəfə düşür"),
+            ("📉 Qeyri-aktiv ELO azalması", f"{INACTIVITY_DECAY_DAYS}+ gün 5v5 oynamayanların ELO-su hər {INACTIVITY_DECAY_INTERVAL_DAYS} gündə {INACTIVITY_DECAY_AMOUNT} azalır (min. başlanğıc ELO)"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
             ("🎫 Ticket sistemi", "Ticket kanalında mövzu seçərək (klan qoşulma / Gold / Boost / Emulator) özəl ticket kanalı açırsınız"),

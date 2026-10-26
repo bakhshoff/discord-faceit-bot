@@ -331,6 +331,12 @@ def init_db():
             created_at INTEGER
         )
     """)
+    cursor.execute("PRAGMA table_info(players_5v5)")
+    _p5v5_cols = [r[1] for r in cursor.fetchall()]
+    if "last_match_at" not in _p5v5_cols:
+        cursor.execute("ALTER TABLE players_5v5 ADD COLUMN last_match_at INTEGER DEFAULT NULL")
+    if "last_decay_at" not in _p5v5_cols:
+        cursor.execute("ALTER TABLE players_5v5 ADD COLUMN last_decay_at INTEGER DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matchmaking_queue_5v5 (
@@ -896,22 +902,57 @@ def update_team_elo_5v5(winner_ids, loser_ids, elo_multiplier=1):
             "SELECT peak_elo FROM players_5v5 WHERE discord_id=?", (discord_id,)
         ).fetchone()[0])
         cursor.execute(
-            "UPDATE players_5v5 SET elo=?, wins=?, peak_elo=? WHERE discord_id=?",
-            (new_elo, wins + 1, peak_elo, discord_id)
+            "UPDATE players_5v5 SET elo=?, wins=?, peak_elo=?, last_match_at=? WHERE discord_id=?",
+            (new_elo, wins + 1, peak_elo, now, discord_id)
         )
         results["winners"].append({"discord_id": discord_id, "old_elo": elo, "new_elo": new_elo})
 
     for discord_id, elo, wins, losses in losers:
         new_elo = elo + apply_elo_modifiers(discord_id, elo_change_loser, cursor=cursor)
         cursor.execute(
-            "UPDATE players_5v5 SET elo=?, losses=? WHERE discord_id=?",
-            (new_elo, losses + 1, discord_id)
+            "UPDATE players_5v5 SET elo=?, losses=?, last_match_at=? WHERE discord_id=?",
+            (new_elo, losses + 1, now, discord_id)
         )
         results["losers"].append({"discord_id": discord_id, "old_elo": elo, "new_elo": new_elo})
 
     conn.commit()
     conn.close()
     return results
+
+
+def apply_inactivity_elo_decay(inactive_days=14, decay_interval_days=7, decay_amount=10, floor_elo=1000):
+    """Liderlik lövhəsini real-aktiv oyunçularla göstərmək üçün: `inactive_days`+ gündür 5v5
+    oynamayan oyunçuların ELO-su hər `decay_interval_days` gündə bir `decay_amount` azalır,
+    `floor_elo`-dan (başlanğıc ELO) aşağı düşmür. Yalnız real (sıfırdan böyük) dəyişikliyi olan
+    oyunçuları `{discord_id, old_elo, new_elo}` siyahısı kimi qaytarır (çağıran tərəf rol/DM
+    sinxronlaşdırması üçün istifadə edir)."""
+    import time
+    now = int(time.time())
+    inactive_cutoff = now - inactive_days * 86400
+    decay_cutoff = now - decay_interval_days * 86400
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id, elo FROM players_5v5 WHERE last_match_at IS NOT NULL AND last_match_at < ? "
+        "AND elo > ? AND (last_decay_at IS NULL OR last_decay_at < ?)",
+        (inactive_cutoff, floor_elo, decay_cutoff)
+    )
+    rows = cursor.fetchall()
+
+    decayed = []
+    for discord_id, elo in rows:
+        new_elo = max(floor_elo, elo - decay_amount)
+        cursor.execute(
+            "UPDATE players_5v5 SET elo=?, last_decay_at=? WHERE discord_id=?",
+            (new_elo, now, discord_id)
+        )
+        if new_elo != elo:
+            decayed.append({"discord_id": discord_id, "old_elo": elo, "new_elo": new_elo})
+
+    conn.commit()
+    conn.close()
+    return decayed
 
 
 def update_streak_5v5(discord_id, won: bool):
