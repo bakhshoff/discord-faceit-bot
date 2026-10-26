@@ -493,6 +493,21 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS duo_teams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner_id INTEGER NOT NULL,
+            member_id INTEGER,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            reminder_7d INTEGER DEFAULT 0,
+            reminder_3d INTEGER DEFAULT 0,
+            reminder_1d INTEGER DEFAULT 0,
+            reminder_1h INTEGER DEFAULT 0
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS match_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             match_type TEXT NOT NULL,
@@ -982,30 +997,69 @@ def is_in_queue_5v5(discord_id):
     return row is not None
 
 
-def _balance_5v5_teams(players):
+def _balance_5v5_teams(players, locked_pairs=None):
     """10 oyunçunu ELO-ya görə ən balanslaşdırılmış 2x5 komandaya bölür — mümkün bütün
     C(10,5)=252 bölgü arasında komandaların ümumi ELO fərqini minimuma endirəni tapır.
     Bərabər (ən balanslaşdırılmış) bölgülər arasında təsadüfi seçim edilir ki, eyni ELO
-    profilində hər dəfə eyni qruplaşma təkrarlanmasın."""
+    profilində hər dəfə eyni qruplaşma təkrarlanmasın.
+
+    locked_pairs: [(discord_id_a, discord_id_b), ...] — bu cütlər (aktiv duo komanda
+    üzvləri) HƏMİŞƏ eyni tərəfdə saxlanılır. Heç bir bölgü bütün cütləri eyni anda təmin
+    etmirsə (nadir hal — komanda ölçüsü 5 tək ədəd olduğu üçün, məs. 5 üst-üstə düşməyən
+    cüt eyni hovuzda olanda riyazi mümkünsüz ola bilər), məhdudiyyət görməzdən gəlinir."""
     import random
     from itertools import combinations
 
+    id_to_index = {p["discord_id"]: i for i, p in enumerate(players)}
+
+    def _respects_pairs(combo_set):
+        if not locked_pairs:
+            return True
+        for a_id, b_id in locked_pairs:
+            a_idx, b_idx = id_to_index.get(a_id), id_to_index.get(b_id)
+            if a_idx is None or b_idx is None:
+                continue
+            if (a_idx in combo_set) != (b_idx in combo_set):
+                return False
+        return True
+
     total_elo = sum(p["elo"] for p in players)
-    best_diff = None
-    best_splits = []
-    for combo in combinations(range(len(players)), 5):
-        team_a_elo = sum(players[i]["elo"] for i in combo)
-        diff = abs(team_a_elo - (total_elo - team_a_elo))
-        if best_diff is None or diff < best_diff:
-            best_diff = diff
-            best_splits = [combo]
-        elif diff == best_diff:
-            best_splits.append(combo)
+
+    def _find_best(enforce_pairs):
+        best_diff = None
+        best_splits = []
+        for combo in combinations(range(len(players)), 5):
+            combo_set = set(combo)
+            if enforce_pairs and not _respects_pairs(combo_set):
+                continue
+            team_a_elo = sum(players[i]["elo"] for i in combo)
+            diff = abs(team_a_elo - (total_elo - team_a_elo))
+            if best_diff is None or diff < best_diff:
+                best_diff = diff
+                best_splits = [combo]
+            elif diff == best_diff:
+                best_splits.append(combo)
+        return best_splits
+
+    best_splits = _find_best(enforce_pairs=True)
+    if not best_splits:
+        best_splits = _find_best(enforce_pairs=False)
 
     chosen = set(random.choice(best_splits))
     team_a = [players[i] for i in range(len(players)) if i in chosen]
     team_b = [players[i] for i in range(len(players)) if i not in chosen]
     return team_a, team_b
+
+
+def _get_locked_team_pairs_for_players(players):
+    """Verilən oyunçu hovuzunun İÇİNDƏ hər iki üzvü eyni anda olan aktiv duo komandaların
+    (owner_id, member_id) cütlərini qaytarır — bax: _balance_5v5_teams."""
+    ids_in_pool = {p["discord_id"] for p in players}
+    pairs = []
+    for t in get_active_duo_teams():
+        if t["member_id"] is not None and t["owner_id"] in ids_in_pool and t["member_id"] in ids_in_pool:
+            pairs.append((t["owner_id"], t["member_id"]))
+    return pairs
 
 
 def pop_10_and_balance():
@@ -1038,7 +1092,8 @@ def pop_10_and_balance():
     conn.close()
 
     players = [{"discord_id": r[0], "nick": r[1], "elo": r[2], "so2_id": r[3]} for r in rows]
-    team_a, team_b = _balance_5v5_teams(players)
+    locked_pairs = _get_locked_team_pairs_for_players(players)
+    team_a, team_b = _balance_5v5_teams(players, locked_pairs)
 
     captain_a = max(team_a, key=lambda p: p["elo"])
     captain_b = max(team_b, key=lambda p: p["elo"])
@@ -1190,6 +1245,143 @@ def close_ticket(ticket_id):
     )
     conn.commit()
     conn.close()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DUO TEAM — müddətli (10/30 gün), max 2 nəfər, 1 oyunçu max 1 komandada
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_TEAM_REMINDER_COLUMNS = {"reminder_7d", "reminder_3d", "reminder_1d", "reminder_1h"}
+
+
+def is_in_duo_team(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    import time
+    now = int(time.time())
+    cursor.execute(
+        "SELECT 1 FROM duo_teams WHERE status='active' AND expires_at > ? AND (owner_id=? OR member_id=?)",
+        (now, discord_id, discord_id)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return row is not None
+
+
+def create_duo_team(owner_id, duration_days):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    now = int(time.time())
+    expires_at = now + duration_days * 86400
+    cursor.execute(
+        "INSERT INTO duo_teams (owner_id, member_id, created_at, expires_at, status) VALUES (?, NULL, ?, ?, 'active')",
+        (owner_id, now, expires_at)
+    )
+    conn.commit()
+    team_id = cursor.lastrowid
+    conn.close()
+    return team_id
+
+
+def _row_to_team(row):
+    return {
+        "id": row[0], "owner_id": row[1], "member_id": row[2], "created_at": row[3],
+        "expires_at": row[4], "status": row[5],
+    }
+
+
+def get_duo_team_for_player(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    import time
+    now = int(time.time())
+    cursor.execute(
+        "SELECT id, owner_id, member_id, created_at, expires_at, status FROM duo_teams "
+        "WHERE status='active' AND expires_at > ? AND (owner_id=? OR member_id=?)",
+        (now, discord_id, discord_id)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return _row_to_team(row) if row else None
+
+
+def get_duo_team(team_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, owner_id, member_id, created_at, expires_at, status FROM duo_teams WHERE id=?",
+        (team_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return _row_to_team(row) if row else None
+
+
+def join_duo_team(team_id, member_id):
+    """Komandaya yalnız boş yer varsa (member_id hələ NULL-dursa) üzv əlavə edir."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    import time
+    now = int(time.time())
+    cursor.execute("SELECT member_id FROM duo_teams WHERE id=? AND status='active' AND expires_at > ?", (team_id, now))
+    row = cursor.fetchone()
+    if not row or row[0] is not None:
+        conn.close()
+        return False
+    cursor.execute("UPDATE duo_teams SET member_id=? WHERE id=?", (member_id, team_id))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def disband_duo_team(team_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE duo_teams SET status='expired' WHERE id=?", (team_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_active_duo_teams():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, owner_id, member_id, created_at, expires_at, status, "
+        "reminder_7d, reminder_3d, reminder_1d, reminder_1h FROM duo_teams WHERE status='active'"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        d = _row_to_team(r[:6])
+        d.update({"reminder_7d": r[6], "reminder_3d": r[7], "reminder_1d": r[8], "reminder_1h": r[9]})
+        result.append(d)
+    return result
+
+
+def mark_team_reminder_sent(team_id, reminder_column):
+    if reminder_column not in _TEAM_REMINDER_COLUMNS:
+        raise ValueError(f"Keçərsiz reminder sütunu: {reminder_column}")
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE duo_teams SET {reminder_column}=1 WHERE id=?", (team_id,))
+    conn.commit()
+    conn.close()
+
+
+def expire_due_teams():
+    """Vaxtı keçmiş aktiv komandaları 'expired' statusuna keçirir, bildiriş üçün siyahısını qaytarır."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    now = int(time.time())
+    cursor.execute("SELECT id, owner_id, member_id FROM duo_teams WHERE status='active' AND expires_at <= ?", (now,))
+    rows = cursor.fetchall()
+    cursor.execute("UPDATE duo_teams SET status='expired' WHERE status='active' AND expires_at <= ?", (now,))
+    conn.commit()
+    conn.close()
+    return [{"id": r[0], "owner_id": r[1], "member_id": r[2]} for r in rows]
 
 
 def add_coins(discord_id, amount):

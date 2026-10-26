@@ -52,6 +52,9 @@ from database import (
     check_suspicious_activity,
     add_chat_xp, get_chat_leaderboard, get_top_chat_activity, reset_weekly_chat_xp,
     create_ticket, get_open_ticket, get_ticket_by_channel, close_ticket,
+    is_in_duo_team, create_duo_team, get_duo_team_for_player, get_duo_team,
+    join_duo_team, disband_duo_team, get_active_duo_teams, mark_team_reminder_sent,
+    expire_due_teams,
     get_inventory, owns_item, add_to_inventory, set_active_banner, get_active_banner,
     set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
     add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
@@ -209,20 +212,23 @@ RANK_ROLE_NAMES_5V5 = {r[2] for r in RANKS}
 
 
 async def _sync_rank_role_5v5(guild, discord_id, elo):
-    """Oyunçunun ELO-suna uyğun rütbə rolunu təyin edir, köhnə rütbə rolunu çıxarır."""
+    """Oyunçunun ELO-suna uyğun rütbə rolunu təyin edir, köhnə rütbə rolunu çıxarır.
+    Rütbə əvvəlkindən YÜKSƏK pilləyə keçəndə (rank-up) `(rank_name, emoji)` qaytarır,
+    əks halda (dəyişməyib və ya aşağı düşüb) `None`."""
     if not guild:
-        return
+        return None
     member = guild.get_member(discord_id)
     if not member:
         try:
             member = await guild.fetch_member(discord_id)
         except (discord.NotFound, discord.HTTPException):
-            return
-    rank_name, _color, _emoji = get_rank(elo)
+            return None
+    rank_name, _color, rank_emoji = get_rank(elo)
     target_role = discord.utils.get(guild.roles, name=rank_name)
     if not target_role:
-        return
+        return None
 
+    old_rank_role = next((r for r in member.roles if r.name in RANK_ROLE_NAMES_5V5), None)
     to_remove = [r for r in member.roles if r.name in RANK_ROLE_NAMES_5V5 and r.id != target_role.id]
     try:
         if to_remove:
@@ -230,7 +236,18 @@ async def _sync_rank_role_5v5(guild, discord_id, elo):
         if target_role not in member.roles:
             await member.add_roles(target_role, reason="Rütbə yeniləndi")
     except discord.Forbidden:
-        pass
+        return None
+
+    if old_rank_role and old_rank_role.id != target_role.id:
+        rank_names_in_order = [r[2] for r in RANKS]
+        try:
+            old_tier = rank_names_in_order.index(old_rank_role.name)
+            new_tier = rank_names_in_order.index(rank_name)
+        except ValueError:
+            return None
+        if new_tier > old_tier:
+            return (rank_name, rank_emoji)
+    return None
 
 
 async def _get_log_channel():
@@ -1255,6 +1272,7 @@ class CancelMatchView5v5(discord.ui.View):
 
 MATCH_CANCEL_ELO_PENALTY = 15
 WIN_STREAK_MILESTONES = {3, 5, 10, 15, 20, 25, 30}  # announcements-da elan olunan seriya dəyərləri
+UPSET_ELO_THRESHOLD = 100  # komandalar arası bu qədər (və ya çox) ELO fərqi ilə "sürpriz" qələbə sayılır
 
 
 class MatchResultView5v5(discord.ui.View):
@@ -1312,6 +1330,7 @@ class MatchResultView5v5(discord.ui.View):
         current_season = get_or_create_current_season("5v5")
 
         streak_milestones = []  # [(nick, streak), ...] — matç bitəndən sonra announcements-a elan olunur
+        rank_ups = []  # [(nick, rank_name, emoji), ...]
         for p, r in zip(winner_team, results["winners"]):
             did = p["discord_id"]
             add_season_stat(did, current_season["id"], kills=stats_by_id.get(did, {}).get("kills", 0),
@@ -1326,7 +1345,9 @@ class MatchResultView5v5(discord.ui.View):
             new_bal = add_coins(did, earned)
             reason = f"5v5 Matç No{self.match_number} qələbə" + (f" (seriya {streak})" if bonus_coins else "")
             add_coin_log(did, earned, reason, "earn", new_bal)
-            await _sync_rank_role_5v5(interaction.guild, did, r["new_elo"])
+            rank_up = await _sync_rank_role_5v5(interaction.guild, did, r["new_elo"])
+            if rank_up:
+                rank_ups.append((p["nick"], rank_up[0], rank_up[1]))
 
         for p, r in zip(loser_team, results["losers"]):
             did = p["discord_id"]
@@ -1338,7 +1359,13 @@ class MatchResultView5v5(discord.ui.View):
             earned = random.randint(0, 5)
             new_bal = add_coins(did, earned)
             add_coin_log(did, earned, f"5v5 Matç No{self.match_number} iştirak", "earn", new_bal)
-            await _sync_rank_role_5v5(interaction.guild, did, r["new_elo"])
+            rank_up = await _sync_rank_role_5v5(interaction.guild, did, r["new_elo"])
+            if rank_up:
+                rank_ups.append((p["nick"], rank_up[0], rank_up[1]))
+
+        winner_avg_before = sum(r["old_elo"] for r in results["winners"]) / len(results["winners"])
+        loser_avg_before = sum(r["old_elo"] for r in results["losers"]) / len(results["losers"])
+        is_upset = (loser_avg_before - winner_avg_before) >= UPSET_ELO_THRESHOLD
 
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
         embed = discord.Embed(
@@ -1395,11 +1422,19 @@ class MatchResultView5v5(discord.ui.View):
         if history_channel:
             await history_channel.send(embed=embed)
 
-        if streak_milestones:
+        if streak_milestones or rank_ups or is_upset:
             ann_channel = await _get_announcements_channel()
             if ann_channel:
                 for nick, streak in streak_milestones:
                     await ann_channel.send(f"🔥 **{nick}** artıq **{streak}** ardıcıl qələbə seriyasındadır!")
+                for nick, rank_name, emoji in rank_ups:
+                    await ann_channel.send(f"{emoji} **{nick}** **{rank_name}** rütbəsinə yüksəldi!")
+                if is_upset:
+                    await ann_channel.send(
+                        f"⚡ **Sürpriz nəticə!** Matç No{self.match_number}-də **{winner_label}** "
+                        f"(ortalama {round(winner_avg_before)} ELO) özündən qat-qat yüksək ELO-lu **{loser_label}**-i "
+                        f"(ortalama {round(loser_avg_before)} ELO) məğlub etdi! 🎉"
+                    )
 
         clear_active_match(self.match_number)
 
@@ -1870,6 +1905,23 @@ async def _get_or_create_warmup_channel(guild, mode="5v5"):
         return None
 
 
+QUEUE_PING_ROLE_NAME = "🔔 Sıra Bildirişi"
+QUEUE_PING_THRESHOLD = 7  # sıra bu sayda olanda opt-in rola ping gedir
+
+
+async def _get_or_create_queue_ping_role(guild):
+    role = discord.utils.get(guild.roles, name=QUEUE_PING_ROLE_NAME)
+    if role:
+        return role
+    try:
+        return await guild.create_role(
+            name=QUEUE_PING_ROLE_NAME, color=discord.Color.from_rgb(241, 196, 15),
+            mentionable=True, reason="Sıra bildirişi rolu"
+        )
+    except discord.Forbidden:
+        return None
+
+
 async def _start_one_5v5_match(channel, guild) -> bool:
     """`_start_one_match`-ın 5v5 analoqu — eyni axın (kapitan reveal, matç kartı, thread,
     intel briefing, dinamik səs kanalları), yalnız 10 nəfər/2×5 komanda və AYRICA
@@ -2077,6 +2129,14 @@ class MatchmakingView5v5(discord.ui.View):
         await interaction.response.send_message(f"✅ {nick} 5v5 sırasına qoşuldu! ({size}/10)", ephemeral=True)
         await update_queue_status_message_5v5()
 
+        if size == QUEUE_PING_THRESHOLD and interaction.guild:
+            role = discord.utils.get(interaction.guild.roles, name=QUEUE_PING_ROLE_NAME)
+            if role:
+                try:
+                    await interaction.channel.send(f"{role.mention} Sıra **{size}/10** doldu — tezliklə matç başlaya bilər! 🎯")
+                except discord.HTTPException:
+                    pass
+
         if interaction.guild:
             member = interaction.guild.get_member(discord_id)
             if member and member.voice and member.voice.channel:
@@ -2228,6 +2288,8 @@ async def on_ready():
         weekly_chat_activity_loop.start()
     if not weekly_most_improved_loop.is_running():
         weekly_most_improved_loop.start()
+    if not team_expiry_loop.is_running():
+        team_expiry_loop.start()
     if not refresh_leaderboard_5v5.is_running():
         refresh_leaderboard_5v5.start()
     if not refresh_leaderboard_5v5_alltime.is_running():
@@ -3856,6 +3918,232 @@ async def market_cmd(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=MarketView(interaction.user.id), ephemeral=True)
 
 
+@bot.tree.command(name="sira_bildirisi", description=f"Sıra {QUEUE_PING_THRESHOLD}/10 dolanda bildiriş almaq üçün rolu aç/bağla")
+async def sira_bildirisi_cmd(interaction: discord.Interaction):
+    if not interaction.guild:
+        await interaction.response.send_message("❌ Bu komanda yalnız serverdə işləyir.", ephemeral=True)
+        return
+    role = await _get_or_create_queue_ping_role(interaction.guild)
+    if not role:
+        await interaction.response.send_message("❌ Rol yaradıla/tapıla bilmədi (icazə problemi ola bilər).", ephemeral=True)
+        return
+    member = interaction.user
+    if role in member.roles:
+        try:
+            await member.remove_roles(role, reason="Sıra bildirişini bağladı")
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ Rolu silmək üçün icazəm yoxdur.", ephemeral=True)
+            return
+        await interaction.response.send_message("🔕 Sıra bildirişləri bağlandı.", ephemeral=True)
+    else:
+        try:
+            await member.add_roles(role, reason="Sıra bildirişini açdı")
+        except discord.Forbidden:
+            await interaction.response.send_message("❌ Rolu vermək üçün icazəm yoxdur.", ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"🔔 Sıra bildirişləri açıldı — sıra **{QUEUE_PING_THRESHOLD}/10** dolanda sizə ping gedəcək.", ephemeral=True
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TEAM (DUO) — müddətli (10/30 gün), max 2 nəfər, eyni sırada olanda eyni komandaya düşür
+# ═══════════════════════════════════════════════════════════════════════════════
+
+TEAM_PRICING = {10: 5, 30: 10}  # müddət (gün) -> qiymət (AZN)
+
+
+class TeamInviteView(discord.ui.View):
+    def __init__(self, team_id, owner_id, target_id):
+        super().__init__(timeout=300)
+        self.team_id = team_id
+        self.owner_id = owner_id
+        self.target_id = target_id
+
+    @discord.ui.button(label="Qəbul et", style=discord.ButtonStyle.success, emoji="✅")
+    async def accept_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.target_id:
+            await interaction.response.send_message("❌ Bu dəvət sizin üçün deyil.", ephemeral=True)
+            return
+        if is_in_duo_team(self.target_id):
+            await interaction.response.send_message("❌ Siz artıq başqa bir komandadasınız.", ephemeral=True)
+            return
+        team = get_duo_team(self.team_id)
+        if not team or team["status"] != "active" or team["member_id"] is not None:
+            await interaction.response.send_message("❌ Bu dəvət artıq etibarsızdır (komanda dolu/bağlanıb/müddəti bitib).", ephemeral=True)
+            return
+        ok = join_duo_team(self.team_id, self.target_id)
+        for child in self.children:
+            child.disabled = True
+        if ok:
+            owner = interaction.guild.get_member(self.owner_id) if interaction.guild else None
+            owner_name = owner.display_name if owner else str(self.owner_id)
+            await interaction.response.edit_message(
+                content=f"✅ **{owner_name}**-in komandasına qoşuldunuz! Eyni anda sırada olanda avtomatik eyni komandaya düşəcəksiniz.",
+                embed=None, view=self
+            )
+        else:
+            await interaction.response.edit_message(content="❌ Qoşulma uğursuz oldu (komanda artıq dolu ola bilər).", embed=None, view=self)
+
+    @discord.ui.button(label="Rədd et", style=discord.ButtonStyle.danger, emoji="❌")
+    async def reject_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.target_id:
+            await interaction.response.send_message("❌ Bu dəvət sizin üçün deyil.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="❌ Dəvət rədd edildi.", embed=None, view=self)
+
+
+@bot.tree.command(name="team_qur", description=f"Müddətli komanda (duo) qurun — {TEAM_PRICING[10]} AZN/10 gün və ya {TEAM_PRICING[30]} AZN/30 gün")
+@app_commands.describe(muddet="Komandanın müddəti")
+@app_commands.choices(muddet=[
+    app_commands.Choice(name=f"10 gün — {TEAM_PRICING[10]} AZN", value=10),
+    app_commands.Choice(name=f"30 gün — {TEAM_PRICING[30]} AZN", value=30),
+])
+async def team_qur_cmd(interaction: discord.Interaction, muddet: app_commands.Choice[int]):
+    if not get_player(interaction.user.id):
+        await interaction.response.send_message("❌ Qeydiyyatdan keçməmisiniz. `/register` istifadə edin.", ephemeral=True)
+        return
+    if is_in_duo_team(interaction.user.id):
+        await interaction.response.send_message(
+            "❌ Siz artıq aktiv bir komandadasınız — yeni komanda qura bilməzsiniz.", ephemeral=True
+        )
+        return
+
+    duration_days = muddet.value
+    price = TEAM_PRICING[duration_days]
+    if not spend_zm(interaction.user.id, price):
+        await interaction.response.send_message(f"❌ Kifayət qədər AZN yoxdur (lazımdır: {price} AZN).", ephemeral=True)
+        return
+
+    create_duo_team(interaction.user.id, duration_days)
+    await interaction.response.send_message(
+        f"✅ **{duration_days} günlük** komandanız quruldu! (-{price} AZN)\n"
+        f"İndi `/team_devet_et` ilə TƏK bir komanda yoldaşı dəvət edə bilərsiniz.\n"
+        "ℹ️ Komanda üzvləri eyni anda matchmaking sırasında olarkən avtomatik eyni tərəfə düşəcək. "
+        "Qeyd: ödəniş geri qaytarılmır, müddət indi başladı."
+    )
+
+
+@bot.tree.command(name="team_devet_et", description="Komandanıza TƏK bir üzv dəvət edin")
+@app_commands.describe(uzv="Dəvət ediləcək oyunçu")
+async def team_devet_et_cmd(interaction: discord.Interaction, uzv: discord.Member):
+    team = get_duo_team_for_player(interaction.user.id)
+    if not team or team["owner_id"] != interaction.user.id:
+        await interaction.response.send_message("❌ Sizin aktiv bir komandanız yoxdur (əvvəlcə `/team_qur`).", ephemeral=True)
+        return
+    if team["member_id"] is not None:
+        await interaction.response.send_message("⚠️ Komandanız artıq doludur (max 2 nəfər).", ephemeral=True)
+        return
+    if uzv.id == interaction.user.id:
+        await interaction.response.send_message("❌ Özünüzü dəvət edə bilməzsiniz.", ephemeral=True)
+        return
+    if uzv.bot:
+        await interaction.response.send_message("❌ Botu dəvət edə bilməzsiniz.", ephemeral=True)
+        return
+    if not get_player(uzv.id):
+        await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+        return
+    if is_in_duo_team(uzv.id):
+        await interaction.response.send_message("❌ Bu oyunçu artıq başqa bir komandadadır.", ephemeral=True)
+        return
+
+    view = TeamInviteView(team["id"], interaction.user.id, uzv.id)
+    embed = discord.Embed(
+        title="🤝 Komanda Dəvəti",
+        description=(
+            f"{interaction.user.mention} sizi öz komandasına dəvət edir!\n"
+            "Eyni anda matchmaking sırasında olduğunuzda avtomatik eyni komandaya düşəcəksiniz."
+        ),
+        color=discord.Color.from_rgb(138, 92, 230)
+    )
+    await interaction.response.send_message(content=uzv.mention, embed=embed, view=view)
+
+
+@bot.tree.command(name="team", description="Komandanızın statusunu göstərir")
+async def team_cmd(interaction: discord.Interaction):
+    team = get_duo_team_for_player(interaction.user.id)
+    if not team:
+        await interaction.response.send_message("ℹ️ Aktiv bir komandanız yoxdur. `/team_qur` ilə yarada bilərsiniz.", ephemeral=True)
+        return
+    owner = interaction.guild.get_member(team["owner_id"]) if interaction.guild else None
+    member = interaction.guild.get_member(team["member_id"]) if interaction.guild and team["member_id"] else None
+    now = int(datetime.datetime.utcnow().timestamp())
+    days_left = max(0, (team["expires_at"] - now) // 86400)
+
+    embed = discord.Embed(title="🤝 Komandanız", color=discord.Color.from_rgb(138, 92, 230))
+    embed.add_field(name="Sahib", value=(owner.mention if owner else f"<@{team['owner_id']}>"), inline=True)
+    embed.add_field(name="Üzv", value=(member.mention if member else "— hələ yoxdur —"), inline=True)
+    embed.add_field(name="Qalan müddət", value=f"{days_left} gün", inline=True)
+    view = TeamStatusView(team["id"]) if team["owner_id"] == interaction.user.id else None
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+class TeamStatusView(discord.ui.View):
+    def __init__(self, team_id):
+        super().__init__(timeout=120)
+        self.team_id = team_id
+
+    @discord.ui.button(label="Komandanı ləğv et", style=discord.ButtonStyle.danger, emoji="🚫")
+    async def disband_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        team = get_duo_team(self.team_id)
+        if not team or team["owner_id"] != interaction.user.id or team["status"] != "active":
+            await interaction.response.send_message("❌ Bu əməliyyat üçün icazəniz yoxdur.", ephemeral=True)
+            return
+        disband_duo_team(self.team_id)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="🚫 Komanda ləğv edildi.", embed=None, view=self)
+
+
+TEAM_REMINDER_THRESHOLDS = [
+    (7 * 86400, "reminder_7d", "7 gün"),
+    (3 * 86400, "reminder_3d", "3 gün"),
+    (1 * 86400, "reminder_1d", "1 gün"),
+    (3600, "reminder_1h", "1 saat"),
+]
+
+
+async def _dm_team_members(team, text):
+    for discord_id in (team["owner_id"], team.get("member_id")):
+        if not discord_id:
+            continue
+        user = bot.get_user(discord_id)
+        if not user:
+            try:
+                user = await bot.fetch_user(discord_id)
+            except (discord.NotFound, discord.HTTPException):
+                continue
+        try:
+            await user.send(text)
+        except discord.Forbidden:
+            pass
+
+
+@tasks.loop(minutes=30)
+async def team_expiry_loop():
+    """Aktiv komandaların müddətini yoxlayır — bitməsinə 7g/3g/1g/1saat qalanda şəxsi
+    mesajla xatırladır (hər həddi bir dəfə — bax: DB-dəki reminder_* bayraqları), müddəti
+    keçmişləri avtomatik dağıdıb (bax: expire_due_teams) bunu da DM ilə bildirir."""
+    now = int(datetime.datetime.utcnow().timestamp())
+    for team in get_active_duo_teams():
+        remaining = team["expires_at"] - now
+        if remaining <= 0:
+            continue
+        for threshold_seconds, column, label in TEAM_REMINDER_THRESHOLDS:
+            if remaining <= threshold_seconds and team[column] == 0:
+                await _dm_team_members(
+                    team,
+                    f"⏰ Komandanızın müddətinin bitməsinə **{label}** qalıb! Uzatmaq üçün "
+                    "yeni müddət bitəndə `/team_qur` ilə təzə komanda qura bilərsiniz."
+                )
+                mark_team_reminder_sent(team["id"], column)
+
+    for team in expire_due_teams():
+        await _dm_team_members(team, "📭 Komandanızın müddəti bitdi və dağıldı. Yeni komanda qurmaq üçün `/team_qur` istifadə edə bilərsiniz.")
+
+
 async def _render_history(interaction: discord.Interaction, target_id: int):
     await interaction.response.defer(ephemeral=True)
     history = get_player_match_history(target_id, limit=10)
@@ -4746,6 +5034,13 @@ PANEL_CATEGORIES = {
             ("🌟 Matçın MVP-si", "Hər matç bitəndə ən yaxşı K/D-yə sahib oyunçu nəticə kartında elan olunur"),
             ("🔥 Qələbə seriyası elanı", "3/5/10/15/20/25/30 ardıcıl qələbədə announcements kanalında avtomatik elan olunur"),
             ("📈 Həftəlik ən çox inkişaf", "Hər Bazar 23:00-da son 7 gündə ən çox ELO qazanan Top-3 announcements-da elan olunur"),
+            ("🏅 Rütbə yüksəlişi", "ELO yeni rütbə pilləsinə keçəndə announcements-da avtomatik elan olunur"),
+            ("⚡ Sürpriz nəticə", f"Komandalar arası {UPSET_ELO_THRESHOLD}+ ELO fərqi ilə qazanılan matçlar xüsusi elanla qeyd olunur"),
+            ("/sira_bildirisi", f"Matchmaking sırası {QUEUE_PING_THRESHOLD}/10 dolanda ping almaq üçün rolu aç/bağla"),
+            ("/team_qur", f"Müddətli komanda (duo) qurur — {TEAM_PRICING[10]} AZN/10 gün və ya {TEAM_PRICING[30]} AZN/30 gün"),
+            ("/team_devet_et", "Komandanıza TƏK bir üzv dəvət edir (qəbul/rədd düymələri ilə)"),
+            ("/team", "Komandanızın statusunu (üzv, qalan müddət) göstərir, sahib ləğv edə bilər"),
+            ("🤝 Komanda matchmaking qarantiyası", "Komanda üzvləri eyni anda sırada olanda avtomatik eyni tərəfə düşür"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
             ("🎫 Ticket sistemi", "Ticket kanalında mövzu seçərək (klan qoşulma / Gold / Boost / Emulator) özəl ticket kanalı açırsınız"),
