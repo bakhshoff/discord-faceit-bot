@@ -3230,7 +3230,7 @@ async def profile(interaction: discord.Interaction):
     theme_colors = {"accent": PROFILE_THEMES[theme_id]} if theme_id in PROFILE_THEMES else None
 
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
-    await asyncio.to_thread(
+    final_path = await asyncio.to_thread(
         generate_profile_card, nick, so2_id, elo, wins, losses, avatar_bytes, card_path,
         banner_path=banner_path, frame_path=frame_path,
         coins=stats.get("coins", 0), zm_balance=get_zm_balance(discord_id),
@@ -3238,8 +3238,9 @@ async def profile(interaction: discord.Interaction):
         lang=player_lang, theme_colors=theme_colors,
     )
 
+    filename = "profile.gif" if final_path.lower().endswith(".gif") else "profile.png"
     await interaction.followup.send(
-        file=discord.File(card_path, filename="profile.png"),
+        file=discord.File(final_path, filename=filename),
         view=ProfileHubView(discord_id, lang=player_lang)
     )
 

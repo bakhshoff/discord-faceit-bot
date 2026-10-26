@@ -115,40 +115,41 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           pass_status=None, pass_level=0,
                           theme_colors=None, show_season=False, title=None, lang="az"):
 
-    # ── Arxa plan ────────────────────────────────────────────────────────────
-    # Banner kartın tam arxa planıdır. Ümumi statistika (ÜMUMİ paneli + Kill/Asist/
-    # Ölüm/K-D qutuları) artıq BURADA çəkilmir — bu, əvvəllər bannerin orta-aşağı
-    # hissəsini tamamilə örtürdü. Həmin məlumat "Stats" düyməsinin öz kartında
-    # (generate_stats_card) onsuz da tam göstərilir, ona görə itki yoxdur — burada
-    # sadəcə yuxarıdakı yığcam profil məlumatı qalır, banner isə demək olar tam açıqdır.
+    # ── Banner kadrları ─────────────────────────────────────────────────────
+    # Banner animasiyalı GIF-dirsə (bax: market_assets.py-dəki ANIMATED_BANNER_DEFS),
+    # kartın ÖZÜ də animasiyalı GIF kimi çıxarılır — hər banner kadrı üçün bütün kart
+    # (avatar/stats/mətn) yenidən çəkilir (bax: _render_frame aşağıda) və nəticə GIF
+    # kimi yığılır. Statik banner/bannersiz halda eynən əvvəlki kimi tək PNG qalır.
+    MAX_ANIM_FRAMES = 10
+    banner_images = []
+    durations = []
     if banner_path and os.path.exists(banner_path):
         try:
             raw = Image.open(banner_path)
-            # GIF animasiya: orta frame-i götür
-            if getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"):
-                n = getattr(raw, "n_frames", 1)
-                raw.seek(n // 2)
-            bi  = raw.convert("RGB")
-            bi  = ImageOps.fit(bi, (WIDTH, HEIGHT), Image.LANCZOS)
-            ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
-            img = Image.blend(bi, ov, 0.40)
+            is_gif_anim = (
+                (getattr(raw, "is_animated", False) or banner_path.lower().endswith(".gif"))
+                and getattr(raw, "n_frames", 1) > 1
+            )
+            if is_gif_anim:
+                n = raw.n_frames
+                step = max(1, n // MAX_ANIM_FRAMES)
+                indices = list(range(0, n, step))[:MAX_ANIM_FRAMES]
+                for idx in indices:
+                    raw.seek(idx)
+                    banner_images.append(raw.convert("RGB"))
+                    durations.append(raw.info.get("duration", 70))
+            else:
+                banner_images.append(raw.convert("RGB"))
         except Exception:
-            img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
-    else:
-        img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+            banner_images = []
+    if not banner_images:
+        banner_images = [None]  # bannersiz/xəta — gradient fallback-a işarədir
 
-    img  = img.convert("RGBA")
-    draw = ImageDraw.Draw(img)
-
-    # Tema rəngləri tətbiq et (default dəyərlər üzərinə yazılır)
+    # ── Kadrdan asılı olmayan hesablamalar (bir dəfə) ────────────────────────
     t_accent = theme_colors.get("accent", GOLD)   if theme_colors else GOLD
     t_panel  = theme_colors.get("panel",  PANEL)  if theme_colors else PANEL
     t_border = theme_colors.get("border", BORDER) if theme_colors else BORDER
     t_text2  = theme_colors.get("text2",  GRAY)   if theme_colors else GRAY
-
-    draw.rectangle([(0,0),(WIDTH-1,HEIGHT-1)], outline=t_accent, width=2)
-    # Üst rəngli şerid
-    draw.rectangle([(0,0),(WIDTH,4)], fill=t_accent)
 
     level, level_color = get_level_info(elo)
     matches        = wins + losses
@@ -168,114 +169,152 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
     f_coin   = _load_font(16, bold=True)
     f_small  = _load_font(11)
 
-    # ── Header şerid ─────────────────────────────────────────────────────────
-    draw.text((28, 18), "Nextlevelaz", font=f_brand, fill=t_accent)
-    draw.text((28, 34), t("profile.header", lang), font=f_title, fill=WHITE)
-
-    # Coin + AZN (sağ üst)
-    coin_text = str(coins)
-    bbox = draw.textbbox((0,0), coin_text, font=f_coin)
-    tw = bbox[2]-bbox[0]
-    ccd = 14
-    draw.ellipse([(WIDTH-28-tw-ccd-6, 20), (WIDTH-28-tw-6, 20+ccd)], fill=t_accent)
-    draw.text((WIDTH-28-tw, 18), coin_text, font=f_coin, fill=t_accent)
-    zm_val  = round(float(zm_balance or 0), 2)
-    zm_text = f"{zm_val:.1f} AZN"
-    bbox_zm = draw.textbbox((0,0), zm_text, font=f_coin)
-    draw.text((WIDTH-28-(bbox_zm[2]-bbox_zm[0]), 38), zm_text, font=f_coin, fill=(80,200,120))
-
-    # ── Avatar ────────────────────────────────────────────────────────────────
     av_size, av_x, av_y = 130, 28, 82
+    av = None
     if avatar_bytes:
         try:
             av = _make_circular_avatar(avatar_bytes, av_size)
-            img.paste(av, (av_x, av_y), av)
         except Exception:
-            pass
-    else:
-        draw.ellipse([(av_x, av_y),(av_x+av_size, av_y+av_size)], fill=PANEL, outline=BORDER, width=2)
+            av = None
 
-    # Çərçivə / level halqası
+    fr = None
     if frame_path and os.path.exists(frame_path):
         try:
-            fr  = Image.open(frame_path).convert("RGBA")
+            fr = Image.open(frame_path).convert("RGBA")
+        except Exception:
+            fr = None
+
+    def _render_frame(banner_img):
+        if banner_img is not None:
+            bi  = ImageOps.fit(banner_img, (WIDTH, HEIGHT), Image.LANCZOS)
+            ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
+            img = Image.blend(bi, ov, 0.40)
+        else:
+            img = _gradient(WIDTH, HEIGHT, BG_TOP, BG_BOTTOM)
+
+        img  = img.convert("RGBA")
+        draw = ImageDraw.Draw(img)
+
+        draw.rectangle([(0,0),(WIDTH-1,HEIGHT-1)], outline=t_accent, width=2)
+        # Üst rəngli şerid
+        draw.rectangle([(0,0),(WIDTH,4)], fill=t_accent)
+
+        # ── Header şerid ─────────────────────────────────────────────────────────
+        draw.text((28, 18), "Nextlevelaz", font=f_brand, fill=t_accent)
+        draw.text((28, 34), t("profile.header", lang), font=f_title, fill=WHITE)
+
+        # Coin + AZN (sağ üst)
+        coin_text = str(coins)
+        bbox = draw.textbbox((0,0), coin_text, font=f_coin)
+        tw = bbox[2]-bbox[0]
+        ccd = 14
+        draw.ellipse([(WIDTH-28-tw-ccd-6, 20), (WIDTH-28-tw-6, 20+ccd)], fill=t_accent)
+        draw.text((WIDTH-28-tw, 18), coin_text, font=f_coin, fill=t_accent)
+        zm_val  = round(float(zm_balance or 0), 2)
+        zm_text = f"{zm_val:.1f} AZN"
+        bbox_zm = draw.textbbox((0,0), zm_text, font=f_coin)
+        draw.text((WIDTH-28-(bbox_zm[2]-bbox_zm[0]), 38), zm_text, font=f_coin, fill=(80,200,120))
+
+        # ── Avatar ────────────────────────────────────────────────────────────────
+        if av is not None:
+            img.paste(av, (av_x, av_y), av)
+        else:
+            draw.ellipse([(av_x, av_y),(av_x+av_size, av_y+av_size)], fill=PANEL, outline=BORDER, width=2)
+
+        # Çərçivə / level halqası
+        if fr is not None:
             fx  = av_x + av_size//2 - fr.width//2
             fy  = av_y + av_size//2 - fr.height//2
             img.alpha_composite(fr, (fx, fy))
-        except Exception:
+        else:
             _ring(draw, av_x, av_y, av_size, level_color)
-    else:
-        _ring(draw, av_x, av_y, av_size, level_color)
 
-    # Level badge
-    bs = 40
-    bx, by = av_x + av_size - bs + 12, av_y + av_size - bs + 12
-    draw.ellipse([(bx,by),(bx+bs,by+bs)], fill=level_color, outline=BG_BOTTOM, width=3)
-    lt = str(level)
-    bbox = draw.textbbox((0,0), lt, font=f_lvl)
-    draw.text((bx+bs/2-(bbox[2]-bbox[0])/2, by+bs/2-(bbox[3]-bbox[1])/2-2), lt,
-              font=f_lvl, fill=(20,18,22))
+        # Level badge
+        bs = 40
+        bx, by = av_x + av_size - bs + 12, av_y + av_size - bs + 12
+        draw.ellipse([(bx,by),(bx+bs,by+bs)], fill=level_color, outline=BG_BOTTOM, width=3)
+        lt = str(level)
+        bbox = draw.textbbox((0,0), lt, font=f_lvl)
+        draw.text((bx+bs/2-(bbox[2]-bbox[0])/2, by+bs/2-(bbox[3]-bbox[1])/2-2), lt,
+                  font=f_lvl, fill=(20,18,22))
 
-    # ── Nick + ID + Level ─────────────────────────────────────────────────────
-    tx = av_x + av_size + 26
-    draw.text((tx, 90),  nick[:24],              font=f_nick,   fill=WHITE)
-    if title:
-        nick_bbox = draw.textbbox((tx, 90), nick[:24], font=f_nick)
-        draw.text((nick_bbox[2] + 12, 100), f"« {title[:20]} »", font=f_id, fill=GOLD)
-    draw.text((tx, 130), t("profile.so2id", lang, id=so2_id),   font=f_id,     fill=GRAY)
-    # Rank hesabla
+        # ── Nick + ID + Level ─────────────────────────────────────────────────────
+        tx = av_x + av_size + 26
+        draw.text((tx, 90),  nick[:24],              font=f_nick,   fill=WHITE)
+        if title:
+            nick_bbox = draw.textbbox((tx, 90), nick[:24], font=f_nick)
+            draw.text((nick_bbox[2] + 12, 100), f"« {title[:20]} »", font=f_id, fill=GOLD)
+        draw.text((tx, 130), t("profile.so2id", lang, id=so2_id),   font=f_id,     fill=GRAY)
+        rank_key = next((k for lo,hi,k in _rank_ranges if lo<=elo<hi), "rank.zenith")
+        rank_name = t(rank_key, lang)
+        draw.text((tx, 150), t("profile.level_rank", lang, level=level, rank=rank_name), font=f_elolbl, fill=level_color)
+
+        # ── Battle Pass badge ────────────────────────────────────────────────────
+        if pass_status in ("free", "premium"):
+            is_vip = pass_status == "premium"
+            badge_bg   = (40, 28, 0)   if is_vip else (20, 20, 30)
+            badge_bdr  = GOLD          if is_vip else (80, 80, 100)
+            badge_txt  = f"VIP PASS  Lv.{pass_level}"  if is_vip else f"FREE PASS  Lv.{pass_level}"
+            badge_col  = GOLD          if is_vip else (140, 140, 160)
+            star_col   = GOLD          if is_vip else (80, 80, 100)
+
+            f_badge = _load_font(11, bold=True)
+            tb = draw.textbbox((0,0), badge_txt, font=f_badge)
+            bw2 = (tb[2]-tb[0]) + 28
+            bh2 = 20
+            bx2, by2 = tx, 172
+
+            draw.rounded_rectangle([(bx2, by2),(bx2+bw2, by2+bh2)],
+                                   radius=4, fill=badge_bg, outline=badge_bdr, width=1)
+            # Star icon (premium: gold, free: muted)
+            sx, sy = bx2 + 9, by2 + bh2//2
+            star = [(sx,sy-5),(sx+2,sy-2),(sx+5,sy-2),(sx+3,sy),(sx+4,sy+4),
+                    (sx,sy+2),(sx-4,sy+4),(sx-3,sy),(sx-5,sy-2),(sx-2,sy-2)]
+            draw.polygon(star, fill=star_col)
+            draw.text((bx2 + 18, by2 + bh2//2), badge_txt, font=f_badge, fill=badge_col, anchor="lm")
+
+        # ELO (sağda)
+        ex = WIDTH - 220
+        draw.text((ex, 82),  t("profile.elo", lang),    font=f_elolbl, fill=GRAY)
+        draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
+        draw.text((ex, 140), f"{t('profile.kd', lang)}: {kd}", font=f_elolbl, fill=t_text2)
+
+        # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
+        # Ümumi statistika (ÜMUMİ paneli + Kill/Asist/Ölüm/K-D qutuları) qəsdən BURADA
+        # çəkilmir — bu, bannerin orta-aşağı hissəsini tamamilə örtürdü. Həmin məlumat
+        # "Stats" düyməsinin öz kartında (generate_stats_card, visual_cards.py) onsuz da
+        # tam göstərilir. Burada yalnız yuxarıdakı yığcam profil zolağı qalır, qalan
+        # bütün kart (aşağı ~2/3) banner üçün tam açıqdır.
+
+        # ── Footer ────────────────────────────────────────────────────────────────
+        draw.text((28, HEIGHT-26), "Nextlevelaz", font=_load_font(11), fill=GRAY)
+        draw.text((WIDTH-28, HEIGHT-26), "/stats → ətraflı statistika", font=_load_font(11), fill=t_text2, anchor="ra")
+
+        img = img.convert("RGB")
+        # Animasiyalı GIF-lərdə _finalize-in 2x upscale/downscale AA keçidi (hər kadr üçün
+        # ~0.7s) buraxılır — GIF formatı onsuz da 256-rəng palitrəsinə sıxışdırılır (quantize),
+        # ona görə əlavə hamarlama dəyəri azdır, sürət isə matçdan sonra /profile-ın tez
+        # cavab verməsi üçün vacibdir. Statik (tək kadrlı) kartda keyfiyyət tam saxlanılır.
+        if len(banner_images) > 1:
+            return img
+        return _finalize(img)
+
     _rank_ranges = [
         (0,900,"rank.spark1"),(900,1000,"rank.spark2"),(1000,1100,"rank.flame1"),(1100,1200,"rank.flame2"),
         (1200,1350,"rank.nova1"),(1350,1500,"rank.nova2"),(1500,1700,"rank.supernova"),(1700,9999,"rank.zenith"),
     ]
-    rank_key = next((k for lo,hi,k in _rank_ranges if lo<=elo<hi), "rank.zenith")
-    rank_name = t(rank_key, lang)
-    draw.text((tx, 150), t("profile.level_rank", lang, level=level, rank=rank_name), font=f_elolbl, fill=level_color)
 
-    # ── Battle Pass badge ────────────────────────────────────────────────────
-    if pass_status in ("free", "premium"):
-        is_vip = pass_status == "premium"
-        badge_bg   = (40, 28, 0)   if is_vip else (20, 20, 30)
-        badge_bdr  = GOLD          if is_vip else (80, 80, 100)
-        badge_txt  = f"VIP PASS  Lv.{pass_level}"  if is_vip else f"FREE PASS  Lv.{pass_level}"
-        badge_col  = GOLD          if is_vip else (140, 140, 160)
-        star_col   = GOLD          if is_vip else (80, 80, 100)
+    frames = [_render_frame(b) for b in banner_images]
 
-        f_badge = _load_font(11, bold=True)
-        tb = draw.textbbox((0,0), badge_txt, font=f_badge)
-        bw2 = (tb[2]-tb[0]) + 28
-        bh2 = 20
-        bx2, by2 = tx, 172
+    if len(frames) > 1:
+        gif_path = os.path.splitext(output_path)[0] + ".gif"
+        frames[0].save(
+            gif_path, format="GIF", save_all=True, append_images=frames[1:],
+            duration=durations if durations else 70, loop=0
+        )
+        return gif_path
 
-        draw.rounded_rectangle([(bx2, by2),(bx2+bw2, by2+bh2)],
-                               radius=4, fill=badge_bg, outline=badge_bdr, width=1)
-        # Star icon (premium: gold, free: muted)
-        sx, sy = bx2 + 9, by2 + bh2//2
-        star = [(sx,sy-5),(sx+2,sy-2),(sx+5,sy-2),(sx+3,sy),(sx+4,sy+4),
-                (sx,sy+2),(sx-4,sy+4),(sx-3,sy),(sx-5,sy-2),(sx-2,sy-2)]
-        draw.polygon(star, fill=star_col)
-        draw.text((bx2 + 18, by2 + bh2//2), badge_txt, font=f_badge, fill=badge_col, anchor="lm")
-
-    # ELO (sağda)
-    ex = WIDTH - 220
-    draw.text((ex, 82),  t("profile.elo", lang),    font=f_elolbl, fill=GRAY)
-    draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
-    draw.text((ex, 140), f"{t('profile.kd', lang)}: {kd}", font=f_elolbl, fill=t_text2)
-
-    # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
-    # Ümumi statistika (ÜMUMİ paneli + Kill/Asist/Ölüm/K-D qutuları) qəsdən BURADA
-    # çəkilmir — bu, bannerin orta-aşağı hissəsini tamamilə örtürdü. Həmin məlumat
-    # "Stats" düyməsinin öz kartında (generate_stats_card, visual_cards.py) onsuz da
-    # tam göstərilir. Burada yalnız yuxarıdakı yığcam profil zolağı qalır, qalan
-    # bütün kart (aşağı ~2/3) banner üçün tam açıqdır.
-
-    # ── Footer ────────────────────────────────────────────────────────────────
-    draw.text((28, HEIGHT-26), "Nextlevelaz", font=_load_font(11), fill=GRAY)
-    draw.text((WIDTH-28, HEIGHT-26), "/stats → ətraflı statistika", font=_load_font(11), fill=t_text2, anchor="ra")
-
-    draw = ImageDraw.Draw(img)  # refresh after alpha ops
-    img  = img.convert("RGB")
-    _finalize(img).save(output_path)
+    frames[0].save(output_path)
     return output_path
 
 
