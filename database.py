@@ -528,8 +528,20 @@ def init_db():
         )
     """)
     cursor.execute("PRAGMA table_info(match_history)")
-    if "map" not in [r[1] for r in cursor.fetchall()]:
+    _match_history_cols = [r[1] for r in cursor.fetchall()]
+    if "map" not in _match_history_cols:
         cursor.execute("ALTER TABLE match_history ADD COLUMN map TEXT DEFAULT NULL")
+    for _col in ("winner_kills", "winner_assists", "winner_deaths", "loser_kills", "loser_assists", "loser_deaths"):
+        if _col not in _match_history_cols:
+            cursor.execute(f"ALTER TABLE match_history ADD COLUMN {_col} TEXT DEFAULT NULL")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_claims (
+            discord_id INTEGER PRIMARY KEY,
+            streak INTEGER DEFAULT 0,
+            last_claim_at INTEGER
+        )
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS time_capsule_letters (
@@ -1461,6 +1473,103 @@ def spend_coins(discord_id, amount):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# GÜNDƏLİK MÜKAFAT — ardıcıl gün bonusu (streak) + gündəlik çarx (random bonus)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+DAILY_WHEEL_OUTCOMES = [
+    # (çəki, növ, min, max)
+    (50, "coins", 5, 15),
+    (25, "coins", 20, 40),
+    (15, "boost_card", 0, 0),
+    (7, "protect_card", 0, 0),
+    (3, "azn", 1, 1),
+]
+
+
+def get_daily_claim_status(discord_id):
+    """Oyunçunun gündəlik mükafatı bu gün artıq götürüb-götürmədiyini və cari seriyasını qaytarır."""
+    import datetime
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT streak, last_claim_at FROM daily_claims WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or row[1] is None:
+        return {"streak": row[0] if row else 0, "can_claim": True}
+    last_date = datetime.datetime.utcfromtimestamp(row[1]).date()
+    today = datetime.datetime.utcnow().date()
+    return {"streak": row[0], "can_claim": last_date != today}
+
+
+def claim_daily_reward(discord_id):
+    """Gündəlik giriş mükafatını götürür: ardıcıl gün sayına görə artan əsas bonus (streak,
+    max 100 coin) + gündəlik çarx fırlatması (random bonus — coin/ELO kartı/AZN). Gündə yalnız
+    bir dəfə işləyir (UTC tarixinə görə). Artıq götürülübsə {"already_claimed": True} qaytarır.
+    Bir gün buraxılırsa seriya sıfırlanır (1-dən başlayır)."""
+    import time
+    import datetime
+    import random as _random
+
+    now = int(time.time())
+    today = datetime.datetime.utcfromtimestamp(now).date()
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT streak, last_claim_at FROM daily_claims WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    streak, last_claim_at = row if row else (0, None)
+
+    if last_claim_at is not None:
+        last_date = datetime.datetime.utcfromtimestamp(last_claim_at).date()
+        if last_date == today:
+            conn.close()
+            return {"already_claimed": True, "streak": streak}
+        new_streak = streak + 1 if (today - last_date).days == 1 else 1
+    else:
+        new_streak = 1
+
+    streak_bonus = min(10 + (new_streak - 1) * 5, 100)
+    weights = [o[0] for o in DAILY_WHEEL_OUTCOMES]
+    _, kind, lo, hi = _random.choices(DAILY_WHEEL_OUTCOMES, weights=weights, k=1)[0]
+
+    result = {"already_claimed": False, "streak": new_streak, "streak_bonus": streak_bonus,
+              "wheel_kind": kind, "wheel_amount": 0}
+    coin_total = streak_bonus
+    if kind == "coins":
+        amount = _random.randint(lo, hi)
+        coin_total += amount
+        result["wheel_amount"] = amount
+    elif kind in ("boost_card", "protect_card"):
+        result["wheel_amount"] = 1
+    elif kind == "azn":
+        result["wheel_amount"] = hi
+
+    if coin_total:
+        cursor.execute("UPDATE players SET coins = coins + ? WHERE discord_id=?", (coin_total, discord_id))
+    if kind == "boost_card":
+        cursor.execute("UPDATE players SET boost50_cards = boost50_cards + 1 WHERE discord_id=?", (discord_id,))
+    elif kind == "protect_card":
+        cursor.execute("UPDATE players SET protect_cards = protect_cards + 1 WHERE discord_id=?", (discord_id,))
+    elif kind == "azn":
+        cursor.execute("UPDATE players SET zm_balance = zm_balance + ? WHERE discord_id=?", (result["wheel_amount"], discord_id))
+
+    if row:
+        cursor.execute("UPDATE daily_claims SET streak=?, last_claim_at=? WHERE discord_id=?", (new_streak, now, discord_id))
+    else:
+        cursor.execute("INSERT INTO daily_claims (discord_id, streak, last_claim_at) VALUES (?, ?, ?)", (discord_id, new_streak, now))
+
+    cursor.execute("SELECT coins, zm_balance FROM players WHERE discord_id=?", (discord_id,))
+    bal_row = cursor.fetchone()
+    result["coin_total"] = coin_total
+    result["new_coin_balance"] = bal_row[0] if bal_row else None
+    result["new_azn_balance"] = bal_row[1] if bal_row else None
+
+    conn.commit()
+    conn.close()
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MARKET — kosmetik inventar (banner/çərçivə, coin) + ELO kartları (AZN)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1608,25 +1717,37 @@ def get_boost_card_counts(discord_id):
 
 
 def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, winner_elo_after,
-                          loser_elo_before, loser_elo_after, match_number=None, map_name=None):
+                          loser_elo_before, loser_elo_after, match_number=None, map_name=None,
+                          winner_kills=None, winner_assists=None, winner_deaths=None,
+                          loser_kills=None, loser_assists=None, loser_deaths=None):
     """
     match_type: "1v1" veya "5v5"
     winner_ids, loser_ids: discord_id siyahÄ±sÄ± (1v1 Ã¼Ã§Ã¼n tÉ™k elementli)
     winner_elo_before/after, loser_elo_before/after: hÉ™r oyunÃ§unun ELO-su, ids ilÉ™ eyni sÄ±rada
+    winner_kills/assists/deaths, loser_kills/assists/deaths: (optional) hər oyunçunun bu matçdakı
+    K/A/D-si, ids ilə eyni sırada — scan təsdiqlənməyibsə None qalır (bax: get_player_match_history,
+    ELO/K-D trend qrafiki üçün istifadə olunur).
     """
     import json as _json
     import time as _time
+
+    def _dump(values):
+        return _json.dumps(values) if values is not None else None
+
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
         """INSERT INTO match_history
            (match_type, played_at, match_number, winner_ids, loser_ids,
-            winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, map)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, map,
+            winner_kills, winner_assists, winner_deaths, loser_kills, loser_assists, loser_deaths)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (match_type, int(_time.time()), match_number,
          _json.dumps(winner_ids), _json.dumps(loser_ids),
          _json.dumps(winner_elo_before), _json.dumps(winner_elo_after),
-         _json.dumps(loser_elo_before), _json.dumps(loser_elo_after), map_name)
+         _json.dumps(loser_elo_before), _json.dumps(loser_elo_after), map_name,
+         _dump(winner_kills), _dump(winner_assists), _dump(winner_deaths),
+         _dump(loser_kills), _dump(loser_assists), _dump(loser_deaths))
     )
     conn.commit()
     conn.close()
@@ -1714,16 +1835,21 @@ def get_player_match_history(discord_id, limit=10):
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, match_type, played_at, match_number, winner_ids, loser_ids, "
-        "winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after "
+        "winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, "
+        "winner_kills, winner_assists, winner_deaths, loser_kills, loser_assists, loser_deaths "
         "FROM match_history ORDER BY played_at DESC"
     )
     rows = cursor.fetchall()
     conn.close()
 
+    def _load(json_str):
+        return _json.loads(json_str) if json_str else None
+
     results = []
     for row in rows:
         (mid, match_type, played_at, match_number, winner_ids_json, loser_ids_json,
-         w_before_json, w_after_json, l_before_json, l_after_json) = row
+         w_before_json, w_after_json, l_before_json, l_after_json,
+         w_kills_json, w_assists_json, w_deaths_json, l_kills_json, l_assists_json, l_deaths_json) = row
         winner_ids = _json.loads(winner_ids_json)
         loser_ids = _json.loads(loser_ids_json)
 
@@ -1732,11 +1858,13 @@ def get_player_match_history(discord_id, limit=10):
             elo_before = _json.loads(w_before_json)[idx]
             elo_after = _json.loads(w_after_json)[idx]
             won = True
+            kills_list, assists_list, deaths_list = _load(w_kills_json), _load(w_assists_json), _load(w_deaths_json)
         elif discord_id in loser_ids:
             idx = loser_ids.index(discord_id)
             elo_before = _json.loads(l_before_json)[idx]
             elo_after = _json.loads(l_after_json)[idx]
             won = False
+            kills_list, assists_list, deaths_list = _load(l_kills_json), _load(l_assists_json), _load(l_deaths_json)
         else:
             continue
 
@@ -1745,6 +1873,9 @@ def get_player_match_history(discord_id, limit=10):
             "played_at": played_at,
             "match_number": match_number,
             "won": won,
+            "kills": kills_list[idx] if kills_list else None,
+            "assists": assists_list[idx] if assists_list else None,
+            "deaths": deaths_list[idx] if deaths_list else None,
             "elo_before": elo_before,
             "elo_after": elo_after,
             "elo_change": elo_after - elo_before,

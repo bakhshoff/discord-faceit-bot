@@ -56,6 +56,19 @@ def _bar(draw, x, y, h, color):
     draw.rectangle([(x, y + 8), (x + 10, y + h - 8)], fill=color)
 
 
+HEAT_YELLOW = (224, 178, 58)
+
+
+def _heat_color(win_rate_pct):
+    """Qazanma faizini (0-100) RED → YELLOW → GREEN heatmap rənginə çevirir."""
+    t = max(0.0, min(1.0, win_rate_pct / 100))
+    if t <= 0.5:
+        a, b, local_t = RED, HEAT_YELLOW, t / 0.5
+    else:
+        a, b, local_t = HEAT_YELLOW, GREEN, (t - 0.5) / 0.5
+    return tuple(int(a[i] + (b[i] - a[i]) * local_t) for i in range(3))
+
+
 # ── MATC TARIXCESi ──────────────────────────────────────────────────────────
 
 def generate_match_history_card(history, output_path):
@@ -542,7 +555,7 @@ def generate_map_stats_card(nick, map_stats, output_path):
                 draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=(21, 19, 25))
             total = s["wins"] + s["losses"]
             wr = round(s["wins"] / total * 100, 1) if total else 0.0
-            col = GREEN if wr >= 50 else RED
+            col = _heat_color(wr) if total else GRAY
             _bar(draw, 20, y, ROW_H, col)
             draw.text((40, y + 8), map_name, font=_font(15, True), fill=WHITE)
             draw.text((40, y + 26), f"{s['wins']}Q / {s['losses']}M", font=_font(12), fill=GRAY)
@@ -561,8 +574,11 @@ def generate_map_stats_card(nick, map_stats, output_path):
 
 # ── ELO İNKİŞAF QRAFİKİ ─────────────────────────────────────────────────────
 
-def generate_elo_chart_card(nick, history, output_path):
-    """history: xronoloji sırada [{"match_number": int, "elo_after": int}, ...]"""
+def generate_elo_chart_card(nick, history, output_path, kd_history=None):
+    """history: xronoloji sırada [{"match_number": int, "elo_after": int}, ...]
+    kd_history: (optional) eyni uzunluqda, eyni sırada [{"kd": float|None}, ...] — mövcud olan
+    (None olmayan) nöqtələr arasında ayrıca normallaşdırılmış K/D xətti (mavi) çəkilir — köhnə
+    matçlarda per-match K/A/D saxlanmayıb, o nöqtələr sadəcə keçilir (bax: get_player_match_history)."""
     H = 320
     img = _bg(H)
     draw = ImageDraw.Draw(img)
@@ -618,7 +634,105 @@ def generate_elo_chart_card(nick, history, output_path):
     gain_color = GREEN if gain >= 0 else RED
     draw.text((WIDTH - 28, 40), gain_txt, font=_font(14, True), fill=gain_color, anchor="rm")
 
+    CYAN = (84, 196, 224)
+    has_kd_line = False
+    if kd_history:
+        kd_raw = [(i, h.get("kd")) for i, h in enumerate(kd_history) if h.get("kd") is not None]
+        if len(kd_raw) >= 2:
+            has_kd_line = True
+            kd_values = [v for _, v in kd_raw]
+            min_kd, max_kd = min(kd_values), max(kd_values)
+            if min_kd == max_kd:
+                min_kd -= 0.5
+                max_kd += 0.5
+            kd_pad = (max_kd - min_kd) * 0.15
+            min_kd -= kd_pad
+            max_kd += kd_pad
+
+            def kd_xy(i, val):
+                x = PAD_L + (i / max(len(history) - 1, 1)) * plot_w
+                y = PAD_T + plot_h - ((val - min_kd) / (max_kd - min_kd)) * plot_h
+                return x, y
+
+            kd_points = [kd_xy(i, v) for i, v in kd_raw]
+            for a, b in zip(kd_points, kd_points[1:]):
+                draw.line([a, b], fill=CYAN, width=2)
+            for x, y in kd_points:
+                draw.ellipse([x - 3, y - 3, x + 3, y + 3], fill=CYAN, outline=WHITE, width=1)
+
     draw.text((28, H - 22), "Nextlevelaz", font=_font(10), fill=GRAY)
+    if has_kd_line:
+        ly = 58
+        lx = WIDTH - 28
+        draw.text((lx, ly), "K/D", font=_font(10), fill=GRAY, anchor="rm")
+        lx -= _tw(draw, "K/D", _font(10)) + 10
+        draw.ellipse([lx - 6, ly - 3, lx, ly + 3], fill=CYAN)
+        lx -= 14
+        draw.text((lx, ly), "ELO", font=_font(10), fill=GRAY, anchor="rm")
+        lx -= _tw(draw, "ELO", _font(10)) + 10
+        draw.ellipse([lx - 6, ly - 3, lx, ly + 3], fill=GOLD)
+    _finalize(img).save(output_path)
+    return output_path
+
+
+# ── OYUNÇU MÜQAYİSƏSİ ───────────────────────────────────────────────────────
+
+def generate_compare_card(nick_a, stats_a, nick_b, stats_b, output_path):
+    """İki oyunçunun 5v5 statistikasını yan-yana müqayisə edir.
+    stats_a/stats_b: {"elo", "peak_elo", "wins", "losses", "kills", "assists", "deaths"}.
+    Hər sətirdə üstün olan tərəf yaşıl, geridə qalan boz rənglə işarələnir."""
+    ROW_H = 46
+    HEADER = 100
+    FOOTER = 30
+
+    def _wr(s):
+        total = s["wins"] + s["losses"]
+        return round(s["wins"] / total * 100, 1) if total else 0.0
+
+    def _kd(s):
+        return round(s["kills"] / max(s["deaths"], 1), 2)
+
+    rows = [
+        ("ELO", stats_a["elo"], stats_b["elo"]),
+        ("Ən yüksək ELO", stats_a["peak_elo"], stats_b["peak_elo"]),
+        ("Qələbə faizi", _wr(stats_a), _wr(stats_b)),
+        ("Qalib", stats_a["wins"], stats_b["wins"]),
+        ("Məğlub", stats_a["losses"], stats_b["losses"]),
+        ("K/D", _kd(stats_a), _kd(stats_b)),
+    ]
+    height = HEADER + len(rows) * ROW_H + FOOTER
+
+    img = _bg(height)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=10, outline=GOLD, width=2)
+
+    draw.text((28, 14), "Nextlevelaz", font=_font(12, True), fill=GOLD)
+    draw.text((28, 30), "OYUNÇU MÜQAYİSƏSİ", font=_font(22, True), fill=WHITE)
+
+    mid = WIDTH // 2
+    draw.text((28, 66), nick_a, font=_font(18, True), fill=WHITE)
+    vs_w = _tw(draw, "VS", _font(14, True))
+    draw.text((mid - vs_w // 2, 68), "VS", font=_font(14, True), fill=GRAY)
+    nb_w = _tw(draw, nick_b, _font(18, True))
+    draw.text((WIDTH - 28 - nb_w, 66), nick_b, font=_font(18, True), fill=WHITE)
+    draw.line([(18, HEADER - 6), (WIDTH - 18, HEADER - 6)], fill=BORDER, width=1)
+
+    y = HEADER
+    for i, (label, va, vb) in enumerate(rows):
+        if i % 2 == 0:
+            draw.rectangle([(2, y), (WIDTH - 2, y + ROW_H - 1)], fill=(21, 19, 25))
+        higher_a = va > vb
+        higher_b = vb > va
+        col_a = GREEN if higher_a else (GRAY if higher_b else WHITE)
+        col_b = GREEN if higher_b else (GRAY if higher_a else WHITE)
+
+        cy = y + ROW_H // 2
+        draw.text((mid, cy), label, font=_font(13), fill=GRAY, anchor="mm")
+        draw.text((28, cy), str(va), font=_font(16, True), fill=col_a, anchor="lm")
+        draw.text((WIDTH - 28, cy), str(vb), font=_font(16, True), fill=col_b, anchor="rm")
+        y += ROW_H
+
+    draw.text((28, height - FOOTER + 6), "Nextlevelaz", font=_font(10), fill=GRAY)
     _finalize(img).save(output_path)
     return output_path
 

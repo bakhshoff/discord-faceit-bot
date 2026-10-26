@@ -58,6 +58,7 @@ from database import (
     get_inventory, owns_item, add_to_inventory, set_active_banner, get_active_banner,
     set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
     add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
+    claim_daily_reward, is_in_queue_5v5,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_daily_news, generate_personal_coach_report
@@ -76,7 +77,7 @@ from visual_cards import (
     generate_map_stats_card,
     generate_activity_card, generate_elo_chart_card,
     generate_announcement_card, generate_chat_activity_card,
-    generate_season_reward_card,
+    generate_season_reward_card, generate_compare_card,
     RANKS, get_rank
 )
 import requests
@@ -480,6 +481,29 @@ async def _rotate_season_for_mode(mode, rewards, lb_channel_id, channel_name_pre
                         f"Bütün {mode_label} oyunçularının ELO/statistikası sıfırlandı — yeni sezon başladı.",
                 file=discord.File(card_path, filename="season_reward.png")
             )
+
+    all_participants = get_season_leaderboard(current["id"], limit=9999)
+    for i, (nick, so2_id, elo_gained, kills, assists, deaths, wins, losses, discord_id) in enumerate(all_participants):
+        user = bot.get_user(discord_id)
+        if not user:
+            try:
+                user = await bot.fetch_user(discord_id)
+            except (discord.NotFound, discord.HTTPException):
+                continue
+        gained_txt = f"{'+' if elo_gained >= 0 else ''}{elo_gained}"
+        try:
+            await user.send(
+                f"{icon} **{mode_label} Sezon #{current['season_number']} başa çatdı!**\n\n"
+                f"🏅 Sıralamanız: **#{i+1}** / {len(all_participants)}\n"
+                f"📈 ELO dəyişimi: **{gained_txt}**\n"
+                f"✅ Qalib: **{wins}**  ❌ Məğlub: **{losses}**\n"
+                f"🎯 K/A/D: **{kills}/{assists}/{deaths}**\n\n"
+                "Yeni sezon artıq başladı — uğurlar!"
+            )
+            await asyncio.sleep(0.4)
+        except discord.Forbidden:
+            pass
+
     close_season(current["id"])
     reset_all_players_for_new_season(mode=mode)
     new_season = get_or_create_current_season(mode)
@@ -1420,11 +1444,18 @@ class MatchResultView5v5(discord.ui.View):
                     inline=False
                 )
 
+        has_full_combat_stats = all(did in stats_by_id for did in winner_ids + loser_ids)
         await asyncio.to_thread(
             record_match_history, "5v5", winner_ids, loser_ids,
             [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
             [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
-            self.match_number, selected_map
+            self.match_number, selected_map,
+            winner_kills=[stats_by_id[did]["kills"] for did in winner_ids] if has_full_combat_stats else None,
+            winner_assists=[stats_by_id[did]["assists"] for did in winner_ids] if has_full_combat_stats else None,
+            winner_deaths=[stats_by_id[did]["deaths"] for did in winner_ids] if has_full_combat_stats else None,
+            loser_kills=[stats_by_id[did]["kills"] for did in loser_ids] if has_full_combat_stats else None,
+            loser_assists=[stats_by_id[did]["assists"] for did in loser_ids] if has_full_combat_stats else None,
+            loser_deaths=[stats_by_id[did]["deaths"] for did in loser_ids] if has_full_combat_stats else None,
         )
         asyncio.create_task(_update_live_board_message_5v5(f"5v5 Matç No{self.match_number}: **{winner_label}** qalib gəldi"))
 
@@ -2128,6 +2159,25 @@ class MatchmakingView5v5(discord.ui.View):
             await interaction.response.send_message("⚠️ Siz artıq 5v5 sırasındasınız.", ephemeral=True)
             return
 
+        team = get_duo_team_for_player(discord_id)
+        if team:
+            partner_id = team["member_id"] if team["owner_id"] == discord_id else team["owner_id"]
+            if partner_id and not is_in_queue_5v5(partner_id):
+                partner_user = bot.get_user(partner_id)
+                if not partner_user:
+                    try:
+                        partner_user = await bot.fetch_user(partner_id)
+                    except (discord.NotFound, discord.HTTPException):
+                        partner_user = None
+                if partner_user:
+                    try:
+                        await partner_user.send(
+                            f"🔔 Komanda yoldaşınız **{nick}** 5v5 sırasına qoşuldu! Siz də indi qoşulsanız "
+                            "avtomatik eyni komandaya düşəcəksiniz."
+                        )
+                    except discord.Forbidden:
+                        pass
+
         size = queue_size_5v5()
         active_count = count_active_matches(mode="5v5")
         if active_count >= MAX_PARALLEL_MATCHES:
@@ -2462,6 +2512,7 @@ class StatsMenuView(_ProfileSubMenuBase):
             ("btn.chart", "📈", self.elo_chart_btn),
             ("btn.maps", "🗺️", self.maps_btn),
             ("btn.coach", "🤖", self.coach_btn),
+            ("btn.compare", "🆚", self.compare_btn),
         ])
 
     async def stats_5v5_btn(self, interaction: discord.Interaction):
@@ -2521,6 +2572,14 @@ class StatsMenuView(_ProfileSubMenuBase):
         embed.set_footer(text=f"Son {len(history)} matç əsasında")
         await interaction.followup.send(embed=embed, ephemeral=True)
 
+    async def compare_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await interaction.response.send_message(
+            "Müqayisə etmək istədiyiniz oyunçunu seçin:",
+            view=CompareUserSelectView(self.discord_id), ephemeral=True
+        )
+
 
 class RewardsMenuView(_ProfileSubMenuBase):
     def __init__(self, discord_id, lang="az"):
@@ -2530,6 +2589,7 @@ class RewardsMenuView(_ProfileSubMenuBase):
             ("btn.market", "🛒", self.market_btn),
             ("btn.career", "🛤️", self.career_btn),
             ("btn.team", "🤝", self.team_btn),
+            ("btn.daily_bonus", "🎁", self.daily_btn),
         ])
 
     async def coins_btn(self, interaction: discord.Interaction):
@@ -2575,6 +2635,39 @@ class RewardsMenuView(_ProfileSubMenuBase):
         if not await self._guard(interaction):
             return
         await _render_team_panel(interaction, self.discord_id)
+
+    async def daily_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        result = claim_daily_reward(self.discord_id)
+        if result["already_claimed"]:
+            await interaction.response.send_message(
+                "⏳ Bugünkü gündəlik mükafatınızı artıq götürmüsünüz. Sabah yenidən cəhd edin!\n"
+                f"🔥 Cari seriya: **{result['streak']} gün**",
+                ephemeral=True
+            )
+            return
+
+        wheel_lines = {
+            "coins": f"🪙 Çarx bonusu: **+{result['wheel_amount']} coin**",
+            "boost_card": "🚀 Çarx bonusu: **ELO Boost kartı x1**",
+            "protect_card": "🛡️ Çarx bonusu: **ELO Qoruma kartı x1**",
+            "azn": f"💵 Çarx bonusu: **+{result['wheel_amount']} AZN**",
+        }
+        balance_line = f"💰 Yeni balans: **{result['new_coin_balance']} coin**"
+        if result["wheel_kind"] == "azn":
+            balance_line += f" / **{result['new_azn_balance']} AZN**"
+        embed = discord.Embed(
+            title="🎁 Gündəlik Mükafat",
+            description=(
+                f"🔥 Seriya: **{result['streak']} gün** (+{result['streak_bonus']} coin əsas bonus)\n"
+                f"{wheel_lines.get(result['wheel_kind'], '')}\n\n"
+                f"{balance_line}"
+            ),
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text="Hər gün geri qayıdın — seriyanız nə qədər uzun olsa, bonus bir o qədər böyükdür!")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class SeasonHistoryView(discord.ui.View):
@@ -4422,9 +4515,52 @@ async def _render_elo_chart(interaction: discord.Interaction, discord_id: int, n
     await interaction.response.defer(ephemeral=True)
     history = list(reversed(get_player_match_history(discord_id, limit=30)))
     chart_data = [{"match_number": h["match_number"], "elo_after": h["elo_after"]} for h in history]
+    kd_data = [
+        {"kd": round(h["kills"] / max(h["deaths"], 1), 2) if h["kills"] is not None else None}
+        for h in history
+    ]
     card_path = os.path.join(DATA_DIR or ".", f"elo_chart_{discord_id}.png")
-    await asyncio.to_thread(generate_elo_chart_card, nick, chart_data, card_path)
+    await asyncio.to_thread(generate_elo_chart_card, nick, chart_data, card_path, kd_data)
     await interaction.followup.send(file=discord.File(card_path, filename="elo_chart.png"), ephemeral=True)
+
+
+class CompareUserSelectView(discord.ui.View):
+    """Stats → Müqayisə düyməsindən açılan, müqayisə ediləcək oyunçunu seçmək üçün."""
+    def __init__(self, discord_id):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        select = discord.ui.UserSelect(placeholder="Müqayisə ediləcək oyunçunu seçin...")
+        select.callback = self._on_pick
+        self.user_select = select
+        self.add_item(select)
+
+    async def _on_pick(self, interaction: discord.Interaction):
+        if interaction.user.id != self.discord_id:
+            await interaction.response.send_message("❌ Bu panel sizin üçün deyil.", ephemeral=True)
+            return
+        target = self.user_select.values[0]
+        if target.id == self.discord_id:
+            await interaction.response.send_message("❌ Özünüzlə müqayisə edə bilməzsiniz.", ephemeral=True)
+            return
+        if not get_player(target.id):
+            await interaction.response.send_message("❌ Bu oyunçu qeydiyyatdan keçməyib.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+        await _render_compare(interaction, self.discord_id, target.id)
+
+
+async def _render_compare(interaction: discord.Interaction, discord_id_a: int, discord_id_b: int):
+    player_a = get_player(discord_id_a)
+    player_b = get_player(discord_id_b)
+    ensure_5v5_stats_row(discord_id_a)
+    ensure_5v5_stats_row(discord_id_b)
+    stats_a = get_player_5v5(discord_id_a)
+    stats_b = get_player_5v5(discord_id_b)
+    card_path = os.path.join(DATA_DIR or ".", f"compare_{discord_id_a}_{discord_id_b}.png")
+    await asyncio.to_thread(generate_compare_card, player_a[1], stats_a, player_b[1], stats_b, card_path)
+    await interaction.followup.send(file=discord.File(card_path, filename="compare.png"), ephemeral=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -5301,6 +5437,10 @@ PANEL_CATEGORIES = {
             ("👤 Profil → Mükafatlar → Komanda", "Komanda qurma/dəvət/ləğv indi tam buton-əsaslı, profildən də əlçatandır"),
             ("🤝 Komanda matchmaking qarantiyası", "Komanda üzvləri eyni anda sırada olanda avtomatik eyni tərəfə düşür"),
             ("📉 Qeyri-aktiv ELO azalması", f"{INACTIVITY_DECAY_DAYS}+ gün 5v5 oynamayanların ELO-su hər {INACTIVITY_DECAY_INTERVAL_DAYS} gündə {INACTIVITY_DECAY_AMOUNT} azalır (min. başlanğıc ELO)"),
+            ("👤 Profil → Stats → Müqayisə", "İki oyunçunun ELO/W-L/K-D statistikasını yan-yana vizual kartda müqayisə edir"),
+            ("👤 Profil → Mükafatlar → Gündəlik Bonus", "Gündə 1 dəfə: ardıcıl gün seriyasına görə artan bonus + gündəlik çarx (coin/ELO kartı/AZN)"),
+            ("🗺️ Xəritə İstiliyi", "Xəritə statistikası indi qazanma faizinə görə qırmızı→sarı→yaşıl rənglə (heatmap) göstərilir"),
+            ("📈 ELO/K-D Trend Qrafiki", "Stats → Qrafik indi ELO ilə yanaşı son matçların K/D trendini də (mavi xətt) göstərir"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
             ("🚫 Xəritə Veto", "Hər komandanın kapitanı matç başladıqdan sonra xəritəni 1 dəfə vetolaya bilər"),
             ("🎫 Ticket sistemi", "Ticket kanalında mövzu seçərək (klan qoşulma / Gold / Boost / Emulator) özəl ticket kanalı açırsınız"),
