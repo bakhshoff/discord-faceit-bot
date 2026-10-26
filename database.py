@@ -568,6 +568,20 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS daily_task_progress (
+            discord_id INTEGER NOT NULL,
+            date_key TEXT NOT NULL,
+            play_progress INTEGER DEFAULT 0,
+            win_progress INTEGER DEFAULT 0,
+            kill_progress INTEGER DEFAULT 0,
+            claimed_play INTEGER DEFAULT 0,
+            claimed_win INTEGER DEFAULT 0,
+            claimed_kill INTEGER DEFAULT 0,
+            PRIMARY KEY (discord_id, date_key)
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS time_capsule_letters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             discord_id INTEGER NOT NULL,
@@ -1788,6 +1802,63 @@ def claim_daily_reward(discord_id):
     conn.commit()
     conn.close()
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# GÜNDƏLİK TAPŞIRIQLAR — 3 sabit tapşırıq, hər gün (UTC tarixinə görə) sıfırlanır
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def get_daily_task_progress(discord_id, date_key):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT play_progress, win_progress, kill_progress, claimed_play, claimed_win, claimed_kill "
+        "FROM daily_task_progress WHERE discord_id=? AND date_key=?",
+        (discord_id, date_key)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return {"play": 0, "win": 0, "kill": 0, "claimed_play": False, "claimed_win": False, "claimed_kill": False}
+    return {
+        "play": row[0], "win": row[1], "kill": row[2],
+        "claimed_play": bool(row[3]), "claimed_win": bool(row[4]), "claimed_kill": bool(row[5]),
+    }
+
+
+def advance_daily_task(discord_id, date_key, won, kills):
+    """Hər 5v5 matçdan sonra çağırılır — gündəlik tapşırıq tərəqqisini artırır (upsert)."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO daily_task_progress (discord_id, date_key, play_progress, win_progress, kill_progress) "
+        "VALUES (?, ?, 1, ?, ?) "
+        "ON CONFLICT(discord_id, date_key) DO UPDATE SET "
+        "play_progress = play_progress + 1, "
+        "win_progress = win_progress + excluded.win_progress, "
+        "kill_progress = kill_progress + excluded.kill_progress",
+        (discord_id, date_key, 1 if won else 0, kills)
+    )
+    conn.commit()
+    conn.close()
+
+
+def claim_daily_task(discord_id, date_key, task_id):
+    """`task_id`: 'play'|'win'|'kill'. Artıq claim edilibsə (və ya sütun adı etibarsızdırsa)
+    False qaytarır — idempotentdir."""
+    if task_id not in ("play", "win", "kill"):
+        return False
+    col = f"claimed_{task_id}"
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"UPDATE daily_task_progress SET {col}=1 WHERE discord_id=? AND date_key=? AND {col}=0",
+        (discord_id, date_key)
+    )
+    conn.commit()
+    ok = cursor.rowcount > 0
+    conn.close()
+    return ok
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -59,6 +59,7 @@ from database import (
     set_active_frame, get_active_frame, get_zm_balance, add_zm, spend_zm,
     add_boost_cards, get_boost_card_counts, get_weekly_elo_gainers,
     claim_daily_reward, is_in_queue_5v5,
+    get_daily_task_progress, advance_daily_task, claim_daily_task,
     set_target_elo, get_target_elo, set_birthday, get_birthday,
     get_todays_birthday_players, mark_birthday_announced,
     set_profile_theme, get_profile_theme,
@@ -1383,6 +1384,7 @@ class MatchResultView5v5(discord.ui.View):
         current_season = get_or_create_current_season("5v5")
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
         is_midnight_bonus = MIDNIGHT_BONUS_START_HOUR <= now.hour < MIDNIGHT_BONUS_END_HOUR
+        task_date_key = now.strftime("%Y-%m-%d")
 
         streak_milestones = []  # [(nick, streak), ...] — matç bitəndən sonra announcements-a elan olunur
         rank_ups = []  # [(nick, rank_name, emoji), ...]
@@ -1412,6 +1414,7 @@ class MatchResultView5v5(discord.ui.View):
             if p5 and p5["wins"] + p5["losses"] == 1:
                 first_match_players.append((did, p["nick"]))
             _check_achievements(did, p5, r["new_elo"], streak=streak)
+            advance_daily_task(did, task_date_key, won=True, kills=stats_by_id.get(did, {}).get("kills", 0))
 
         for p, r in zip(loser_team, results["losers"]):
             did = p["discord_id"]
@@ -1433,6 +1436,7 @@ class MatchResultView5v5(discord.ui.View):
             if p5 and p5["wins"] + p5["losses"] == 1:
                 first_match_players.append((did, p["nick"]))
             _check_achievements(did, p5, r["new_elo"])
+            advance_daily_task(did, task_date_key, won=False, kills=stats_by_id.get(did, {}).get("kills", 0))
 
         if first_match_players and interaction.guild:
             first_match_role = await _get_or_create_first_match_role(interaction.guild)
@@ -2038,6 +2042,17 @@ PROFILE_THEMES = {
     "cyan": (50, 170, 200),
     "rose": (210, 80, 150),
 }
+
+DAILY_TASKS = [
+    {"id": "play", "label": "1 matç oyna", "target": 1, "reward": 15, "icon": "🎮"},
+    {"id": "win", "label": "2 matç qazan", "target": 2, "reward": 30, "icon": "🏆"},
+    {"id": "kill", "label": "10 kill et", "target": 10, "reward": 20, "icon": "🔫"},
+]
+
+
+def _today_key():
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
+    return now.strftime("%Y-%m-%d")
 
 
 def _check_achievements(did, p5, new_elo, streak=None):
@@ -2822,6 +2837,7 @@ class RewardsMenuView(_ProfileSubMenuBase):
             ("btn.career", "🛤️", self.career_btn),
             ("btn.team", "🤝", self.team_btn),
             ("btn.daily_bonus", "🎁", self.daily_btn),
+            ("btn.daily_tasks", "📋", self.daily_tasks_btn),
         ])
 
     async def coins_btn(self, interaction: discord.Interaction):
@@ -2840,7 +2856,8 @@ class RewardsMenuView(_ProfileSubMenuBase):
             return
         await interaction.response.defer(ephemeral=True)
         player = get_player(self.discord_id)
-        current = get_or_create_current_season()
+        stats5 = get_player_5v5(self.discord_id)
+        current = get_or_create_current_season("5v5")
         season_stat = get_season_stat(self.discord_id, current["id"])
         embed = discord.Embed(
             title=f"🛤️ {self._display_name(interaction)} — Karyera Yolu",
@@ -2849,8 +2866,8 @@ class RewardsMenuView(_ProfileSubMenuBase):
         created_at = player[21] if player and len(player) > 21 and player[21] else None
         if created_at:
             embed.add_field(name="📅 Qeydiyyat tarixi", value=f"<t:{created_at}:D>", inline=True)
-        embed.add_field(name="⛰️ Ən yüksək ELO", value=str(player[18]) if player and len(player) > 18 else "?", inline=True)
-        embed.add_field(name="🎮 Cəmi matç", value=str((player[4] or 0) + (player[5] or 0)) if player else "0", inline=True)
+        embed.add_field(name="⛰️ Ən yüksək ELO", value=str(stats5["peak_elo"]) if stats5 else "1000", inline=True)
+        embed.add_field(name="🎮 Cəmi matç", value=str(stats5["wins"] + stats5["losses"]) if stats5 else "0", inline=True)
         embed.add_field(
             name=f"🛤️ Sezon #{current['season_number']} (davam edir)",
             value=(f"{'+' if season_stat['elo_gained'] >= 0 else ''}{season_stat['elo_gained']} ELO — "
@@ -2859,7 +2876,6 @@ class RewardsMenuView(_ProfileSubMenuBase):
         )
         target_elo = get_target_elo(self.discord_id)
         if target_elo:
-            stats5 = get_player_5v5(self.discord_id)
             current_elo = stats5["elo"] if stats5 else 1000
             pct = max(0.0, min(1.0, current_elo / target_elo)) if target_elo > 0 else 0.0
             filled = int(pct * 10)
@@ -2871,7 +2887,7 @@ class RewardsMenuView(_ProfileSubMenuBase):
                 inline=False
             )
 
-        completed = get_completed_seasons()
+        completed = get_completed_seasons("5v5")
         view = SeasonHistoryView(completed) if completed else discord.utils.MISSING
         if completed:
             embed.set_footer(text="Aşağıdan keçmiş bir ELO sezonunu seçib final sıralamasına baxa bilərsiniz.")
@@ -2914,6 +2930,67 @@ class RewardsMenuView(_ProfileSubMenuBase):
         )
         embed.set_footer(text="Hər gün geri qayıdın — seriyanız nə qədər uzun olsa, bonus bir o qədər böyükdür!")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def daily_tasks_btn(self, interaction: discord.Interaction):
+        if not await self._guard(interaction):
+            return
+        await _render_daily_tasks(interaction, self.discord_id)
+
+
+async def _render_daily_tasks(interaction: discord.Interaction, discord_id: int):
+    date_key = _today_key()
+    progress = get_daily_task_progress(discord_id, date_key)
+    embed = discord.Embed(title="📋 Gündəlik Tapşırıqlar", color=discord.Color.from_rgb(80, 160, 255))
+    embed.set_footer(text="Hər gün (AZ vaxtı ilə) sıfırlanır")
+    for task in DAILY_TASKS:
+        cur = progress[task["id"]]
+        claimed = progress[f"claimed_{task['id']}"]
+        done = cur >= task["target"]
+        bar_len = 10
+        filled = min(bar_len, int(cur / task["target"] * bar_len)) if task["target"] else bar_len
+        bar = "🟩" * filled + "⬜" * (bar_len - filled)
+        status = "✅ Alındı" if claimed else ("🎁 Hazırdır — aşağıdan alın!" if done else f"{min(cur, task['target'])}/{task['target']}")
+        embed.add_field(
+            name=f"{task['icon']} {task['label']} (+{task['reward']} coin)",
+            value=f"{bar}\n{status}",
+            inline=False
+        )
+    view = DailyTasksClaimView(discord_id, progress, date_key)
+    await interaction.response.send_message(embed=embed, view=view if view.children else None, ephemeral=True)
+
+
+class DailyTasksClaimView(discord.ui.View):
+    """Tamamlanmış (amma hələ alınmamış) hər tapşırıq üçün bir "al" düyməsi göstərir."""
+    def __init__(self, discord_id, progress, date_key):
+        super().__init__(timeout=120)
+        self.discord_id = discord_id
+        self.date_key = date_key
+        for task in DAILY_TASKS:
+            cur = progress[task["id"]]
+            claimed = progress[f"claimed_{task['id']}"]
+            if cur >= task["target"] and not claimed:
+                btn = discord.ui.Button(label=f"{task['label']} — al", emoji=task["icon"], style=discord.ButtonStyle.success)
+                btn.callback = self._make_claim_callback(task)
+                self.add_item(btn)
+
+    def _make_claim_callback(self, task):
+        async def _callback(interaction: discord.Interaction):
+            if interaction.user.id != self.discord_id:
+                await interaction.response.send_message("❌ Bu panel sizin üçün deyil.", ephemeral=True)
+                return
+            ok = claim_daily_task(self.discord_id, self.date_key, task["id"])
+            if not ok:
+                await interaction.response.send_message("❌ Bu mükafat artıq alınıb.", ephemeral=True)
+                return
+            new_bal = add_coins(self.discord_id, task["reward"])
+            add_coin_log(self.discord_id, task["reward"], f"Gündəlik tapşırıq: {task['label']}", "earn", new_bal)
+            for child in self.children:
+                child.disabled = True
+            await interaction.response.edit_message(
+                content=f"✅ **{task['label']}** tapşırığı tamamlandı! +{task['reward']} coin qazandınız.",
+                embed=None, view=self
+            )
+        return _callback
 
 
 class SeasonHistoryView(discord.ui.View):
@@ -6390,6 +6467,7 @@ PANEL_CATEGORIES = {
             ("📉 Qeyri-aktiv ELO azalması", f"{INACTIVITY_DECAY_DAYS}+ gün 5v5 oynamayanların ELO-su hər {INACTIVITY_DECAY_INTERVAL_DAYS} gündə {INACTIVITY_DECAY_AMOUNT} azalır (min. başlanğıc ELO)"),
             ("👤 Profil → Stats → Müqayisə", "İki oyunçunun ELO/W-L/K-D statistikasını yan-yana vizual kartda müqayisə edir"),
             ("👤 Profil → Mükafatlar → Gündəlik Bonus", "Gündə 1 dəfə: ardıcıl gün seriyasına görə artan bonus + gündəlik çarx (coin/ELO kartı/AZN)"),
+            ("👤 Profil → Mükafatlar → Gündəlik Tapşırıqlar", "3 sabit gündəlik tapşırıq (oyna/qazan/kill et) — hər biri üçün ayrıca coin mükafatı"),
             ("🗺️ Xəritə İstiliyi", "Xəritə statistikası indi qazanma faizinə görə qırmızı→sarı→yaşıl rənglə (heatmap) göstərilir"),
             ("📈 ELO/K-D Trend Qrafiki", "Stats → Qrafik indi ELO ilə yanaşı son matçların K/D trendini də (mavi xətt) göstərir"),
             ("🛤️ Sezonlar", "Hər sezon bağlananda Top-3 mükafat alır, Karyera Yolu düyməsində tarixçə qalır"),
