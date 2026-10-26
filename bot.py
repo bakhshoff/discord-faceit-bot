@@ -144,6 +144,7 @@ PUBLIC_WEB_URL = os.environ.get("PUBLIC_WEB_URL", "https://discord-faceit-bot-pr
 MAX_PARALLEL_MATCHES = 2
 
 SOCIAL_CHANNEL_ID = None
+FACEIT_INFO_CHANNEL_ID = None
 SOCIAL_LINKS = {
     "youtube": "https://www.youtube.com/@nextlevelaze",
     "tiktok": "https://www.tiktok.com/@nextlevelaz",
@@ -285,6 +286,19 @@ async def _get_social_channel():
         return await bot.fetch_channel(SOCIAL_CHANNEL_ID)
     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
         print(f"[SOCIAL_CHANNEL] Kanal tapılmadı: {SOCIAL_CHANNEL_ID}", flush=True)
+        return None
+
+
+async def _get_faceit_info_channel():
+    if not FACEIT_INFO_CHANNEL_ID:
+        return None
+    channel = bot.get_channel(FACEIT_INFO_CHANNEL_ID)
+    if channel:
+        return channel
+    try:
+        return await bot.fetch_channel(FACEIT_INFO_CHANNEL_ID)
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        print(f"[FACEIT_INFO_CHANNEL] Kanal tapılmadı: {FACEIT_INFO_CHANNEL_ID}", flush=True)
         return None
 
 
@@ -1993,8 +2007,8 @@ async def _start_one_5v5_match(channel, guild) -> bool:
 
     set_active_match_message(match_number, sent_message.id, channel.id, thread_id)
 
-    social_channel = await _get_social_channel()
-    if social_channel:
+    faceit_info_channel = await _get_faceit_info_channel()
+    if faceit_info_channel:
         announce_embed = discord.Embed(
             title=f"🎯 Yeni 5v5 Matç Başladı — No{match_number}",
             description=(
@@ -2015,7 +2029,7 @@ async def _start_one_5v5_match(channel, guild) -> bool:
         )
         announce_embed.set_footer(text="Nextlevelaz — 5v5")
         try:
-            await social_channel.send(embed=announce_embed)
+            await faceit_info_channel.send(embed=announce_embed)
         except discord.Forbidden:
             pass
 
@@ -2182,7 +2196,7 @@ async def on_ready():
     global queue_status_channel_id_5v5, queue_status_message_id_5v5, matchmaking_banner_message_id_5v5
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id, chat_activity_message_id
     global TICKET_PANEL_CHANNEL_ID, TICKET_CATEGORY_ID
-    global ANNOUNCEMENTS_CHANNEL_ID
+    global ANNOUNCEMENTS_CHANNEL_ID, FACEIT_INFO_CHANNEL_ID
     init_db()
 
     if not get_meta("backfill_5v5_stats_rows_2026_09_14"):
@@ -2229,6 +2243,9 @@ async def on_ready():
     saved_social = get_meta("social_channel_id")
     if saved_social:
         SOCIAL_CHANNEL_ID = int(saved_social)
+    saved_faceit_info = get_meta("faceit_info_channel_id")
+    if saved_faceit_info:
+        FACEIT_INFO_CHANNEL_ID = int(saved_faceit_info)
     saved_chat_xp = get_meta("chat_xp_channel_id")
     if saved_chat_xp:
         CHAT_XP_CHANNEL_ID = int(saved_chat_xp)
@@ -2308,6 +2325,25 @@ async def on_ready():
         suspicious_activity_loop.start()
     if not standoff2_news_loop.is_running():
         standoff2_news_loop.start()
+    if not FACEIT_INFO_CHANNEL_ID:
+        for guild in bot.guilds:
+            category = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
+            if not category:
+                continue
+            existing = discord.utils.get(category.channels, name="faceit-info")
+            if existing:
+                FACEIT_INFO_CHANNEL_ID = existing.id
+            else:
+                try:
+                    overwrites = {guild.default_role: discord.PermissionOverwrite(send_messages=False)}
+                    new_channel = await guild.create_text_channel("faceit-info", category=category, overwrites=overwrites)
+                    FACEIT_INFO_CHANNEL_ID = new_channel.id
+                    print(f"[FACEIT_INFO_CHANNEL] '{guild.name}' serverində yeni #faceit-info kanalı yaradıldı.", flush=True)
+                except discord.Forbidden:
+                    continue
+            set_meta("faceit_info_channel_id", FACEIT_INFO_CHANNEL_ID)
+            break
+
     for guild in bot.guilds:
         bot.tree.copy_global_to(guild=guild)
         await bot.tree.sync(guild=guild)
@@ -2999,7 +3035,7 @@ async def _execute_server_reset(interaction: discord.Interaction):
     global LOG_CHANNEL_ID_5V5, SOCIAL_CHANNEL_ID, STANDOFF2_NEWS_CHANNEL_ID
     global MATCH_HISTORY_CHANNEL_ID, SEASON_REWARD_CHANNEL_ID, JOIN_LEAVE_LOG_CHANNEL_ID
     global CHAT_XP_CHANNEL_ID, chat_activity_channel_id
-    global ANNOUNCEMENTS_CHANNEL_ID
+    global ANNOUNCEMENTS_CHANNEL_ID, FACEIT_INFO_CHANNEL_ID
 
     guild = interaction.guild
     admin_user = interaction.user
@@ -3112,6 +3148,7 @@ async def _execute_server_reset(interaction: discord.Interaction):
     ch_matchmaking_5v5 = await guild.create_text_channel("matchmaking", category=category_5v5, overwrites=announce_overwrites)
     ch_log_5v5 = await guild.create_text_channel("match-results", category=category_5v5)
     ch_history = await guild.create_text_channel("match-history", category=category_5v5, overwrites=announce_overwrites)
+    ch_faceit_info = await guild.create_text_channel("faceit-info", category=category_5v5, overwrites=announce_overwrites)
     current_season_5v5 = get_or_create_current_season("5v5")
     ch_leaderboard_5v5 = await guild.create_text_channel(
         f"season-leaderboard-{current_season_5v5['season_number']}", category=category_5v5, overwrites=announce_overwrites
@@ -3149,6 +3186,8 @@ async def _execute_server_reset(interaction: discord.Interaction):
     set_meta("chat_activity_channel_id", ch_chat_lb.id)
     MATCH_HISTORY_CHANNEL_ID = ch_history.id
     set_meta("match_history_channel_id", ch_history.id)
+    FACEIT_INFO_CHANNEL_ID = ch_faceit_info.id
+    set_meta("faceit_info_channel_id", ch_faceit_info.id)
     SEASON_REWARD_CHANNEL_ID = ch_season_reward.id
     set_meta("season_reward_channel_id", ch_season_reward.id)
 
@@ -3240,6 +3279,7 @@ async def _execute_server_reset(interaction: discord.Interaction):
         f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
         f"🏁 Match results: {ch_log_5v5.mention}\n"
         f"📜 Match history: {ch_history.mention}\n"
+        f"ℹ️ FACEIT info: {ch_faceit_info.mention}\n"
         f"🏆 Season leaderboard: {ch_leaderboard_5v5.mention}\n"
         f"🏆 General leaderboard: {ch_general_leaderboard.mention}\n"
         f"🎁 Season rewards: {ch_season_reward.mention}\n\n"
@@ -3305,7 +3345,7 @@ async def server_sifirla_cmd(interaction: discord.Interaction):
         "siləcək və onların yerinə yeni struktur quracaq:\n"
         "• **📢 ANNOUNCEMENTS** — social-media, announcements, giveaways, news, join-leave-log\n"
         "• **💬 COMMUNITY** — 3 səsli kanal, general-chat, media-share, bot-commands\n"
-        "• **🎯 FACEIT 5V5** — registration, rules, matchmaking, match-results, match-history, "
+        "• **🎯 FACEIT 5V5** — registration, rules, matchmaking, match-results, match-history, faceit-info, "
         "season/general leaderboard, season-rewards\n"
         "• **🛡️ STAFF** (yalnız Founder/Admin/Moderator görür) — staff voice, staff-chat, server-log\n"
         "• **🎫 TICKETS** — klan qoşulma (NLA/Calestify/K4GE/ELE1) + Gold/Boost/Emulator satışı üçün düymə/seçim əsaslı özəl ticket sistemi\n\n"
@@ -3334,6 +3374,7 @@ async def _execute_faceit_reset(interaction: discord.Interaction):
     `🎯 FACEIT 5V5` kataqoriyasını (və içindəki bütün kanalları) silib yenidən qurur —
     digər kataqoriyalara, rollara və oyunçu datasına toxunmur."""
     global LOG_CHANNEL_ID, LOG_CHANNEL_ID_5V5, MATCH_HISTORY_CHANNEL_ID, SEASON_REWARD_CHANNEL_ID
+    global FACEIT_INFO_CHANNEL_ID
 
     guild = interaction.guild
     admin_user = interaction.user
@@ -3360,6 +3401,7 @@ async def _execute_faceit_reset(interaction: discord.Interaction):
     ch_matchmaking_5v5 = await guild.create_text_channel("matchmaking", category=category_5v5, overwrites=announce_overwrites)
     ch_log_5v5 = await guild.create_text_channel("match-results", category=category_5v5)
     ch_history = await guild.create_text_channel("match-history", category=category_5v5, overwrites=announce_overwrites)
+    ch_faceit_info = await guild.create_text_channel("faceit-info", category=category_5v5, overwrites=announce_overwrites)
     current_season_5v5 = get_or_create_current_season("5v5")
     ch_leaderboard_5v5 = await guild.create_text_channel(
         f"season-leaderboard-{current_season_5v5['season_number']}", category=category_5v5, overwrites=announce_overwrites
@@ -3374,6 +3416,8 @@ async def _execute_faceit_reset(interaction: discord.Interaction):
     set_meta("log_channel_id_5v5", ch_log_5v5.id)
     MATCH_HISTORY_CHANNEL_ID = ch_history.id
     set_meta("match_history_channel_id", ch_history.id)
+    FACEIT_INFO_CHANNEL_ID = ch_faceit_info.id
+    set_meta("faceit_info_channel_id", ch_faceit_info.id)
     SEASON_REWARD_CHANNEL_ID = ch_season_reward.id
     set_meta("season_reward_channel_id", ch_season_reward.id)
 
@@ -3393,6 +3437,7 @@ async def _execute_faceit_reset(interaction: discord.Interaction):
         f"🎮 Matchmaking: {ch_matchmaking_5v5.mention}\n"
         f"🏁 Match results: {ch_log_5v5.mention}\n"
         f"📜 Match history: {ch_history.mention}\n"
+        f"ℹ️ FACEIT info: {ch_faceit_info.mention}\n"
         f"🏆 Season leaderboard: {ch_leaderboard_5v5.mention}\n"
         f"🏆 General leaderboard: {ch_general_leaderboard.mention}\n"
         f"🎁 Season rewards: {ch_season_reward.mention}\n\n"
