@@ -435,7 +435,7 @@ MARKET_BANNERS = [
     {"id": "banner_aurora", "name": "Aurora Flow", "price": 1000, "gif": True},
     {"id": "banner_inferno", "name": "Inferno Surge", "price": 1000, "gif": True},
     {"id": "banner_victorian_london", "name": "Viktoriya Londonu — Sirli Araşdırma", "price_azn": 3},
-    {"id": "banner_test_orb", "name": "Test Orb (sınaq)", "price_azn": 5, "gif": True},
+    {"id": "banner_test_orb", "name": "Nights Vybe Gif", "price_azn": 5, "gif": True},
 ]
 MARKET_FRAMES = [
     {"id": "frame_gold", "name": "Gold Ring", "price": 750},
