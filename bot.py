@@ -892,12 +892,15 @@ async def daily_report_loop():
                     inline=False
                 )
             if inactive_players:
+                names = ", ".join(p["nick"] for p in inactive_players[:25])
+                if len(inactive_players) > 25:
+                    names += f" (+{len(inactive_players) - 25} daha)"
                 embed.add_field(
                     name="🗑️ Qeydiyyat təmizliyi",
                     value=(
                         f"{len(inactive_players)} oyunçu qeydiyyatdan {INACTIVE_REGISTRATION_DAYS} gün "
-                        f"keçməsinə baxmayaraq heç bir matç oynamadığı üçün qeydiyyatı silindi "
-                        f"(istəsə yenidən qeydiyyatdan keçə bilər)"
+                        f"keçməsinə baxmayaraq heç bir 5v5 matçı oynamadığı üçün qeydiyyatı silindi "
+                        f"(istəsə yenidən qeydiyyatdan keçə bilər): {names}"
                     ),
                     inline=False
                 )

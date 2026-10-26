@@ -978,13 +978,19 @@ def mark_decay_warning_sent(discord_id):
 
 
 def get_inactive_unplayed_players(cutoff_ts):
-    """Qeydiyyatdan (created_at) bəri cutoff_ts-dən çox vaxt keçmiş, amma heç bir matç
-    oynamamış (last_match_at IS NULL) oyunçuları qaytarır."""
+    """Qeydiyyatdan (created_at) bəri cutoff_ts-dən çox vaxt keçmiş, amma heç bir 5v5 matçı
+    oynamamış oyunçuları qaytarır. DİQQƏT: əvvəllər `players.last_match_at`-a baxırdı — o sütun
+    2v2 sisteminin qalığıdır və 5v5-ə keçdikdən sonra HEÇ VAXT yazılmır (bax: update_team_elo_5v5,
+    `players_5v5.last_match_at`-a yazır), ona görə HƏR gün, 3+ gün əvvəl qeydiyyatdan keçmiş
+    HƏR oyunçu (minlərlə real, aktiv 5v5 oyunçusu daxil) "heç oynamayıb" sayılıb silinirdi. İndi
+    əsl 5v5 fəallığına (players_5v5.last_match_at) baxır."""
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT discord_id, so2_nick FROM players "
-        "WHERE created_at IS NOT NULL AND created_at < ? AND last_match_at IS NULL",
+        "SELECT p.discord_id, p.so2_nick FROM players p "
+        "LEFT JOIN players_5v5 p5 ON p5.discord_id = p.discord_id "
+        "WHERE p.created_at IS NOT NULL AND p.created_at < ? "
+        "AND (p5.discord_id IS NULL OR p5.last_match_at IS NULL)",
         (cutoff_ts,)
     )
     rows = cursor.fetchall()
