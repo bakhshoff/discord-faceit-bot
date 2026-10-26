@@ -58,6 +58,20 @@ def _bar(draw, x, y, h, color):
 
 HEAT_YELLOW = (224, 178, 58)
 
+NOVRUZ_ACCENT = (90, 170, 80)       # yaşıl/qırmızı Novruz palitrası
+NEW_YEAR_ACCENT = (70, 150, 220)    # mavi/gümüşü Yeni il palitrası
+
+
+def _seasonal_accent(default=GOLD):
+    """Bayram tarixi aralığındadırsa mövsümi aksent rəngi, əks halda `default` qaytarır —
+    sezon mükafat kartının bordür/başlıq rənginə tətbiq olunur (bax: generate_season_reward_card)."""
+    today = datetime.date.today()
+    if (today.month == 3 and 18 <= today.day <= 22):
+        return NOVRUZ_ACCENT
+    if (today.month == 12 and today.day >= 25) or (today.month == 1 and today.day <= 7):
+        return NEW_YEAR_ACCENT
+    return default
+
 
 def _heat_color(win_rate_pct):
     """Qazanma faizini (0-100) RED → YELLOW → GREEN heatmap rənginə çevirir."""
@@ -819,13 +833,15 @@ def generate_season_reward_card(mode_label, season_number, top3, output_path, pr
     n = max(len(entries), 1)
     height = HEADER_H + n * ROW_H + FOOTER_H
 
+    accent = _seasonal_accent()
+
     img = _bg(height)
     draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=GOLD, width=2)
+    draw.rounded_rectangle([(0, 0), (WIDTH - 1, height - 1)], radius=14, outline=accent, width=2)
 
     title = f"{mode_label} SEZON MÜKAFATLARI — NÜMUNƏ" if preview else f"{mode_label} SEZON #{season_number} — YEKUN NƏTİCƏ"
     subtitle = "Sezon bağlananda Top-3 bu formada elan olunacaq" if preview else "Sezon bağlandı, Top-3 Gold mükafatı qazandı!"
-    draw.text((PAD, 16), "Nextlevelaz", font=_font(12, True), fill=GOLD)
+    draw.text((PAD, 16), "Nextlevelaz", font=_font(12, True), fill=accent)
     draw.text((PAD, 34), title, font=_font(24, True), fill=WHITE)
     draw.text((PAD, 68), subtitle, font=_font(12), fill=GRAY)
     draw.line([(18, HEADER_H - 8), (WIDTH - 18, HEADER_H - 8)], fill=BORDER, width=1)

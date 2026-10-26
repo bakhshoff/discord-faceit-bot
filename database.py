@@ -78,6 +78,25 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN loss_streak INTEGER DEFAULT 0")
     if "nick_change_used" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN nick_change_used INTEGER DEFAULT 0")
+    if "target_elo" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN target_elo INTEGER DEFAULT NULL")
+    if "birthday_month" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN birthday_month INTEGER DEFAULT NULL")
+    if "birthday_day" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN birthday_day INTEGER DEFAULT NULL")
+    if "last_birthday_announced_year" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN last_birthday_announced_year INTEGER DEFAULT NULL")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scheduled_announcements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            send_at INTEGER NOT NULL,
+            created_by INTEGER,
+            sent INTEGER DEFAULT 0
+        )
+    """)
 
     # ── Daily Login ───────────────────────────────────────────────────────────
     cursor.execute("""
@@ -337,6 +356,8 @@ def init_db():
         cursor.execute("ALTER TABLE players_5v5 ADD COLUMN last_match_at INTEGER DEFAULT NULL")
     if "last_decay_at" not in _p5v5_cols:
         cursor.execute("ALTER TABLE players_5v5 ADD COLUMN last_decay_at INTEGER DEFAULT NULL")
+    if "decay_warning_sent_at" not in _p5v5_cols:
+        cursor.execute("ALTER TABLE players_5v5 ADD COLUMN decay_warning_sent_at INTEGER DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS matchmaking_queue_5v5 (
@@ -512,6 +533,9 @@ def init_db():
             reminder_1h INTEGER DEFAULT 0
         )
     """)
+    cursor.execute("PRAGMA table_info(duo_teams)")
+    if "channel_id" not in [r[1] for r in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE duo_teams ADD COLUMN channel_id INTEGER DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS match_history (
@@ -743,6 +767,195 @@ def get_player(discord_id):
     conn.close()
     return row
 
+
+def set_target_elo(discord_id, target_elo):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET target_elo = ? WHERE discord_id = ?", (target_elo, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_target_elo(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT target_elo FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def set_birthday(discord_id, month, day):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE players SET birthday_month = ?, birthday_day = ? WHERE discord_id = ?",
+        (month, day, discord_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_birthday(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT birthday_month, birthday_day FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or row[0] is None:
+        return None
+    return {"month": row[0], "day": row[1]}
+
+
+def get_todays_birthday_players(month, day, year):
+    """Doğum günü bu gün olan VƏ bu il hələ təbrik edilməmiş oyunçuları qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id, so2_nick FROM players WHERE birthday_month=? AND birthday_day=? "
+        "AND (last_birthday_announced_year IS NULL OR last_birthday_announced_year != ?)",
+        (month, day, year)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"discord_id": r[0], "nick": r[1]} for r in rows]
+
+
+def mark_birthday_announced(discord_id, year):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET last_birthday_announced_year = ? WHERE discord_id = ?", (year, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def set_profile_theme(discord_id, theme_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET active_theme = ? WHERE discord_id = ?", (theme_id, discord_id))
+    conn.commit()
+    conn.close()
+
+
+def get_profile_theme(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT active_theme FROM players WHERE discord_id = ?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
+def create_scheduled_announcement(channel_id, content, send_at, created_by):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO scheduled_announcements (channel_id, content, send_at, created_by, sent) "
+        "VALUES (?, ?, ?, ?, 0)",
+        (channel_id, content, send_at, created_by)
+    )
+    conn.commit()
+    ann_id = cursor.lastrowid
+    conn.close()
+    return ann_id
+
+
+def get_due_scheduled_announcements():
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, channel_id, content FROM scheduled_announcements WHERE sent=0 AND send_at <= ?",
+        (int(time.time()),)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "channel_id": r[1], "content": r[2]} for r in rows]
+
+
+def mark_announcement_sent(ann_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE scheduled_announcements SET sent=1 WHERE id=?", (ann_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_server_health_stats():
+    """Admin panelindəki Server Sağlamlığı görünüşü üçün sürətli KPI-lar."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM players")
+    total_players = cursor.fetchone()[0]
+    now = int(time.time())
+    today_start = now - (now % 86400)
+    week_start = now - 7 * 86400
+    cursor.execute("SELECT COUNT(*) FROM match_history WHERE played_at >= ?", (today_start,))
+    matches_today = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM match_history WHERE played_at >= ?", (week_start,))
+    matches_week = cursor.fetchone()[0]
+    conn.close()
+    return {"total_players": total_players, "matches_today": matches_today, "matches_week": matches_week}
+
+
+def export_all_players_rows():
+    """Admin "Data Export" üçün: hər oyunçunun kimlik + iqtisadiyyat + 5v5 statistikası, CSV-yə
+    hazır sətirlər (dict) kimi."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT p.discord_id, p.so2_nick, p.so2_id, p.coins, p.zm_balance,
+               COALESCE(p5.elo, 1000), COALESCE(p5.wins, 0), COALESCE(p5.losses, 0),
+               COALESCE(p5.kills, 0), COALESCE(p5.assists, 0), COALESCE(p5.deaths, 0),
+               COALESCE(p5.peak_elo, 1000)
+        FROM players p
+        LEFT JOIN players_5v5 p5 ON p5.discord_id = p.discord_id
+        ORDER BY COALESCE(p5.elo, 1000) DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "discord_id": r[0], "nick": r[1], "so2_id": r[2], "coins": r[3], "zm_balance": r[4],
+            "elo": r[5], "wins": r[6], "losses": r[7], "kills": r[8], "assists": r[9], "deaths": r[10],
+            "peak_elo": r[11],
+        }
+        for r in rows
+    ]
+
+
+def get_players_needing_decay_warning(warn_after_days, decay_at_days):
+    """`warn_after_days` ilə `decay_at_days` arasında qeyri-aktiv olan (hələ decay BAŞLAMAYAN,
+    amma tezliklə başlayacaq) oyunçuları qaytarır — bax: inactivity_elo_decay_loop-dakı
+    əvvəlcədən xəbərdarlıq addımı. Hər oyunçuya yalnız BİR dəfə xəbərdarlıq göndərilir."""
+    import time
+    now = int(time.time())
+    warn_cutoff = now - warn_after_days * 86400
+    decay_cutoff = now - decay_at_days * 86400
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id FROM players_5v5 WHERE last_match_at IS NOT NULL "
+        "AND last_match_at < ? AND last_match_at >= ? "
+        "AND (decay_warning_sent_at IS NULL OR decay_warning_sent_at < last_match_at)",
+        (warn_cutoff, decay_cutoff)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def mark_decay_warning_sent(discord_id):
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE players_5v5 SET decay_warning_sent_at = ? WHERE discord_id = ?",
+        (int(time.time()), discord_id)
+    )
+    conn.commit()
+    conn.close()
 
 
 
@@ -1340,8 +1553,16 @@ def create_duo_team(owner_id, duration_days):
 def _row_to_team(row):
     return {
         "id": row[0], "owner_id": row[1], "member_id": row[2], "created_at": row[3],
-        "expires_at": row[4], "status": row[5],
+        "expires_at": row[4], "status": row[5], "channel_id": row[6] if len(row) > 6 else None,
     }
+
+
+def set_team_channel(team_id, channel_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE duo_teams SET channel_id=? WHERE id=?", (channel_id, team_id))
+    conn.commit()
+    conn.close()
 
 
 def get_duo_team_for_player(discord_id):
@@ -1350,7 +1571,7 @@ def get_duo_team_for_player(discord_id):
     import time
     now = int(time.time())
     cursor.execute(
-        "SELECT id, owner_id, member_id, created_at, expires_at, status FROM duo_teams "
+        "SELECT id, owner_id, member_id, created_at, expires_at, status, channel_id FROM duo_teams "
         "WHERE status='active' AND expires_at > ? AND (owner_id=? OR member_id=?)",
         (now, discord_id, discord_id)
     )
@@ -1363,7 +1584,7 @@ def get_duo_team(team_id):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, owner_id, member_id, created_at, expires_at, status FROM duo_teams WHERE id=?",
+        "SELECT id, owner_id, member_id, created_at, expires_at, status, channel_id FROM duo_teams WHERE id=?",
         (team_id,)
     )
     row = cursor.fetchone()
@@ -1401,13 +1622,13 @@ def get_active_duo_teams():
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, owner_id, member_id, created_at, expires_at, status, "
-        "reminder_7d, reminder_3d, reminder_1d, reminder_1h FROM duo_teams WHERE status='active'"
+        "reminder_7d, reminder_3d, reminder_1d, reminder_1h, channel_id FROM duo_teams WHERE status='active'"
     )
     rows = cursor.fetchall()
     conn.close()
     result = []
     for r in rows:
-        d = _row_to_team(r[:6])
+        d = _row_to_team((r[0], r[1], r[2], r[3], r[4], r[5], r[10]))
         d.update({"reminder_7d": r[6], "reminder_3d": r[7], "reminder_1d": r[8], "reminder_1h": r[9]})
         result.append(d)
     return result
@@ -1429,12 +1650,12 @@ def expire_due_teams():
     conn = _get_conn()
     cursor = conn.cursor()
     now = int(time.time())
-    cursor.execute("SELECT id, owner_id, member_id FROM duo_teams WHERE status='active' AND expires_at <= ?", (now,))
+    cursor.execute("SELECT id, owner_id, member_id, channel_id FROM duo_teams WHERE status='active' AND expires_at <= ?", (now,))
     rows = cursor.fetchall()
     cursor.execute("UPDATE duo_teams SET status='expired' WHERE status='active' AND expires_at <= ?", (now,))
     conn.commit()
     conn.close()
-    return [{"id": r[0], "owner_id": r[1], "member_id": r[2]} for r in rows]
+    return [{"id": r[0], "owner_id": r[1], "member_id": r[2], "channel_id": r[3]} for r in rows]
 
 
 def add_coins(discord_id, amount):
@@ -2707,12 +2928,70 @@ def get_streak_bonus(streak: int) -> tuple:
 
 
 def is_banned(discord_id):
+    """FACEIT (matchmaking) ban statusu — `banned_until` keçmişdirsə (müvəqqəti ban bitibsə)
+    avtomatik `False` qaytarır, amma sətri özü sıfırlamır (bax: set_player_banned, ban qalıcı
+    olmayanda sonrakı `set_player_banned(..., False)` çağırışı ilə təmizlənir)."""
+    import time
     conn   = _get_conn()
     cursor = conn.cursor()
-    cursor.execute("SELECT is_banned FROM players WHERE discord_id=?", (discord_id,))
+    cursor.execute("SELECT is_banned, banned_until FROM players WHERE discord_id=?", (discord_id,))
     row = cursor.fetchone()
     conn.close()
-    return bool(row and row[0])
+    if not row or not row[0]:
+        return False
+    banned_until = row[1]
+    if banned_until and banned_until > 0 and banned_until < int(time.time()):
+        return False
+    return True
+
+
+def set_player_banned(discord_id, banned, until_ts=None):
+    """FACEIT (matchmaking) ban təyin edir/qaldırır. `until_ts` verilməsə qalıcı ban olur."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE players SET is_banned=?, banned_until=? WHERE discord_id=?",
+        (1 if banned else 0, until_ts or 0, discord_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_ban_info(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT is_banned, banned_until FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return {"is_banned": False, "banned_until": None}
+    return {"is_banned": bool(row[0]), "banned_until": row[1] or None}
+
+
+def add_warning(discord_id, reason, staff_id):
+    """`staff_id` parametri `warnings.admin_id` sütununa yazılır — pre-existing cədvəl bu adı
+    istifadə edir (bax: init_db-dəki "── Warnings ──" bölməsi)."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO warnings (discord_id, reason, admin_id, created_at) VALUES (?, ?, ?, ?)",
+        (discord_id, reason, staff_id, int(time.time()))
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_warnings(discord_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, reason, admin_id, created_at FROM warnings WHERE discord_id=? ORDER BY created_at DESC",
+        (discord_id,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "reason": r[1], "staff_id": r[2], "created_at": r[3]} for r in rows]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2733,6 +3012,21 @@ def get_player_achievements(discord_id):
     return [{"id": r[0], "name": r[1], "description": r[2], "icon": r[3], "earned_at": r[4]} for r in rows]
 
 
+def award_achievement(discord_id, achievement_id):
+    """Oyunçuya nişan verir (idempotent — `player_achievements`-dəki UNIQUE(discord_id,
+    achievement_id) sayəsində eyni nişan iki dəfə verilmir). Yeni veriləndə `True`, artıq
+    var idisə `False` qaytarır (profil panelində "yeni nişan!" bildirişi üçün)."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO player_achievements (discord_id, achievement_id, earned_at) VALUES (?, ?, ?)",
+        (discord_id, achievement_id, int(time.time()))
+    )
+    conn.commit()
+    newly_awarded = cursor.rowcount > 0
+    conn.close()
+    return newly_awarded
 
 
 

@@ -168,6 +168,29 @@ def generate_match_coach_tip(nick, kills, assists, deaths, elo_before, elo_after
         return None
 
 
+def translate_text(text: str, target_lang_name: str = "Azərbaycan") -> str:
+    """Verilmiş mətni `target_lang_name` dilinə tərcümə edir (reaksiya-əsaslı tərcümə düyməsi
+    üçün — bax: on_raw_reaction_add). Xəta/açar yoxdursa None."""
+    if not client or not text.strip():
+        return None
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": (
+                    f"Sən tərcüməçisən. Verilmiş mətni dəqiq {target_lang_name} dilinə tərcümə et. "
+                    "YALNIZ tərcüməni qaytar, izah/şərh əlavə etmə."
+                )},
+                {"role": "user", "content": text[:1500]},
+            ],
+            max_tokens=400,
+            temperature=0.3,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception:
+        return None
+
+
 NEWS_SYSTEM_PROMPT = """Sen Nextlevelaz-nin (Standoff 2 Azərbaycan icması) rəsmi
 "Nextlevelaz Xəbərləri" bülleteni yazarısan. Verilmiş gündəlik statistikaya əsasən,
 real idman jurnalisti üslubunda, canlı və maraqlı bir paraqraf (3-5 cümlə) yaz.
