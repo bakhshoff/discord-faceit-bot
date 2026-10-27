@@ -90,6 +90,8 @@ def init_db():
         cursor.execute("ALTER TABLE players ADD COLUMN task_streak INTEGER DEFAULT 0")
     if "last_perfect_task_day" not in existing_columns:
         cursor.execute("ALTER TABLE players ADD COLUMN last_perfect_task_day TEXT DEFAULT NULL")
+    if "last_profile_surprise_day" not in existing_columns:
+        cursor.execute("ALTER TABLE players ADD COLUMN last_profile_surprise_day TEXT DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS scheduled_announcements (
@@ -187,6 +189,31 @@ def init_db():
             reason TEXT NOT NULL,
             admin_id INTEGER NOT NULL,
             created_at INTEGER NOT NULL
+        )
+    """)
+
+    # ── Silinmiş qeydiyyat arxivi (bax: archive_and_delete_player) — avtomatik təmizləmə
+    # "qeydiyyatlar səbəbsiz silinir" insidentindən sonra bərpa imkanı üçün əlavə edildi.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS deleted_players_archive (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            so2_nick TEXT,
+            so2_id TEXT,
+            coins INTEGER,
+            zm_balance INTEGER,
+            deleted_at INTEGER NOT NULL,
+            deleted_reason TEXT
+        )
+    """)
+
+    # ── İki-mərhələli avtomatik təmizləmə (bax: process_pending_cleanup) — namizəd bir
+    # oyunçu İLK dəfə görünəndə dərhal silinmir, yalnız ƏN AZ 24 saat sonra HƏLƏ DƏ
+    # namizəddirsə həqiqətən silinir.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_player_cleanup (
+            discord_id INTEGER PRIMARY KEY,
+            flagged_at INTEGER NOT NULL
         )
     """)
 
@@ -1006,6 +1033,132 @@ def delete_player(discord_id):
     conn.close()
 
 
+def archive_and_delete_player(discord_id, reason):
+    """`delete_player`-in təhlükəsiz versiyası — sətri silmədən ƏVVƏL `deleted_players_archive`-ə
+    köçürür ki, admin paneldən (bax: get_recent_deleted_players/restore_deleted_player) bərpa
+    oluna bilsin. Qeydiyyat silmə insidentindən sonra əlavə edildi."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT so2_nick, so2_id, coins, zm_balance FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if row:
+        cursor.execute(
+            "INSERT INTO deleted_players_archive "
+            "(discord_id, so2_nick, so2_id, coins, zm_balance, deleted_at, deleted_reason) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (discord_id, row[0], row[1], row[2], row[3], int(time.time()), reason)
+        )
+    cursor.execute("DELETE FROM players WHERE discord_id=?", (discord_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_recent_deleted_players(limit=30):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, discord_id, so2_nick, so2_id, coins, zm_balance, deleted_at, deleted_reason "
+        "FROM deleted_players_archive ORDER BY deleted_at DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "discord_id": r[1], "nick": r[2], "so2_id": r[3],
+         "coins": r[4], "zm_balance": r[5], "deleted_at": r[6], "reason": r[7]}
+        for r in rows
+    ]
+
+
+def restore_deleted_player(archive_id):
+    """Arxiv sətrini `players`-ə geri qaytarır (coin/AZN balansı daxil). Oyunçu artıq (başqa
+    cür) qeydiyyatdan keçibsə üzərinə yazmır, False qaytarır."""
+    import time
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT discord_id, so2_nick, so2_id, coins, zm_balance FROM deleted_players_archive WHERE id=?",
+        (archive_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    discord_id, nick, so2_id, coins, zm_balance = row
+    cursor.execute("SELECT 1 FROM players WHERE discord_id=?", (discord_id,))
+    if cursor.fetchone():
+        conn.close()
+        return False
+    cursor.execute(
+        "INSERT INTO players (discord_id, so2_nick, so2_id, coins, zm_balance, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (discord_id, nick, so2_id, coins or 0, zm_balance or 0, int(time.time()))
+    )
+    cursor.execute("DELETE FROM deleted_players_archive WHERE id=?", (archive_id,))
+    conn.commit()
+    conn.close()
+    return True
+
+
+def process_pending_cleanup(candidate_ids, now_ts, grace_seconds=86400):
+    """Gündəlik avtomatik qeydiyyat təmizləməsi üçün iki-mərhələli təhlükəsizlik: bir oyunçu
+    İLK dəfə namizəd olanda sadəcə QEYD edilir (dərhal silinmir) — YALNIZ ən az `grace_seconds`
+    (defolt 24 saat) sonra HƏLƏ DƏ namizəddirsə, bu funksiya onu "bu gün silinməli" siyahısına
+    qaytarır. Aralıqda aktivləşən (namizəd siyahısından çıxan) oyunçular avtomatik təmizlənir.
+    Qeydiyyat silmə insidentindən sonra əlavə edildi."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT discord_id, flagged_at FROM pending_player_cleanup")
+    pending = {r[0]: r[1] for r in cursor.fetchall()}
+
+    candidate_set = set(candidate_ids)
+    to_delete = []
+    newly_flagged = []
+    for did in candidate_set:
+        if did in pending:
+            if now_ts - pending[did] >= grace_seconds:
+                to_delete.append(did)
+        else:
+            cursor.execute(
+                "INSERT INTO pending_player_cleanup (discord_id, flagged_at) VALUES (?, ?)",
+                (did, now_ts)
+            )
+            newly_flagged.append(did)
+
+    for did in list(pending.keys()):
+        if did not in candidate_set:
+            cursor.execute("DELETE FROM pending_player_cleanup WHERE discord_id=?", (did,))
+
+    for did in to_delete:
+        cursor.execute("DELETE FROM pending_player_cleanup WHERE discord_id=?", (did,))
+
+    conn.commit()
+    conn.close()
+    return {"to_delete": to_delete, "newly_flagged": newly_flagged}
+
+
+def maybe_grant_profile_surprise(discord_id, date_key, chance=0.05, min_coin=5, max_coin=20):
+    """Gündə İLK `/profile` açılışında kiçik ehtimalla (defolt 5%) sürpriz coin bonusu verir.
+    Bu gün artıq yoxlanılıbsa (bonus düşsə də düşməsə də) bir daha yoxlamır, None qaytarır."""
+    import random as _random
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT last_profile_surprise_day FROM players WHERE discord_id=?", (discord_id,))
+    row = cursor.fetchone()
+    if row and row[0] == date_key:
+        conn.close()
+        return None
+    cursor.execute("UPDATE players SET last_profile_surprise_day=? WHERE discord_id=?", (date_key, discord_id))
+    amount = None
+    if _random.random() < chance:
+        amount = _random.randint(min_coin, max_coin)
+        cursor.execute("UPDATE players SET coins = coins + ? WHERE discord_id=?", (amount, discord_id))
+    conn.commit()
+    conn.close()
+    return amount
+
+
 
 
 
@@ -1074,7 +1227,7 @@ def get_player_5v5(discord_id):
     cursor = conn.cursor()
     cursor.execute(
         "SELECT discord_id, elo, wins, losses, kills, assists, deaths, win_streak, "
-        "loss_streak, peak_elo, max_streak, created_at FROM players_5v5 WHERE discord_id=?",
+        "loss_streak, peak_elo, max_streak, created_at, last_match_at FROM players_5v5 WHERE discord_id=?",
         (discord_id,)
     )
     row = cursor.fetchone()
@@ -1085,6 +1238,7 @@ def get_player_5v5(discord_id):
         "discord_id": row[0], "elo": row[1], "wins": row[2], "losses": row[3],
         "kills": row[4], "assists": row[5], "deaths": row[6], "win_streak": row[7],
         "loss_streak": row[8], "peak_elo": row[9], "max_streak": row[10], "created_at": row[11],
+        "last_match_at": row[12],
     }
 
 

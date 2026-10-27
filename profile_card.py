@@ -135,7 +135,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
                           season_kills=0, season_assists=0, season_deaths=0,
                           pass_status=None, pass_level=0,
                           theme_colors=None, show_season=False, title=None, lang="az",
-                          badges=None):
+                          badges=None, last_seen_ts=None):
 
     # ── Banner kadrları ─────────────────────────────────────────────────────
     # Banner animasiyalı GIF-dirsə (bax: market_assets.py-dəki ANIMATED_BANNER_DEFS),
@@ -205,6 +205,17 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
             fr = Image.open(frame_path).convert("RGBA")
         except Exception:
             fr = None
+
+    last_seen_txt = None
+    if last_seen_ts:
+        import datetime as _dt
+        days_ago = (_dt.datetime.utcnow() - _dt.datetime.utcfromtimestamp(last_seen_ts)).days
+        if days_ago <= 0:
+            last_seen_txt = "Son görülmə: bu gün"
+        elif days_ago == 1:
+            last_seen_txt = "Son görülmə: dünən"
+        else:
+            last_seen_txt = f"Son görülmə: {days_ago} gün əvvəl"
 
     def _render_frame(banner_img):
         if banner_img is not None:
@@ -300,6 +311,8 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         draw.text((ex, 82),  t("profile.elo", lang),    font=f_elolbl, fill=GRAY)
         draw.text((ex, 98),  str(elo), font=f_elo,    fill=t_accent)
         draw.text((ex, 140), f"{t('profile.kd', lang)}: {kd}", font=f_elolbl, fill=t_text2)
+        if last_seen_txt:
+            draw.text((ex, 160), last_seen_txt, font=_load_font(10), fill=GRAY)
 
         # ── Ayırıcı 1 ─────────────────────────────────────────────────────────────
         # Ümumi statistika (ÜMUMİ paneli + Kill/Asist/Ölüm/K-D qutuları) qəsdən BURADA

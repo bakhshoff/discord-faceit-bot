@@ -39,7 +39,7 @@ from database import (
     get_meta, set_meta,
     get_player_count, get_total_match_count,
     get_lang, set_lang,
-    get_inactive_unplayed_players, delete_player,
+    get_inactive_unplayed_players,
     reset_all_player_data,
     get_or_create_current_season, add_season_stat,
     get_season_stat, get_season_leaderboard, close_season,
@@ -69,6 +69,8 @@ from database import (
     set_player_banned, get_ban_info, add_warning, get_warnings,
     set_team_channel,
     award_achievement, get_player_achievements, get_all_achievements,
+    archive_and_delete_player, get_recent_deleted_players, restore_deleted_player,
+    process_pending_cleanup, maybe_grant_profile_surprise,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_daily_news, generate_personal_coach_report, translate_text
@@ -870,11 +872,40 @@ async def daily_report_loop():
         day_start_ts = day_end_ts - 86400
         stats = get_daily_stats(day_start_ts, day_end_ts)
 
-        # ── Qeydiyyatdan 3+ gün keçib, heç bir matç oynamayanları təmizlə ────
+        # ── Qeydiyyatdan 3+ gün keçib, heç bir matç oynamayanları iki-mərhələli təmizlə ──
+        # (bax: process_pending_cleanup) — namizəd İLK dəfə görünəndə sadəcə qeyd edilir,
+        # YALNIZ ən az 24 saat sonra HƏLƏ DƏ namizəddirsə silinir (və arxivlənir, bərpa oluna bilər).
         inactive_cutoff_ts = day_end_ts - INACTIVE_REGISTRATION_DAYS * 86400
-        inactive_players = get_inactive_unplayed_players(inactive_cutoff_ts)
-        for p in inactive_players:
-            delete_player(p["discord_id"])
+        inactive_candidates = get_inactive_unplayed_players(inactive_cutoff_ts)
+        candidate_by_id = {p["discord_id"]: p["nick"] for p in inactive_candidates}
+        cleanup_result = process_pending_cleanup(list(candidate_by_id.keys()), day_end_ts)
+        deleted_players = []
+        for did in cleanup_result["to_delete"]:
+            nick = candidate_by_id.get(did, str(did))
+            archive_and_delete_player(
+                did, f"{INACTIVE_REGISTRATION_DAYS}+ gün, 5v5 oynamayıb (24 saat gözləmə bitdi)"
+            )
+            log_admin_action("auto_delete_inactive", did, "player_row", nick, "deleted",
+                              "avtomatik təmizləmə — iki mərhələli təsdiq", 0)
+            deleted_players.append(nick)
+        newly_flagged_names = [candidate_by_id[did] for did in cleanup_result["newly_flagged"]]
+
+        # ── Server Sağlamlıq Xəbərdarlığı — qeydiyyatlı oyunçu sayı 1 gündə kəskin azalıbsa ──
+        today_total = get_player_count()
+        prev_total_str = get_meta("last_daily_player_count")
+        audit_channel = await _get_audit_log_channel()
+        if prev_total_str is not None and audit_channel:
+            prev_total = int(prev_total_str)
+            drop = prev_total - today_total
+            if prev_total > 0 and (drop >= 10 or drop / prev_total >= 0.15):
+                try:
+                    await audit_channel.send(
+                        f"🚨 **Server Sağlamlıq Xəbərdarlığı** — qeydiyyatlı oyunçu sayı 1 gündə "
+                        f"**{prev_total} → {today_total}** dəyişdi (**-{drop}**). Qeyri-adi azalma, araşdırın."
+                    )
+                except discord.HTTPException:
+                    pass
+        set_meta("last_daily_player_count", str(today_total))
 
         log_channel = await _get_log_channel()
         if log_channel:
@@ -891,17 +922,25 @@ async def daily_report_loop():
                     value=f"{stats['top_player'][0]} ({stats['top_player'][1]} matç)",
                     inline=False
                 )
-            if inactive_players:
-                names = ", ".join(p["nick"] for p in inactive_players[:25])
-                if len(inactive_players) > 25:
-                    names += f" (+{len(inactive_players) - 25} daha)"
+            if deleted_players:
+                names = ", ".join(deleted_players[:25])
+                if len(deleted_players) > 25:
+                    names += f" (+{len(deleted_players) - 25} daha)"
                 embed.add_field(
                     name="🗑️ Qeydiyyat təmizliyi",
                     value=(
-                        f"{len(inactive_players)} oyunçu qeydiyyatdan {INACTIVE_REGISTRATION_DAYS} gün "
-                        f"keçməsinə baxmayaraq heç bir 5v5 matçı oynamadığı üçün qeydiyyatı silindi "
-                        f"(istəsə yenidən qeydiyyatdan keçə bilər): {names}"
+                        f"{len(deleted_players)} oyunçunun qeydiyyatı silindi (istəsə yenidən "
+                        f"qeydiyyatdan keçə bilər, admin panelindən də bərpa oluna bilər): {names}"
                     ),
+                    inline=False
+                )
+            if newly_flagged_names:
+                names2 = ", ".join(newly_flagged_names[:25])
+                if len(newly_flagged_names) > 25:
+                    names2 += f" (+{len(newly_flagged_names) - 25} daha)"
+                embed.add_field(
+                    name="⏳ 24 saat ərzində silinə bilər (hələ silinməyib)",
+                    value=f"Hələ 5v5 oynamayıb, aktiv olmasa sabah silinəcək: {names2}",
                     inline=False
                 )
             await log_channel.send(embed=embed)
@@ -2578,6 +2617,8 @@ async def on_ready():
         inactivity_elo_decay_loop.start()
     if not birthday_loop.is_running():
         birthday_loop.start()
+    if not db_backup_loop.is_running():
+        db_backup_loop.start()
     if not scheduled_announcements_loop.is_running():
         scheduled_announcements_loop.start()
     if not refresh_leaderboard_5v5.is_running():
@@ -3336,6 +3377,8 @@ async def profile(interaction: discord.Interaction):
     theme_id = get_profile_theme(discord_id)
     theme_colors = {"accent": PROFILE_THEMES[theme_id]} if theme_id in PROFILE_THEMES else None
     badge_ids = [a["id"] for a in get_player_achievements(discord_id)]
+    stats5_full = get_player_5v5(discord_id)
+    last_seen_ts = stats5_full.get("last_match_at") if stats5_full else None
 
     card_path = os.path.join(DATA_DIR or ".", f"profile_{discord_id}.png")
     final_path = await asyncio.to_thread(
@@ -3343,11 +3386,16 @@ async def profile(interaction: discord.Interaction):
         banner_path=banner_path, frame_path=frame_path,
         coins=stats.get("coins", 0), zm_balance=get_zm_balance(discord_id),
         kills=stats.get("kills", 0), assists=stats.get("assists", 0), deaths=stats.get("deaths", 0),
-        lang=player_lang, theme_colors=theme_colors, badges=badge_ids,
+        lang=player_lang, theme_colors=theme_colors, badges=badge_ids, last_seen_ts=last_seen_ts,
     )
+
+    today_key = (datetime.datetime.utcnow() + datetime.timedelta(hours=4)).strftime("%Y-%m-%d")
+    surprise = maybe_grant_profile_surprise(discord_id, today_key)
+    content = f"🎁 **Sürpriz!** Profilinizi açarkən +{surprise} coin qazandınız!" if surprise else None
 
     filename = "profile.gif" if final_path.lower().endswith(".gif") else "profile.png"
     await interaction.followup.send(
+        content=content,
         file=discord.File(final_path, filename=filename),
         view=ProfileHubView(discord_id, lang=player_lang)
     )
@@ -5182,6 +5230,27 @@ async def birthday_loop():
         mark_birthday_announced(p["discord_id"], now.year)
 
 
+@tasks.loop(hours=24)
+async def db_backup_loop():
+    """Hər gün SQLite verilənlər bazası faylını audit log kanalına göndərir — qeydiyyat silmə
+    insidentindən sonra əlavə edildi: birbaşa verilənlər bazası bərpa alətimiz olmadığı üçün,
+    bu heç olmasa son 24 saata qədər geriyə əl ilə bərpa imkanı verir."""
+    channel = await _get_audit_log_channel()
+    if not channel:
+        return
+    db_path = os.path.join(DATA_DIR or ".", "bot_database.db")
+    if not os.path.exists(db_path):
+        return
+    today = (datetime.datetime.utcnow() + datetime.timedelta(hours=4)).strftime("%Y-%m-%d")
+    try:
+        await channel.send(
+            content=f"💾 Gündəlik ehtiyat nüsxə — {today}",
+            file=discord.File(db_path, filename=f"backup_{today}.db")
+        )
+    except discord.HTTPException as e:
+        print(f"[BACKUP] Xəta: {e}", flush=True)
+
+
 @tasks.loop(minutes=5)
 async def scheduled_announcements_loop():
     """Admin panelindən planlaşdırılmış elanları vaxtı çatanda göndərir (bax:
@@ -5898,6 +5967,54 @@ class AdminPlayerMenuView(discord.ui.View):
         if not await self._guard(interaction):
             return
         await interaction.response.send_message("Oyunçu seçin:", view=AdminUserPickView(self.admin_id, "edit"), ephemeral=True)
+
+    @discord.ui.button(label="Son silinənlər", style=discord.ButtonStyle.secondary, emoji="🗑️")
+    async def deleted_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._guard(interaction):
+            return
+        recent = get_recent_deleted_players(limit=25)
+        if not recent:
+            await interaction.response.send_message("ℹ️ Son silinən qeydiyyat yoxdur.", ephemeral=True)
+            return
+        embed = discord.Embed(title="🗑️ Son Silinən Qeydiyyatlar", color=discord.Color.orange())
+        lines = [
+            f"**{r['nick']}** (`{r['discord_id']}`) — <t:{r['deleted_at']}:R> — {r['reason']}"
+            for r in recent
+        ]
+        embed.description = "\n".join(lines)
+        await interaction.response.send_message(
+            embed=embed, view=DeletedPlayersRestoreView(self.admin_id, recent), ephemeral=True
+        )
+
+
+class DeletedPlayersRestoreView(discord.ui.View):
+    def __init__(self, admin_id, entries):
+        super().__init__(timeout=180)
+        self.admin_id = admin_id
+        options = [
+            discord.SelectOption(label=f"{e['nick']} ({e['discord_id']})", value=str(e["id"]))
+            for e in entries[:25]
+        ]
+        select = discord.ui.Select(placeholder="Bərpa ediləcək qeydiyyatı seçin...", options=options)
+        select.callback = self._on_restore
+        self.select_menu = select
+        self.add_item(select)
+
+    async def _on_restore(self, interaction: discord.Interaction):
+        if interaction.user.id != self.admin_id:
+            await interaction.response.send_message("❌ Bu panel yalnız çağıran admin üçündür.", ephemeral=True)
+            return
+        archive_id = int(self.select_menu.values[0])
+        ok = restore_deleted_player(archive_id)
+        if not ok:
+            await interaction.response.send_message(
+                "❌ Bərpa mümkün olmadı (artıq başqa cür qeydiyyatdan keçmiş ola bilər).", ephemeral=True
+            )
+            return
+        log_admin_action("restore_deleted_player", archive_id, "player_row", "deleted", "restored", "-", self.admin_id)
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(content="✅ Qeydiyyat bərpa edildi.", embed=None, view=self)
 
 
 class AdminMatchNumberModal(discord.ui.Modal):
