@@ -234,9 +234,13 @@ def init_db():
             name TEXT NOT NULL,
             price_azn REAL NOT NULL DEFAULT 0,
             stock INTEGER DEFAULT 0,
-            active INTEGER DEFAULT 1
+            active INTEGER DEFAULT 1,
+            image_path TEXT
         )
     """)
+    cursor.execute("PRAGMA table_info(store_products)")
+    if "image_path" not in [r[1] for r in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE store_products ADD COLUMN image_path TEXT")
 
     # ── Achievements ──────────────────────────────────────────────────────────
     cursor.execute("""
@@ -1242,14 +1246,15 @@ def get_store_products(category_id):
     conn = _get_conn()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, code, name, price_azn, stock, active FROM store_products "
+        "SELECT id, code, name, price_azn, stock, active, image_path FROM store_products "
         "WHERE category_id=? AND active=1 ORDER BY name ASC",
         (category_id,)
     )
     rows = cursor.fetchall()
     conn.close()
     return [
-        {"id": r[0], "code": r[1], "name": r[2], "price_azn": r[3], "stock": r[4], "active": bool(r[5])}
+        {"id": r[0], "code": r[1], "name": r[2], "price_azn": r[3], "stock": r[4],
+         "active": bool(r[5]), "image_path": r[6]}
         for r in rows
     ]
 
@@ -1269,6 +1274,76 @@ def set_store_stock(product_id, stock):
     conn.commit()
     conn.close()
 
+
+def add_store_product(category_id, name, price_azn, code=None, stock=0, image_path=None):
+    """Mağazaya əl ilə tək-tək məhsul əlavə etmək üçün (bax: /profile → ... yox, admin/Claude
+    tərəfindən məhsul şəkli+məlumatı verildikcə çağırılır — toplu seed deyil)."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM store_categories WHERE id=?", (category_id,))
+    if not cursor.fetchone():
+        conn.close()
+        raise ValueError(f"Naməlum kateqoriya: {category_id}")
+    cursor.execute(
+        "INSERT INTO store_products (category_id, code, name, price_azn, stock, active, image_path) "
+        "VALUES (?, ?, ?, ?, ?, 1, ?)",
+        (category_id, code, name, price_azn, stock, image_path)
+    )
+    conn.commit()
+    product_id = cursor.lastrowid
+    conn.close()
+    return product_id
+
+
+def update_store_product(product_id, **fields):
+    """`fields`: name/price_azn/code/stock/image_path/active sahələrindən istənilənini yeniləyir."""
+    allowed = {"name", "price_azn", "code", "stock", "image_path", "active"}
+    sets = {k: v for k, v in fields.items() if k in allowed}
+    if not sets:
+        return
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cols = ", ".join(f"{k}=?" for k in sets)
+    cursor.execute(f"UPDATE store_products SET {cols} WHERE id=?", (*sets.values(), product_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_store_product(product_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM store_products WHERE id=?", (product_id,))
+    conn.commit()
+    conn.close()
+
+
+def clear_store_products():
+    """Bütün mağaza məhsullarını silir, kateqoriyaları (şablon strukturu) saxlayır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM store_products")
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected
+
+
+def get_all_store_products_admin():
+    """Admin/idarəetmə üçün — `active` statusundan asılı olmayaraq BÜTÜN məhsulları qaytarır."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT p.id, p.category_id, c.name, p.code, p.name, p.price_azn, p.stock, p.active, p.image_path "
+        "FROM store_products p JOIN store_categories c ON c.id = p.category_id "
+        "ORDER BY c.sort_order ASC, p.name ASC"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "category_id": r[1], "category_name": r[2], "code": r[3], "name": r[4],
+         "price_azn": r[5], "stock": r[6], "active": bool(r[7]), "image_path": r[8]}
+        for r in rows
+    ]
 
 
 

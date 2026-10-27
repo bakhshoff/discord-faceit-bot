@@ -71,7 +71,7 @@ from database import (
     award_achievement, get_player_achievements, get_all_achievements,
     archive_and_delete_player, get_recent_deleted_players, restore_deleted_player,
     process_pending_cleanup, maybe_grant_profile_surprise,
-    seed_store_catalog,
+    seed_store_catalog, clear_store_products,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_daily_news, generate_personal_coach_report, translate_text
@@ -2526,6 +2526,14 @@ async def on_ready():
         except Exception as e:
             print(f"[SEED] Xəta: {e}")
         set_meta("seed_store_catalog_2026_10_27", "1")
+
+    if not get_meta("clear_store_products_2026_10_27"):
+        try:
+            affected = clear_store_products()
+            print(f"[SEED] Mağaza şablon olaraq saxlandı, {affected} nümunə məhsul silindi (kateqoriyalar qalır).")
+        except Exception as e:
+            print(f"[SEED] Xəta: {e}")
+        set_meta("clear_store_products_2026_10_27", "1")
 
     saved_log = get_meta("log_channel_id")
     if saved_log:

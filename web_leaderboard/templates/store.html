@@ -158,6 +158,19 @@
   }
   .product-card:hover { border-color: var(--gold); }
 
+  .product-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-row-alt);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .product-image img { width: 100%; height: 100%; object-fit: cover; }
+  .product-image-placeholder { font-size: 32px; opacity: 0.35; }
+
   .product-name {
     font-size: 13.5px;
     font-weight: 600;
@@ -267,9 +280,17 @@
   {% for cat in categories %}
   <div class="cat-section{% if loop.first %} active{% endif %}" id="cat-{{ cat.id }}">
     <div class="cat-title">{{ cat.name }}</div>
+    {% if cat.products %}
     <div class="product-grid">
       {% for p in cat.products %}
       <div class="product-card">
+        <div class="product-image">
+          {% if p.image_path %}
+          <img src="{{ p.image_path }}" alt="{{ p.name }}" loading="lazy">
+          {% else %}
+          <div class="product-image-placeholder">🛍️</div>
+          {% endif %}
+        </div>
         <div class="product-name">{{ p.name }}</div>
         {% if p.code %}<div class="product-code">{{ p.code }}</div>{% endif %}
         <div class="product-footer">
@@ -292,10 +313,13 @@
       </div>
       {% endfor %}
     </div>
+    {% else %}
+    <div class="empty-state">🛠️ Bu kateqoriyaya tezliklə məhsullar əlavə olunacaq.</div>
+    {% endif %}
   </div>
   {% endfor %}
   {% else %}
-  <div class="empty-state">Hazırda mağazada məhsul yoxdur.</div>
+  <div class="empty-state">Hazırda mağazada kateqoriya yoxdur.</div>
   {% endif %}
 
 </div>

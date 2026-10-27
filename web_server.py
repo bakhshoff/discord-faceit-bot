@@ -134,7 +134,7 @@ def offline_page():
 
 @app.route("/magaza")
 def store_page():
-    categories = [c for c in database.get_store_categories() if c["product_count"] > 0]
+    categories = database.get_store_categories()
     for cat in categories:
         cat["products"] = database.get_store_products(cat["id"])
     return render_template("store.html", categories=categories, discord_invite="https://discord.gg/nextlevelaz")
