@@ -1,0 +1,1260 @@
+[
+  {
+    "id": "wireless_mice",
+    "name": "Simsiz Siçanlar",
+    "sort_order": 1,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-MF2020WC",
+        "name": "2Е Mouse MF2020 WL Black Gray and Blue",
+        "stock": 53,
+        "price_azn": 21.99
+      },
+      {
+        "code": "2E-MF210WB",
+        "name": "Wireless mouse 2Е MF210 Black",
+        "stock": 1,
+        "price_azn": 17.99
+      },
+      {
+        "code": "2E-MF210WW",
+        "name": "2E Wireless mouse 2Е MF210 White",
+        "stock": 31,
+        "price_azn": 17.99
+      },
+      {
+        "code": "2E-MF218WBG",
+        "name": "Mouse 2E MF218 Silent WL BT Black/Gray",
+        "stock": 2,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-MF211WR",
+        "name": "2E Mouse MF211, WL, red",
+        "stock": 22,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-MF300WBK",
+        "name": "Mouse 2E MF300 Silent WL BT Graphite black",
+        "stock": 7,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-MF2020WB",
+        "name": "2E Mouse  MF2020, WL, black-red",
+        "stock": 30,
+        "price_azn": 15.99
+      },
+      {
+        "code": "2E-MF220WW",
+        "name": "2E Mouse MF220 WL White",
+        "stock": 3,
+        "price_azn": 18.99
+      },
+      {
+        "code": "2E-MF250WBL",
+        "name": "2E Mouse MF250 Silent WL Blue",
+        "stock": 12,
+        "price_azn": 14.99
+      },
+      {
+        "code": "2E-MF300WCAPIBARAGN",
+        "name": "2E Mouse MF300 CAPYBARA:TANGERINE Silent WL BT, Green",
+        "stock": 61,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-MF300WFLORABL",
+        "name": "2E Mouse MF300 FLORA:MALLOW Silent WL BT, Blue",
+        "stock": 38,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-MF300WPETSBL",
+        "name": "2E Mouse MF300 PETS:CATS Silent WL BT, Blue",
+        "stock": 123,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-MF300WPETSGN",
+        "name": "2E Mouse MF300 PETS:DOGS Silent WL BT, Green",
+        "stock": 116,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-MF300WBL",
+        "name": "2E Mouse MF300 Silent, WL/BT, blue",
+        "stock": 109,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-MF300WYW",
+        "name": "2E Mouse  MF300 Silent, WL/BT, sunny-yellow",
+        "stock": 62,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-MF300WGN",
+        "name": "2Е Mouse MF300 Silent, WL/BT, ashen-green",
+        "stock": 91,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-MF300WFLORAGN",
+        "name": "2E Mouse MF300 FLORA:DILL Silent WL BT, Green",
+        "stock": 49,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-MF300WFLORAYW",
+        "name": "2E Mouse MF300 FLORA:POPPY Silent WL BT, Yellow",
+        "stock": 37,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-MF300WPETSYW",
+        "name": "2E Mouse MF300 PETS:CATS&DOGS Silent WL BT, Yellow",
+        "stock": 1,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-MF325WBK",
+        "name": "2E Mouse MF325 Silent, WL/BT, vertical, black",
+        "stock": 15,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-MF270WWH",
+        "name": "Mouse 2E MF270 Rechargeable, White LED, WL, білий",
+        "stock": 16,
+        "price_azn": 17.99
+      },
+      {
+        "code": "2E-MF216WB",
+        "name": "Mouse 2E MF216, WL, black",
+        "stock": 473,
+        "price_azn": 17.99
+      },
+      {
+        "code": "2E-MF217WB",
+        "name": "Mouse 2E MF217, WL, black",
+        "stock": 420,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-MF280WGR",
+        "name": "Mouse 2E MF280 Silent, WL/BT, grey",
+        "stock": 350,
+        "price_azn": 32.99
+      },
+      {
+        "code": "2E-MF280WBK",
+        "name": "Mouse 2E MF280 Silent, WL/BT, black",
+        "stock": 450,
+        "price_azn": 32.99
+      },
+      {
+        "code": "2E-MGHDL-WL-BK",
+        "name": "2E GAMING Mouse HyperDrive Lite WL, RGB, USB-A/WL, black",
+        "stock": 40,
+        "price_azn": 99.99
+      },
+      {
+        "code": "2E-MGHDPR-WL-BK",
+        "name": "2E GAMING Mouse HyperDrive Pro WL, RGB, USB-A/WL, black",
+        "stock": 80,
+        "price_azn": 149.99
+      },
+      {
+        "code": "2E-MG270UB-WL",
+        "name": "2E GAMING Mouse MG270 WL, WL/BT, black",
+        "stock": 500,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-MG350UB-WL",
+        "name": "2E GAMING Mouse MG350 WL, RGB USB Black",
+        "stock": 349,
+        "price_azn": 69.99
+      },
+      {
+        "code": "2E-MG315UBK",
+        "name": "2E GAMING Mouse MG315, USB-A, black",
+        "stock": 468,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-MG315UWT",
+        "name": "2E GAMING Mouse MG315, USB-A, white",
+        "stock": 92,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-MG315UYW",
+        "name": "2E GAMING Mouse MG315, USB-A, yellow",
+        "stock": 98,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-MG355UBK-WL",
+        "name": "2E GAMING Mouse MG355 WL, RGB, USB-A/WL, black",
+        "stock": 268,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-MG355UWT-WL",
+        "name": "2E GAMING Mouse MG355 WL, RGB, USB-A/WL, white",
+        "stock": 50,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-MG355UPK-WL",
+        "name": "2E GAMING Mouse MG355 WL, RGB, USB-A/WL, pink",
+        "stock": 50,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-MG355UYW-WL",
+        "name": "2E GAMING Mouse MG355 WL, RGB, USB-A/WL, yellow",
+        "stock": 107,
+        "price_azn": 54.99
+      }
+    ]
+  },
+  {
+    "id": "wired_mice",
+    "name": "Simli Siçanlar",
+    "sort_order": 2,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-MF140UB",
+        "name": "2E Mouse MF140, USB-A, black",
+        "stock": 700,
+        "price_azn": 4.49
+      },
+      {
+        "code": "2E-MF150UB",
+        "name": "2E Mouse MF150, USB-A, black",
+        "stock": 1,
+        "price_azn": 8.99
+      },
+      {
+        "code": "2E-MF160UB",
+        "name": "2E Mouse 2E MF160, USB-A, black",
+        "stock": 11,
+        "price_azn": 14.99
+      },
+      {
+        "code": "2E-MF110UW",
+        "name": "Wired mouse 2Е MF110 White",
+        "stock": 46,
+        "price_azn": 12.99
+      },
+      {
+        "code": "2E-MF1012UB",
+        "name": "2E Mouse MF1012 USB Black",
+        "stock": 5,
+        "price_azn": 5.99
+      },
+      {
+        "code": "2E-MF110UB",
+        "name": "Wired mouse 2Е MF110 Black",
+        "stock": 1,
+        "price_azn": 12.99
+      },
+      {
+        "code": "2E-MF130UB",
+        "name": "Mouse 2E MF130, USB-A, чорний",
+        "stock": 652,
+        "price_azn": 4.49
+      }
+    ]
+  },
+  {
+    "id": "wireless_keyboards",
+    "name": "Simsiz Klaviaturalar",
+    "sort_order": 3,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-KS280WBGR_AK",
+        "name": "2E Keyboard membrane KS280 120key, WL/BT, EN/UK/RU, silent, black-grey",
+        "stock": 6,
+        "price_azn": 37.99
+      },
+      {
+        "code": "2E-KS240WG_UA",
+        "name": "2E Keyboard membrane KS240 110key, WL/BT, EN/UK, grey-black",
+        "stock": 38,
+        "price_azn": 69.99
+      },
+      {
+        "code": "2E-KS260WWH",
+        "name": "2E Keyboard membrane KS260 106key, WL, EN/UK/RU, white",
+        "stock": 4,
+        "price_azn": 26.99
+      },
+      {
+        "code": "2E-KS260WB_CI",
+        "name": "2E Keyboard membrane KS260 106key, WL, EN/UK/RU, black",
+        "stock": 6,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-KS270WBGR",
+        "name": "2E Keyboard membrane KS270 105key, WL/BT, EN/UK/RU, grey-black",
+        "stock": 17,
+        "price_azn": 77.99
+      },
+      {
+        "code": "2E-KS270WBWH",
+        "name": "2E Keyboard membrane KS270 105key, WL/BT, EN/UK/RU, silver-white",
+        "stock": 82,
+        "price_azn": 77.99
+      },
+      {
+        "code": "2E-KS270WBGR_UA",
+        "name": "2E Keyboard membrane KS270 109key, WL/BT, EN/UK, grey-black",
+        "stock": 4,
+        "price_azn": 76.99
+      },
+      {
+        "code": "2E-MK390MWB_UA",
+        "name": "2E Combo keyboard and mouse MK390 WL, EN/UK, black",
+        "stock": 375,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-KT100WB_UA",
+        "name": "2E Keyboard scissors KT100 78key, WL, EN/UK, black",
+        "stock": 54,
+        "price_azn": 49.99
+      }
+    ]
+  },
+  {
+    "id": "wired_keyboards",
+    "name": "Simli Klaviaturalar",
+    "sort_order": 4,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-KS108UB_UA",
+        "name": "2E Keyboard membrane KS108 104key, USB-A, EN/UK, black",
+        "stock": 538,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-KS120UB_UA",
+        "name": "2E Keyboard membrane KS120 104key, USB-A, EN/UK, White LED ishiqlama, black",
+        "stock": 12,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-KG325UB",
+        "name": "2E GAMING Membrane keyboard KG325 104key, USB-A, EN/UA/RU, LED, black",
+        "stock": 9,
+        "price_azn": 59.99
+      },
+      {
+        "code": "2E-MK401UB_UA",
+        "name": "2E Combo keyboard and mouse MK401 USB-A, EN/UK, black",
+        "stock": 241,
+        "price_azn": 17.99
+      },
+      {
+        "code": "2E-KG300UB_AK",
+        "name": "2E GAMING Membrane keyboard KG300 114key, USB-A, EN/RU, LED, black",
+        "stock": 300,
+        "price_azn": 49.99
+      },
+      {
+        "code": "2E-KG330UBK",
+        "name": "Клавіатура мембранна 2E GAMING KG330 104key, USB-A, EN/UA/RU, LED, чорний",
+        "stock": 1,
+        "price_azn": 37.99
+      },
+      {
+        "code": "2E-KG315UWT_AK",
+        "name": "2E GAMING Membrane keyboard KG315 110key, USB-A, EN/RU, RGB, white",
+        "stock": 20,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-KG315UPK_AK",
+        "name": "2E GAMING Membrane keyboard KG315 110key, USB-A, EN/RU, RGB, pink",
+        "stock": 20,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-KG315UYW_AK",
+        "name": "2E GAMING Membrane keyboard KG315 110key, USB-A, EN/RU, RGB, yellow",
+        "stock": 560,
+        "price_azn": 54.99
+      },
+      {
+        "code": "2E-KG315UBK_AK",
+        "name": "2E GAMING Membrane keyboard KG315 110key, USB-A, EN/RU, RGB, black",
+        "stock": 103,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-KG350UBK",
+        "name": "2E GAMING Membrane keyboard KG350 68key, USB-A, EN/UA/RU, RGB, black",
+        "stock": 6,
+        "price_azn": 54.99
+      }
+    ]
+  },
+  {
+    "id": "mousepads",
+    "name": "Siçan Altlıqları",
+    "sort_order": 5,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-PAD-L-CAPY-YELLOW",
+        "name": "2E Mouse Pad CAPYBARRA, L(800x400x2mm), yellow",
+        "stock": 3,
+        "price_azn": 24.99
+      },
+      {
+        "code": "2E-PAD-L-CAPY-BLUE",
+        "name": "2E Mouse Pad CAPYBARRA, L(800x400x2mm), blue",
+        "stock": 1,
+        "price_azn": 24.99
+      },
+      {
+        "code": "2E-SPEED-XL-YW-PRO",
+        "name": "2E GAMING Mouse Pad PRO Speed, XL (800x450x3mm), yellow",
+        "stock": 10,
+        "price_azn": 44.99
+      },
+      {
+        "code": "2E-SPEED-XL-PK-PRO",
+        "name": "2E GAMING Mouse Pad PRO Speed, XL (800x450x3mm), pink",
+        "stock": 10,
+        "price_azn": 44.99
+      },
+      {
+        "code": "2E-SPEED-XL-D07-PRO",
+        "name": "2E GAMING Mouse Pad PRO Speed D07, XL (800x450x3mm), multicolor",
+        "stock": 10,
+        "price_azn": 44.99
+      },
+      {
+        "code": "2E-SPEED-XL-D08-PRO",
+        "name": "2E GAMING Mouse Pad PRO Speed D08, XL (800x450x3mm), multicolor",
+        "stock": 13,
+        "price_azn": 38.99
+      }
+    ]
+  },
+  {
+    "id": "headsets",
+    "name": "PC Qulaqlıqları",
+    "sort_order": 6,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-HG310V2-WT",
+        "name": "2E GAMING Headset HG310 V2, mini-jack, 1.5m, white",
+        "stock": 50,
+        "price_azn": 45.99
+      },
+      {
+        "code": "2E-HG315WT-7.1",
+        "name": "2E GAMING Headset HG315 RGB USB 7.1 White",
+        "stock": 83,
+        "price_azn": 62.99
+      },
+      {
+        "code": "2E-HG340YW",
+        "name": "2E GAMING Headset HG340, mini-jack/dual 3.5mm, RGB, 2m, yellow",
+        "stock": 33,
+        "price_azn": 82.99
+      },
+      {
+        "code": "2E-HG300BK",
+        "name": "2E GAMING Headset HG300, mini-jack/dual 3.5mm, LED, 2m, black",
+        "stock": 180,
+        "price_azn": 45.99
+      },
+      {
+        "code": "2E-HG315YW-7.1",
+        "name": "2E GAMING Headset HG315, 7.1, USB-A, RGB, 2m, yellow",
+        "stock": 25,
+        "price_azn": 62.99
+      },
+      {
+        "code": "2E-HG315BK-7.1",
+        "name": "2E GAMING Headset HG315, 7.1, USB-A, RGB, 2m, black",
+        "stock": 122,
+        "price_azn": 69.99
+      },
+      {
+        "code": "2E-HG310V2-BK",
+        "name": "2E GAMING Headset HG310 V2, mini-jack, 1.5m, black",
+        "stock": 20,
+        "price_azn": 59.99
+      },
+      {
+        "code": "2E-HG320V2BK-7.1",
+        "name": "2E GAMING Headset HG320 V2, 7.1, USB-A, RGB, 2m, black",
+        "stock": 200,
+        "price_azn": 79.99
+      },
+      {
+        "code": "2E-HG340YW-7.1",
+        "name": "2E GAMING Headset HG340, 7.1, USB-A, RGB, 2m, yellow",
+        "stock": 8,
+        "price_azn": 109.99
+      },
+      {
+        "code": "2E-HG340BK",
+        "name": "2E GAMING Headset HG340 RGB 3.5mm Black",
+        "stock": 2,
+        "price_azn": 99.99
+      },
+      {
+        "code": "2E-HG340BK-7.1",
+        "name": "2E GAMING Headset HG340 RGB USB 7.1 Black",
+        "stock": 14,
+        "price_azn": 109.99
+      },
+      {
+        "code": "2E-HG350BK-7.1",
+        "name": "2E GAMING Headset HG350 RGB USB 7.1 Black",
+        "stock": 3,
+        "price_azn": 159.99
+      },
+      {
+        "code": "2E-HG355WT-7.1",
+        "name": "2E GAMING Headset HG355, 7.1, mini-jack/dual 3.5мм/USB-A, 1.5/1.5/0.2m, white",
+        "stock": 24,
+        "price_azn": 114.99
+      },
+      {
+        "code": "2E-HG355BK-7.1",
+        "name": "2E GAMING Headset HG355, 7.1, mini-jack/dual 3.5мм/USB-A, 1.5/1.5/0.2m, black",
+        "stock": 24,
+        "price_azn": 114.99
+      },
+      {
+        "code": "2E-HG365WT-WL",
+        "name": "2E GAMING Headset HG365, BT/WL, white",
+        "stock": 1,
+        "price_azn": 83.99
+      },
+      {
+        "code": "2E-CH13SU",
+        "name": "2E PC headset stereo Over-ear CH13 USB, omni-mic, 2m, black",
+        "stock": 3,
+        "price_azn": 44.99
+      }
+    ]
+  },
+  {
+    "id": "glasses",
+    "name": "Kompüter Qoruyucu Eynəkləri",
+    "sort_order": 7,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-GLS310BK-KIT",
+        "name": "2E GAMING Glasses, Anti-blue, black",
+        "stock": 13,
+        "price_azn": 38.99
+      }
+    ]
+  },
+  {
+    "id": "desk_lamps",
+    "name": "Masa Lampaları",
+    "sort_order": 8,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-DL2240",
+        "name": "2E Table lamp with battery 7W 3000K 4000K 5700K 2200mAh USB-A white",
+        "stock": 5,
+        "price_azn": 64.99
+      },
+      {
+        "code": "2E-DL2236",
+        "name": "2E Table lamp with battery 9W 3000K 4000K 5700K 2200mAh USB-С white",
+        "stock": 3,
+        "price_azn": 59.99
+      }
+    ]
+  },
+  {
+    "id": "gpu_support",
+    "name": "Videokart Dəstəyi",
+    "sort_order": 9,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-SPRT-VGA",
+        "name": "2E GAMING VGA support Heracles ARGB SPRT-VGA, 5V, 0.3A, 1.5W, 3pin, ARGB, Aluminum, black",
+        "stock": 1,
+        "price_azn": 34.99
+      }
+    ]
+  },
+  {
+    "id": "docking_stations",
+    "name": "Dok-stansiyalar və Altlıqlar",
+    "sort_order": 10,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-CPG-005",
+        "name": "2E GAMING Laptop stand CPG-005, up to 17.3\", 2xUSB-A, LCD/phone holder, RGB, black",
+        "stock": 131,
+        "price_azn": 60.99
+      },
+      {
+        "code": "2E-CPG-006",
+        "name": "2E GAMING Laptop stand CPG-006, up to 17.3\", 2xUSB-A, LCD/phone holder, RGB, black",
+        "stock": 96,
+        "price_azn": 64.99
+      },
+      {
+        "code": "2E-CPG-001V2",
+        "name": "2E GAMING Laptop Stand CPG-001 V2, up to 15.6\", 2xUSB-A, phone holder, RGB, black",
+        "stock": 97,
+        "price_azn": 49.99
+      },
+      {
+        "code": "2E-CPG-004",
+        "name": "2E GAMING Laptop stand CPG-004, up to 15.6\", 2xUSB-A, LCD/phone holder, RGB, black",
+        "stock": 177,
+        "price_azn": 79.99
+      },
+      {
+        "code": "2E-CPG-011",
+        "name": "2E GAMING Laptop stand CPG-011, up to 17.3\", 1xUSB-A, 1xUSB-C, LCD, RGB, black",
+        "stock": 123,
+        "price_azn": 84.99
+      },
+      {
+        "code": "2E-CPG-012",
+        "name": "2E GAMING Laptop stand CPG-012, up to 17.3\", 1xUSB-C, LCD/semiconductor cooling pad, RGB, black",
+        "stock": 200,
+        "price_azn": 89.99
+      }
+    ]
+  },
+  {
+    "id": "ups",
+    "name": "UPS (Kəsintisiz Enerji Təminatı)",
+    "sort_order": 11,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-ED850",
+        "name": "2E ED850, 850VA/480W, LED, 2xSchuko",
+        "stock": 386,
+        "price_azn": 119.0
+      },
+      {
+        "code": "2E-ED1500",
+        "name": "2E ED1500, 1500VA/900W, LED, 3xSchuko",
+        "stock": 144,
+        "price_azn": 249.0
+      },
+      {
+        "code": "2E-ED1200",
+        "name": "2E ED1200, 1200VA/720W, LED, 3xSchuko",
+        "stock": 28,
+        "price_azn": 199.99
+      },
+      {
+        "code": "2E-ED2000",
+        "name": "2E ED2000, 2000VA/1200W, LED, 2xSchuko",
+        "stock": 165,
+        "price_azn": 299.0
+      },
+      {
+        "code": "2E-ED650",
+        "name": "2E ED650, 650VA/360W, LED, 2xSchuko",
+        "stock": 630,
+        "price_azn": 99.0
+      },
+      {
+        "code": "2E-OD2000RT",
+        "name": "2E OD2000RT, 2000VA/1800W, RT2U, LCD, USB, 3xSchuko",
+        "stock": 6,
+        "price_azn": 999.0
+      },
+      {
+        "code": "2E-OD3000RT",
+        "name": "2E OD3000RT, 3000VA/2700W, RT2U, LCD, USB, 3xSchuko",
+        "stock": 17,
+        "price_azn": 1199.0
+      }
+    ]
+  },
+  {
+    "id": "gaming_chairs",
+    "name": "Oyunçu Kresloları və Masaları",
+    "sort_order": 12,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-GC-BUS-WELG",
+        "name": "2E GAMING Chair BUSHIDO II WE, fabric, 3D-Armrests, light grey",
+        "stock": 12,
+        "price_azn": 579.0
+      },
+      {
+        "code": "2E-GC-BUS-ESGY",
+        "name": "2E GAMING Chair BUSHIDO Lite, fabric, 2D-Armrests, dark grey",
+        "stock": 18,
+        "price_azn": 529.0
+      },
+      {
+        "code": "2E-GC-BUS-ESGN",
+        "name": "2E GAMING Chair BUSHIDO Lite, fabric, 2D-Armrests, dark green",
+        "stock": 21,
+        "price_azn": 499.99
+      },
+      {
+        "code": "2E-GC-BUS-WT",
+        "name": "2E GAMING Chair BUSHIDO White/Black",
+        "stock": 2,
+        "price_azn": 615.99
+      },
+      {
+        "code": "2E-GC-BUS-BK",
+        "name": "2E GAMING Chair BUSHIDO II, PU Leather, 3D-Armrests, black",
+        "stock": 1,
+        "price_azn": 615.99
+      },
+      {
+        "code": "2E-GC-HIB-BKRD",
+        "name": "2E GAMING Chair HIBAGON II, PU Leather, 3D-Armrests, black-red",
+        "stock": 8,
+        "price_azn": 869.99
+      },
+      {
+        "code": "2E-GC-BAS-BKRD",
+        "name": "2E GAMING Chair BASAN Black/Red",
+        "stock": 1,
+        "price_azn": 829.99
+      },
+      {
+        "code": "2E-GC-HIB-BK",
+        "name": "2E GAMING Chair HIBAGON II, PU Leather, 3D-Armrests, black-military green",
+        "stock": 52,
+        "price_azn": 680.99
+      },
+      {
+        "code": "2E-GC-HEB-BKWT",
+        "name": "2E GAMING Chair HEBI Black/White",
+        "stock": 5,
+        "price_azn": 549.99
+      },
+      {
+        "code": "2E-GC-HEB-BK",
+        "name": "2E GAMING Chair HEBI Black/Green",
+        "stock": 4,
+        "price_azn": 549.99
+      },
+      {
+        "code": "2E-GT-OTO-BKRD",
+        "name": "2E GAMING Table OTOROSHI, 120х60x75cm, black-red",
+        "stock": 1,
+        "price_azn": 399.99
+      }
+    ]
+  },
+  {
+    "id": "laptop_bags",
+    "name": "Notebook Çantaları, Bel Çantaları və Çexollar",
+    "sort_order": 13,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-BPN6316BK",
+        "name": "2E Backpack, SmartPack 16\", black",
+        "stock": 5,
+        "price_azn": 79.99
+      },
+      {
+        "code": "2E-CBN617BK",
+        "name": "2E Laptop Bag, Officeman 17\", Black",
+        "stock": 38,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-CBN816BU",
+        "name": "2E Laptop Bag, Practic 16\", blue",
+        "stock": 79,
+        "price_azn": 49.99
+      },
+      {
+        "code": "2E-CBN315BG",
+        "name": "2E Laptop Bag, Beginner 16\", Burgundy",
+        "stock": 1,
+        "price_azn": 19.99
+      },
+      {
+        "code": "2E-CBT6814BK",
+        "name": "2E Laptop Bag, TopLoad Classic 14\", Black",
+        "stock": 55,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-CBN413BK",
+        "name": "2E Laptop Bag 13.3\" 2E-CBN413BK, black",
+        "stock": 41,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-CBT6817BK",
+        "name": "2E Laptop Bag, TopLoad Classic 17\", Black",
+        "stock": 81,
+        "price_azn": 49.99
+      },
+      {
+        "code": "2E-CBN9198BK",
+        "name": "2E Laptop Bag 16\", CrossSquares, Black",
+        "stock": 3,
+        "price_azn": 69.99
+      },
+      {
+        "code": "2E-CBN5216BK",
+        "name": "2E Laptop Bag, Vector 16\", Black",
+        "stock": 39,
+        "price_azn": 44.99
+      },
+      {
+        "code": "2E-CBN417BK",
+        "name": "2E Laptop Bag, Base Park 17\", black",
+        "stock": 134,
+        "price_azn": 33.99
+      },
+      {
+        "code": "2E-CBT2384BK",
+        "name": "2E Laptop Bag, Slim keeper 13.3/14\", black",
+        "stock": 47,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-CBT2384GR",
+        "name": "2E Laptop Bag, Slim keeper 13.3/14\", grey",
+        "stock": 47,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-CBT2385BK",
+        "name": "2E Laptop Bag, Slim keeper 15.6/16\", black",
+        "stock": 149,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-CBT2385GR",
+        "name": "2E Laptop Bag, Slim keeper 15.6/16\", grey",
+        "stock": 147,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-CBT2394BK",
+        "name": "2E Laptop Bag, Slim Keeper Plus 13/14\", black",
+        "stock": 50,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-CBT2394GR",
+        "name": "2E Laptop Bag, Slim Keeper Plus 13/14\", grey",
+        "stock": 50,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-CBT2396BK",
+        "name": "2E Laptop Bag, Slim Keeper Plus 15.6/16\", black",
+        "stock": 50,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-CBT2396GR",
+        "name": "2E Laptop Bag, Slim Keeper Plus 15.6/16\", grey",
+        "stock": 73,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-CBP2486BK",
+        "name": "2E Laptop Bag, Slim Business 15.6/16\", black",
+        "stock": 39,
+        "price_azn": 44.99
+      },
+      {
+        "code": "2E-BPT7416BK",
+        "name": "2E Laptop Backpack, Impulse 15.6/16\", black",
+        "stock": 20,
+        "price_azn": 49.99
+      }
+    ]
+  },
+  {
+    "id": "monitors",
+    "name": "Monitorlar",
+    "sort_order": 14,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-G2725BV-01.UA",
+        "name": "Monitor 2E GAMING 27\" G2725BV HDMI, DP, VA, 2560x1440, 180Hz, 1ms, CURVED, FreeSync",
+        "stock": 9,
+        "price_azn": 499.99
+      },
+      {
+        "code": "2E-D2425B-01.EU",
+        "name": "2E Monitor 23.8\" D2425B D-Sub, HDMI, MM, IPS, 100Hz, FreeSync",
+        "stock": 148,
+        "price_azn": 279.99
+      }
+    ]
+  },
+  {
+    "id": "monitor_mounts",
+    "name": "Monitor Dayaqları",
+    "sort_order": 15,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2EDGEIF",
+        "name": "2E Desktop monitor mount Teifri",
+        "stock": 9,
+        "price_azn": 126.99
+      },
+      {
+        "code": "2E-1MCBUSB",
+        "name": "2E Monitor SingleSelect Spring Assisted Aluminum Monitor Arm with USB",
+        "stock": 6,
+        "price_azn": 210.99
+      },
+      {
+        "code": "2EDGEREDUSB",
+        "name": "Desktop monitor mount 2E Evdo USB3.0 hub",
+        "stock": 4,
+        "price_azn": 199.99
+      },
+      {
+        "code": "2EDGEIFUSB",
+        "name": "2E Desktop monitor mount Husto",
+        "stock": 37,
+        "price_azn": 136.99
+      },
+      {
+        "code": "2EdgeRED",
+        "name": "Desktop monitor mount 2E Pakhtugu",
+        "stock": 11,
+        "price_azn": 142.99
+      }
+    ]
+  },
+  {
+    "id": "microphones",
+    "name": "Mikrofonlar",
+    "sort_order": 16,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-ML010",
+        "name": "2E Lavalier Microphone ML010 3.5mm",
+        "stock": 16,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-MG020",
+        "name": "2Е MG020 Shoutgun Mic Pro, on/of, 3.5mm",
+        "stock": 10,
+        "price_azn": 89.99
+      },
+      {
+        "code": "2E-ML020",
+        "name": "2E Lavalier Microphone ML020 3.5mm",
+        "stock": 10,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-MG010",
+        "name": "2Е MG010 Shoutgun Mic, 3.5mm",
+        "stock": 7,
+        "price_azn": 49.99
+      },
+      {
+        "code": "2E-MPC110",
+        "name": "2E PC Microphone MPC110 USB",
+        "stock": 33,
+        "price_azn": 89.99
+      },
+      {
+        "code": "2E-MPC020",
+        "name": "2E PC Microphone MPC020 Streaming KIT USB",
+        "stock": 21,
+        "price_azn": 119.99
+      },
+      {
+        "code": "2E-MM011_OLD",
+        "name": "2Е Microphone AU-CM10S Vlog KIT, 3.5mm",
+        "stock": 42,
+        "price_azn": 119.99
+      },
+      {
+        "code": "2E-MM011",
+        "name": "2Е Microphone MM011 Vlog KIT, 3.5mm",
+        "stock": 28,
+        "price_azn": 229.99
+      }
+    ]
+  },
+  {
+    "id": "speakers",
+    "name": "PC Səsucaldıcıları",
+    "sort_order": 17,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-PCS231BK",
+        "name": "2E Multimedia speaker PCS231 RGB Matrix, 2.0, USB, Black",
+        "stock": 36,
+        "price_azn": 58.99
+      },
+      {
+        "code": "2E-PCS101BK",
+        "name": "2E Multimedia speaker PCS101 RGB, 2.0, USB, Black",
+        "stock": 18,
+        "price_azn": 74.99
+      },
+      {
+        "code": "2E-PCS233BK",
+        "name": "2E Multimedia speaker PCS233 RGB, 2.0, USB, Black",
+        "stock": 12,
+        "price_azn": 58.99
+      },
+      {
+        "code": "2E-PCS202BK",
+        "name": "2E Multimedia speaker PCS202, 2.0, USB, Black",
+        "stock": 2,
+        "price_azn": 29.99
+      },
+      {
+        "code": "2E-PCS234BK",
+        "name": "2E Multimedia speaker PCS234 RGB, 2.0, USB, Black",
+        "stock": 16,
+        "price_azn": 39.99
+      },
+      {
+        "code": "2E-BSSLMWBK",
+        "name": "2E Portable Speaker SoundLegend Mini 40W, BT 5.3, TWS, FLAC, MP3, WAV, EQ, Power Bank, IPX6, Black",
+        "stock": 14,
+        "price_azn": 149.99
+      },
+      {
+        "code": "2E-BSSLMWBN",
+        "name": "2E Portable Speaker SoundLegend Mini 40W, BT 5.3, TWS, FLAC, MP3, WAV, EQ, Power Bank, IPX6, Brown",
+        "stock": 1,
+        "price_azn": 149.99
+      },
+      {
+        "code": "2E-BSSLMWGN",
+        "name": "2E Portable Speaker SoundLegend Mini 40W, BT 5.3, TWS, FLAC, MP3, WAV, EQ, Power Bank, IPX6, Green",
+        "stock": 9,
+        "price_azn": 149.99
+      },
+      {
+        "code": "2E-BSSXPLLWBK",
+        "name": "2E Portable Speaker SoundXPill TWS, MP3, Wireless, Waterproof Black",
+        "stock": 13,
+        "price_azn": 109.99
+      },
+      {
+        "code": "2E-BSSXT2WBK",
+        "name": "2E Portable Speaker SoundXTube2 TWS, MP3, Wireless, Waterproof Black",
+        "stock": 22,
+        "price_azn": 139.99
+      }
+    ]
+  },
+  {
+    "id": "tvs",
+    "name": "Televizorlar",
+    "sort_order": 18,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-43A07B",
+        "name": "TV Set 43\" 2E LED FHD 60Hz Smart Android Black",
+        "stock": 498,
+        "price_azn": 479.0
+      }
+    ]
+  },
+  {
+    "id": "tv_mounts",
+    "name": "Televizor Dayaqları",
+    "sort_order": 19,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E2GEN3270FIX",
+        "name": "2E Fixed TV mount Feyig 32-70\"",
+        "stock": 1,
+        "price_azn": 10.99
+      },
+      {
+        "code": "2Emagslim",
+        "name": "Fixed TV mount 2E Sil 32-55\"",
+        "stock": 44,
+        "price_azn": 22.99
+      },
+      {
+        "code": "2ECARTVCS",
+        "name": "2E Mobile TV Stand Toifkaa 37\"- 70\" 75kg",
+        "stock": 6,
+        "price_azn": 249.99
+      }
+    ]
+  },
+  {
+    "id": "cables",
+    "name": "Kabellər, Bölücülər və Adapterlər",
+    "sort_order": 20,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-U03VES5MBK",
+        "name": "2E Power strip Plus 3хType F, 3х1mm2, 10A, 5m, black",
+        "stock": 61,
+        "price_azn": 34.99
+      },
+      {
+        "code": "2E-SP515M5BK",
+        "name": "2E Power strip with surge protection, 5m, 5xTypeF, 16A, black",
+        "stock": 12,
+        "price_azn": 64.99
+      },
+      {
+        "code": "2E-AD0103WH",
+        "name": "2E Power adapter 3xTypeF, 16A, white",
+        "stock": 5,
+        "price_azn": 14.99
+      },
+      {
+        "code": "2E-AD0103BK",
+        "name": "2E Power adapter 3xTypeF, 16A, black",
+        "stock": 4,
+        "price_azn": 14.99
+      },
+      {
+        "code": "2E-U05ES15M10WH",
+        "name": "2E Power strip 5хType F, 3х1.5mm2, 16A, 10m, white",
+        "stock": 2,
+        "price_azn": 69.99
+      },
+      {
+        "code": "2E-SP515M2USBWH",
+        "name": "2E Power strip with surge protector 5xType F, 3x1.5mm2, 16A, 3xUSB-A, 2m, white",
+        "stock": 13,
+        "price_azn": 37.99
+      }
+    ]
+  },
+  {
+    "id": "hubs",
+    "name": "Hub və Switch-lər",
+    "sort_order": 21,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2EW-2684",
+        "name": "2E Hub  USB-C 6in1 Slim Aluminum Multi-Port, silver",
+        "stock": 9,
+        "price_azn": 72.99
+      }
+    ]
+  },
+  {
+    "id": "cleaning",
+    "name": "Monitor Təmizləmə Vasitələri",
+    "sort_order": 22,
+    "is_digital": 0,
+    "products": [
+      {
+        "code": "2E-SK100WST",
+        "name": "2E Wet wipes for office equipment, 12х12cm, 100pcs",
+        "stock": 1,
+        "price_azn": 7.99
+      },
+      {
+        "code": "2E-SK7IN1",
+        "name": "2E Cleaning Kit 2E 7in1, white/blue",
+        "stock": 324,
+        "price_azn": 9.99
+      },
+      {
+        "code": "2E-SK3IN1",
+        "name": "2E Cleaning Kit for earbuds 3in1, white/grey",
+        "stock": 703,
+        "price_azn": 3.99
+      },
+      {
+        "code": "2E-SK150GR",
+        "name": "2E Cleaning kit for office equipment (liquid 150ml, whipe 20cm), green",
+        "stock": 491,
+        "price_azn": 6.29
+      },
+      {
+        "code": "2E-SK150BL",
+        "name": "2E Cleaning kit for office equipment (liquid 150ml, whipe 20cm), blue",
+        "stock": 946,
+        "price_azn": 6.29
+      },
+      {
+        "code": "2E-SK140PN",
+        "name": "Cleaning kit 2E PILL for office equipment (liquid 140ml, whipe 20cm), white-pink",
+        "stock": 348,
+        "price_azn": 6.19
+      },
+      {
+        "code": "2E-SK140BL",
+        "name": "Cleaning kit 2E PILL for office equipment (liquid 140ml, whipe 20cm), white-blue",
+        "stock": 363,
+        "price_azn": 6.19
+      }
+    ]
+  },
+  {
+    "id": "digital_goods",
+    "name": "Rəqəmsal Məhsullar",
+    "sort_order": 23,
+    "is_digital": 1,
+    "products": [
+      {
+        "code": "DIGI-STEAM-10",
+        "name": "Steam Wallet Kodu — 10 AZN",
+        "stock": -1,
+        "price_azn": 10.0
+      },
+      {
+        "code": "DIGI-STEAM-25",
+        "name": "Steam Wallet Kodu — 25 AZN",
+        "stock": -1,
+        "price_azn": 25.0
+      },
+      {
+        "code": "DIGI-GAMEACC-1",
+        "name": "Oyun Daxili Hesab (nümunə — admin dəyişsin)",
+        "stock": -1,
+        "price_azn": 0.0
+      }
+    ]
+  }
+]

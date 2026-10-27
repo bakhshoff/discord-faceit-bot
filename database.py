@@ -217,6 +217,27 @@ def init_db():
         )
     """)
 
+    # ── Mağaza (store_catalog_seed.json-dan toplu doldurulur — bax: seed_store_catalog) ──
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_categories (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            sort_order INTEGER DEFAULT 0,
+            is_digital INTEGER DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id TEXT NOT NULL,
+            code TEXT,
+            name TEXT NOT NULL,
+            price_azn REAL NOT NULL DEFAULT 0,
+            stock INTEGER DEFAULT 0,
+            active INTEGER DEFAULT 1
+        )
+    """)
+
     # ── Achievements ──────────────────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS achievements (
@@ -1159,6 +1180,94 @@ def maybe_grant_profile_surprise(discord_id, date_key, chance=0.05, min_coin=5, 
     return amount
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAĞAZA — gaming aksessuarlar (2E kataloqu) + rəqəmsal məhsullar (bax: web_leaderboard/store_catalog_seed.json)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def seed_store_catalog(json_path):
+    """`store_catalog_seed.json`-dan kateqoriya/məhsulları bir dəfəlik doldurur (bax: bot.py-dəki
+    on_ready-də meta-bayraqla qorunan çağırış). Artıq mövcud olan kateqoriya/məhsul kodlarını
+    YENİDƏN yaratmır (idempotent) — təkrar çağırılsa belə dublikat yaratmaz."""
+    import json as _json
+    with open(json_path, "r", encoding="utf-8") as f:
+        categories = _json.load(f)
+
+    conn = _get_conn()
+    cursor = conn.cursor()
+    added_categories = 0
+    added_products = 0
+    for cat in categories:
+        cursor.execute("SELECT 1 FROM store_categories WHERE id=?", (cat["id"],))
+        if not cursor.fetchone():
+            cursor.execute(
+                "INSERT INTO store_categories (id, name, sort_order, is_digital) VALUES (?, ?, ?, ?)",
+                (cat["id"], cat["name"], cat.get("sort_order", 0), cat.get("is_digital", 0))
+            )
+            added_categories += 1
+        for p in cat.get("products", []):
+            cursor.execute(
+                "SELECT 1 FROM store_products WHERE category_id=? AND code=?",
+                (cat["id"], p.get("code"))
+            )
+            if cursor.fetchone():
+                continue
+            cursor.execute(
+                "INSERT INTO store_products (category_id, code, name, price_azn, stock, active) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
+                (cat["id"], p.get("code"), p["name"], p.get("price_azn", 0), p.get("stock", 0))
+            )
+            added_products += 1
+    conn.commit()
+    conn.close()
+    return {"categories": added_categories, "products": added_products}
+
+
+def get_store_categories():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT c.id, c.name, c.sort_order, c.is_digital, COUNT(p.id) "
+        "FROM store_categories c LEFT JOIN store_products p ON p.category_id = c.id AND p.active=1 "
+        "GROUP BY c.id ORDER BY c.sort_order ASC"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "name": r[1], "sort_order": r[2], "is_digital": bool(r[3]), "product_count": r[4]}
+        for r in rows
+    ]
+
+
+def get_store_products(category_id):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, code, name, price_azn, stock, active FROM store_products "
+        "WHERE category_id=? AND active=1 ORDER BY name ASC",
+        (category_id,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "code": r[1], "name": r[2], "price_azn": r[3], "stock": r[4], "active": bool(r[5])}
+        for r in rows
+    ]
+
+
+def set_store_product_active(product_id, active):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE store_products SET active=? WHERE id=?", (1 if active else 0, product_id))
+    conn.commit()
+    conn.close()
+
+
+def set_store_stock(product_id, stock):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE store_products SET stock=? WHERE id=?", (stock, product_id))
+    conn.commit()
+    conn.close()
 
 
 

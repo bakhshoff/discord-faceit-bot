@@ -71,6 +71,7 @@ from database import (
     award_achievement, get_player_achievements, get_all_achievements,
     archive_and_delete_player, get_recent_deleted_players, restore_deleted_player,
     process_pending_cleanup, maybe_grant_profile_surprise,
+    seed_store_catalog,
 )
 from i18n import t, LANG_NAMES
 from ai_chat import generate_daily_news, generate_personal_coach_report, translate_text
@@ -2517,6 +2518,15 @@ async def on_ready():
             print(f"[BACKFILL] Xəta: {e}")
         set_meta("backfill_achievements_2026_10_26", "1")
 
+    if not get_meta("seed_store_catalog_2026_10_27"):
+        try:
+            seed_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_leaderboard", "store_catalog_seed.json")
+            result = seed_store_catalog(seed_path)
+            print(f"[SEED] Mağaza kataloqu dolduruldu: {result['categories']} kateqoriya, {result['products']} məhsul.")
+        except Exception as e:
+            print(f"[SEED] Xəta: {e}")
+        set_meta("seed_store_catalog_2026_10_27", "1")
+
     saved_log = get_meta("log_channel_id")
     if saved_log:
         LOG_CHANNEL_ID = int(saved_log)
@@ -3981,7 +3991,7 @@ async def _execute_server_reset(interaction: discord.Interaction):
         f"💬 Staff chat: {ch_staff_chat.mention}\n"
         f"🛡️ Server log: {ch_audit.mention}\n\n"
         f"**{TICKET_CATEGORY_NAME}**\n"
-        f"🎫 Ticket aç: {ch_ticket_panel.mention} (klan qoşulma + Gold/Boost/Emulator satışı — seçimə görə özəl kanal açılır)\n\n"
+        f"🎫 Ticket aç: {ch_ticket_panel.mention} (klan qoşulma + Gold/Boost/Emulator/Mağaza satışı — seçimə görə özəl kanal açılır)\n\n"
         "⚠️ **Diqqət:** köhnə rol təyinatları itdi — hər kəsə YENİ Founder/Admin/Moderator/Streamer/Partner/klan "
         "rollarını əl ilə verməlisiniz (yalnız NLA Member və Bot avtomatik verildi). Oyunçu datası (qeydiyyat/"
         "statistika/coin/sezon) bu komanda ilə TOXUNULMADI — onu ayrıca `/admin_full_reset` ilə "
@@ -4041,7 +4051,7 @@ async def server_sifirla_cmd(interaction: discord.Interaction):
         "• **🎯 FACEIT 5V5** — registration, rules, matchmaking, match-results, match-history, faceit-info, "
         "season/general leaderboard, season-rewards\n"
         "• **🛡️ STAFF** (yalnız Founder/Admin/Moderator görür) — staff voice, staff-chat, server-log\n"
-        "• **🎫 TICKETS** — klan qoşulma (NLA/Calestify/K4GE/ELE1) + Gold/Boost/Emulator satışı üçün düymə/seçim əsaslı özəl ticket sistemi\n\n"
+        "• **🎫 TICKETS** — klan qoşulma (NLA/Calestify/K4GE/ELE1) + Gold/Boost/Emulator/Mağaza satışı üçün düymə/seçim əsaslı özəl ticket sistemi\n\n"
         "Yeni rollar yaradılacaq: **Founder, Admin, Moderator, Streamer, Partner, NLA Clan, Calestify Clan, "
         "K4GE Clan, ELE1 Clan, NLA Member, Bot** (hər kəsə NLA Member, botlara Bot rolu avtomatik veriləcək, "
         "yeni qoşulanlara NLA Member avtomatik veriləcək). Köhnə rol təyinatları itəcək — digərlərini əl ilə "
@@ -4226,6 +4236,7 @@ TICKET_TYPES = [
     ("gold", "Gold Satışı", "💰", "Gold almaq istəyirəm"),
     ("boost", "Boost Satışı", "🚀", "ELO/rank boost almaq istəyirəm"),
     ("emulator", "Emulator Satışı", "📱", "Emulator almaq istəyirəm"),
+    ("store", "Mağaza Sifarişi", "🛍️", "Mağazadan məhsul sifariş etmək istəyirəm"),
 ]
 TICKET_TYPE_LABELS = {value: label for value, label, emoji, desc in TICKET_TYPES}
 
@@ -4343,7 +4354,7 @@ async def _post_ticket_panel(channel):
         description=(
             "Aşağıdan mövzu seçərək özəl ticket kanalı açın:\n\n"
             "🏷️ **Klan qoşulma** — Next Level Azerbaijan, Calestify, K4GE, ELE1\n"
-            "💰 **Gold satışı**  ·  🚀 **Boost satışı**  ·  📱 **Emulator satışı**\n\n"
+            "💰 **Gold satışı**  ·  🚀 **Boost satışı**  ·  📱 **Emulator satışı**  ·  🛍️ **Mağaza**\n\n"
             "Seçim etdikdən sonra sizin və heyətin görə biləcəyi özəl kanal yaradılacaq."
         ),
         color=discord.Color.from_rgb(138, 92, 230)

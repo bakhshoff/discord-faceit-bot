@@ -132,6 +132,14 @@ def offline_page():
     return render_template("offline.html")
 
 
+@app.route("/magaza")
+def store_page():
+    categories = [c for c in database.get_store_categories() if c["product_count"] > 0]
+    for cat in categories:
+        cat["products"] = database.get_store_products(cat["id"])
+    return render_template("store.html", categories=categories, discord_invite="https://discord.gg/nextlevelaz")
+
+
 @app.route("/sw.js")
 def service_worker():
     js = (
