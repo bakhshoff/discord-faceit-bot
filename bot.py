@@ -1461,6 +1461,12 @@ class MatchResultView5v5(discord.ui.View):
                 add_combat_stats(did, s.get("kills", 0), s.get("assists", 0), s.get("deaths", 0))
                 stats_by_id[did] = s
 
+        for p in winner_team + loser_team:
+            did = p["discord_id"]
+            if did not in stats_by_id:
+                add_combat_stats(did, 0, 0, 5)
+                stats_by_id[did] = {"kills": 0, "assists": 0, "deaths": 5}
+
         current_season = get_or_create_current_season("5v5")
         now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)
         is_midnight_bonus = MIDNIGHT_BONUS_START_HOUR <= now.hour < MIDNIGHT_BONUS_END_HOUR
