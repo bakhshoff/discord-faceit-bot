@@ -2068,6 +2068,22 @@ async def _cleanup_match_voice_channels(guild, active):
             print(f"[VOICE CLEANUP] Kanal {vid} silinərkən xəta (matç davam edir): {e}", flush=True)
 
 
+def _match_voice_overwrites(guild, team_members):
+    """Matçın səs kanalı üçün icazələr — yalnız həmin komandanın oyunçuları və heyət
+    (founder/admin) qoşula bilsin, hamı kanalı görür amma `@everyone` qoşula bilmir."""
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=True, connect=False)
+    }
+    for role in guild.roles:
+        if _normalize_role_name(role.name) in STAFF_ROLE_NAMES:
+            overwrites[role] = discord.PermissionOverwrite(view_channel=True, connect=True)
+    for p in team_members:
+        member = guild.get_member(p["discord_id"])
+        if member:
+            overwrites[member] = discord.PermissionOverwrite(view_channel=True, connect=True)
+    return overwrites
+
+
 _match_start_lock_5v5 = asyncio.Lock()
 
 
@@ -2286,8 +2302,14 @@ async def _start_one_5v5_match(channel, guild) -> bool:
     if guild:
         category = discord.utils.get(guild.categories, name=CATEGORY_5V5_NAME)
         try:
-            voice_a_channel = await guild.create_voice_channel(f"🔵 M{match_number}-A · {selected_map}", category=category)
-            voice_b_channel = await guild.create_voice_channel(f"🔴 M{match_number}-B · {selected_map}", category=category)
+            voice_a_channel = await guild.create_voice_channel(
+                f"🔵 M{match_number}-A · {selected_map}", category=category,
+                overwrites=_match_voice_overwrites(guild, team_a)
+            )
+            voice_b_channel = await guild.create_voice_channel(
+                f"🔴 M{match_number}-B · {selected_map}", category=category,
+                overwrites=_match_voice_overwrites(guild, team_b)
+            )
             set_active_match_voice(
                 match_number,
                 voice_a_channel.id if voice_a_channel else None,
