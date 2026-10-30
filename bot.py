@@ -41,7 +41,7 @@ from database import (
     get_lang, set_lang,
     get_inactive_unplayed_players,
     reset_all_player_data,
-    get_or_create_current_season, add_season_stat,
+    get_or_create_current_season, add_season_stat, backfill_season_from_lifetime,
     get_season_stat, get_season_leaderboard, close_season,
     get_completed_seasons, reset_all_players_for_new_season,
     ensure_5v5_stats_row, get_player_5v5, get_player_stats_dict_5v5, update_team_elo_5v5,
@@ -2575,6 +2575,15 @@ async def on_ready():
         except Exception as e:
             print(f"[SEED] Xəta: {e}")
         set_meta("clear_store_products_2026_10_27", "1")
+
+    if not get_meta("align_season1_with_lifetime_2026_10_30"):
+        try:
+            season = get_or_create_current_season("5v5")
+            affected = backfill_season_from_lifetime(season["id"], mode="5v5")
+            print(f"[SEED] Sezon #{season['season_number']} statistikası ömürlük rəqəmlərlə uyğunlaşdırıldı, {affected} oyunçu yeniləndi.")
+        except Exception as e:
+            print(f"[SEED] Xəta: {e}")
+        set_meta("align_season1_with_lifetime_2026_10_30", "1")
 
     saved_log = get_meta("log_channel_id")
     if saved_log:

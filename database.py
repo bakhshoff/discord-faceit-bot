@@ -3191,6 +3191,28 @@ def get_season_leaderboard(season_id, limit=20):
     return rows
 
 
+def backfill_season_from_lifetime(season_id, mode="5v5"):
+    """Sezon statistikasını players_5v5-dəki ÖMÜRLÜK (lifetime) rəqəmlərlə TAM uyğunlaşdırır.
+    Sezon 1 serverin İLK sezonu olduğu üçün (ondan əvvəl heç bir sezon yoxdur), ümumi və sezon
+    leaderboard-ların eyni şeyi göstərməsi məntiqlidir — bax: "ikisi fərqlidir" sualı. Hər
+    oyunçunun season_stats sətrini ƏLAVƏ ETMİR, DİRECT ƏVƏZ EDİR (idempotent — neçə dəfə
+    işə salınsa da nəticə eynidir). elo_gained = cari elo - 1000 (standart başlanğıc ELO)."""
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT discord_id, elo, wins, losses, kills, assists, deaths FROM players_5v5")
+    rows = cursor.fetchall()
+    for discord_id, elo, wins, losses, kills, assists, deaths in rows:
+        cursor.execute("""
+            INSERT INTO season_stats (discord_id, season_id, mode, elo_start, elo_gained, kills, assists, deaths, wins, losses)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(discord_id, season_id) DO UPDATE SET
+                mode=excluded.mode, elo_start=excluded.elo_start, elo_gained=excluded.elo_gained,
+                kills=excluded.kills, assists=excluded.assists, deaths=excluded.deaths,
+                wins=excluded.wins, losses=excluded.losses
+        """, (discord_id, season_id, mode, 1000, elo - 1000, kills, assists, deaths, wins, losses))
+    conn.commit()
+    conn.close()
+    return len(rows)
 
 
 
