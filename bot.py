@@ -444,6 +444,18 @@ MARKET_FRAMES = [
     {"id": "frame_gold", "name": "Gold Ring", "price": 750},
 ]
 
+# Mystery Box-dan İSTİSNA kosmetikalar — Market-də SATILMIR, yalnız qutudan düşür
+# (bax: database.py-dəki MYSTERY_BOX_ITEMS). Yalnız MarketInventoryView-da (aktivləşdirmə)
+# istifadə olunur, MarketView-dəki (satış) siyahılara ƏLAVƏ EDİLMİR.
+BOX_EXCLUSIVE_BANNERS = [
+    {"id": "banner_box_exclusive", "name": "Mystery Banner"},
+    {"id": "banner_box_exclusive_gif", "name": "Mystery Banner (GIF)", "gif": True},
+]
+BOX_EXCLUSIVE_FRAMES = [
+    {"id": "frame_box_exclusive", "name": "Mystery Çərçivə"},
+    {"id": "frame_box_exclusive_gif", "name": "Mystery Çərçivə (GIF)", "gif": True},
+]
+
 # Əl ilə (prosedural YARADILMAYAN) banner faylları — bax: market_assets_custom/
 CUSTOM_BANNER_PATHS = {
     "banner_victorian_london": os.path.join(
@@ -4608,10 +4620,10 @@ class MarketInventoryView(discord.ui.View):
         self.discord_id = discord_id
         owned = set(get_inventory(discord_id))
         options = []
-        for b in MARKET_BANNERS:
+        for b in MARKET_BANNERS + BOX_EXCLUSIVE_BANNERS:
             if b["id"] in owned:
                 options.append(discord.SelectOption(label=f"🖼️ {b['name']}", value=f"banner:{b['id']}"))
-        for f in MARKET_FRAMES:
+        for f in MARKET_FRAMES + BOX_EXCLUSIVE_FRAMES:
             if f["id"] in owned:
                 options.append(discord.SelectOption(label=f"🖼️ {f['name']}", value=f"frame:{f['id']}"))
         self.select_menu = None
@@ -4628,11 +4640,11 @@ class MarketInventoryView(discord.ui.View):
         kind, item_id = self.select_menu.values[0].split(":", 1)
         if kind == "banner":
             set_active_banner(self.discord_id, item_id)
-            name = next(b["name"] for b in MARKET_BANNERS if b["id"] == item_id)
+            name = next(b["name"] for b in MARKET_BANNERS + BOX_EXCLUSIVE_BANNERS if b["id"] == item_id)
             await interaction.response.send_message(f"✅ Banner **{name}** aktiv edildi — `/profile` ilə yoxlayın.", ephemeral=True)
         else:
             set_active_frame(self.discord_id, item_id)
-            name = next(f["name"] for f in MARKET_FRAMES if f["id"] == item_id)
+            name = next(f["name"] for f in MARKET_FRAMES + BOX_EXCLUSIVE_FRAMES if f["id"] == item_id)
             await interaction.response.send_message(f"✅ Çərçivə **{name}** aktiv edildi — `/profile` ilə yoxlayın.", ephemeral=True)
 
 

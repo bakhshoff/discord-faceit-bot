@@ -2072,12 +2072,9 @@ def spend_coins(discord_id, amount):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 DAILY_WHEEL_OUTCOMES = [
-    # (çəki, növ, min, max)
+    # (çəki, növ, min, max) — yalnız coin (bax: istifadəçi tələbi, ELO kartları/AZN çıxarıldı)
     (50, "coins", 5, 15),
     (25, "coins", 20, 40),
-    (15, "boost_card", 0, 0),
-    (7, "protect_card", 0, 0),
-    (3, "azn", 1, 1),
 ]
 
 
@@ -2389,17 +2386,37 @@ def get_boost_card_counts(discord_id):
 BOX_COST_COINS = 100
 
 MYSTERY_BOX_ITEMS = [
-    # (key, label, icon, color, card_type, qty, weight)
+    # ELO kartları — card_type: players cədvəlindəki boost50_cards/protect_cards sütunlarına
+    # düşür, matçda AVTOMATİK istifadə olunur (bax: apply_elo_modifiers).
     {"key": "boost_1", "label": "1x ELO Boost", "icon": "⚡", "color": "#8d8794",
-     "card_type": "boost50", "qty": 1, "weight": 40},
+     "kind": "card", "card_type": "boost50", "qty": 1, "weight": 20},
     {"key": "boost_2", "label": "2x ELO Boost", "icon": "⚡", "color": "#5fd07a",
-     "card_type": "boost50", "qty": 2, "weight": 27},
+     "kind": "card", "card_type": "boost50", "qty": 2, "weight": 12},
     {"key": "boost_3", "label": "3x ELO Boost", "icon": "⚡", "color": "#50a0dc",
-     "card_type": "boost50", "qty": 3, "weight": 18},
+     "kind": "card", "card_type": "boost50", "qty": 3, "weight": 7},
     {"key": "boost_5", "label": "5x ELO Boost", "icon": "⚡", "color": "#b89cf0",
-     "card_type": "boost50", "qty": 5, "weight": 10},
+     "kind": "card", "card_type": "boost50", "qty": 5, "weight": 3},
     {"key": "shield_1", "label": "ELO Qoruma Kartı", "icon": "🛡️", "color": "#f0b429",
-     "card_type": "protect", "qty": 1, "weight": 5},
+     "kind": "card", "card_type": "protect", "qty": 1, "weight": 2},
+
+    # Coin — balans birbaşa artırılır.
+    {"key": "coins_20", "label": "20 Coin", "icon": "🪙", "color": "#8d8794",
+     "kind": "coins", "amount": 20, "weight": 25},
+    {"key": "coins_50", "label": "50 Coin", "icon": "🪙", "color": "#5fd07a",
+     "kind": "coins", "amount": 50, "weight": 15},
+    {"key": "coins_100", "label": "100 Coin", "icon": "🪙", "color": "#f0b429",
+     "kind": "coins", "amount": 100, "weight": 8},
+
+    # Qutuya İSTİSNA kosmetikalar — Market-də satılmır, yalnız bu qutudan düşür
+    # (bax: bot.py-dəki BOX_EXCLUSIVE_BANNERS/BOX_EXCLUSIVE_FRAMES).
+    {"key": "cosmetic_banner", "label": "Mystery Banner", "icon": "🖼️", "color": "#50a0dc",
+     "kind": "cosmetic", "item_type": "banner", "item_id": "banner_box_exclusive", "weight": 4},
+    {"key": "cosmetic_banner_gif", "label": "Mystery Banner (GIF)", "icon": "🎬", "color": "#8a5ce6",
+     "kind": "cosmetic", "item_type": "banner", "item_id": "banner_box_exclusive_gif", "weight": 2},
+    {"key": "cosmetic_frame", "label": "Mystery Çərçivə", "icon": "💍", "color": "#f0b429",
+     "kind": "cosmetic", "item_type": "frame", "item_id": "frame_box_exclusive", "weight": 1.5},
+    {"key": "cosmetic_frame_gif", "label": "Mystery Çərçivə (GIF)", "icon": "✨", "color": "#d6453d",
+     "kind": "cosmetic", "item_type": "frame", "item_id": "frame_box_exclusive_gif", "weight": 0.5},
 ]
 
 
@@ -2424,9 +2441,18 @@ def open_mystery_box(discord_id, nick, cost=BOX_COST_COINS):
     weights = [i["weight"] for i in MYSTERY_BOX_ITEMS]
     item = _random.choices(MYSTERY_BOX_ITEMS, weights=weights, k=1)[0]
 
-    add_boost_cards(discord_id, item["card_type"], item["qty"])
+    net_change = -cost
+    if item["kind"] == "card":
+        add_boost_cards(discord_id, item["card_type"], item["qty"])
+    elif item["kind"] == "coins":
+        add_coins(discord_id, item["amount"])
+        net_change += item["amount"]
+    elif item["kind"] == "cosmetic":
+        add_to_inventory(discord_id, item["item_id"])
+
     new_balance = get_coins(discord_id)
-    add_coin_log(discord_id, -cost, f"🎁 Mystery Box: {item['label']}", "spend", new_balance)
+    log_type = "earn" if net_change > 0 else "spend"
+    add_coin_log(discord_id, net_change, f"🎁 Mystery Box: {item['label']}", log_type, new_balance)
 
     now = int(time.time())
     conn = _get_conn()

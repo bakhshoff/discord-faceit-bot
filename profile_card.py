@@ -199,12 +199,35 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         except Exception:
             av = None
 
-    fr = None
+    # ── Çərçivə kadrları (bax: market_assets.py-dəki ANIMATED_FRAME_DEFS) — eyni
+    # məntiq banner animasiyası ilə: GIF-dirsə hər kadrı çıxarır, statikdirsə tək şəkil.
+    frame_images = []
+    frame_durations = []
     if frame_path and os.path.exists(frame_path):
         try:
-            fr = Image.open(frame_path).convert("RGBA")
+            raw_fr = Image.open(frame_path)
+            is_gif_anim_fr = (
+                (getattr(raw_fr, "is_animated", False) or frame_path.lower().endswith(".gif"))
+                and getattr(raw_fr, "n_frames", 1) > 1
+            )
+            if is_gif_anim_fr:
+                n = raw_fr.n_frames
+                step = max(1, n // MAX_ANIM_FRAMES)
+                indices = list(range(0, n, step))[:MAX_ANIM_FRAMES]
+                for idx in indices:
+                    raw_fr.seek(idx)
+                    frame_images.append(raw_fr.convert("RGBA"))
+                    frame_durations.append(raw_fr.info.get("duration", 80))
+            else:
+                frame_images.append(raw_fr.convert("RGBA"))
         except Exception:
-            fr = None
+            frame_images = []
+    if not frame_images:
+        frame_images = [None]  # çərçivəsiz/xəta — standart halqa göstərilir
+
+    # Bannerin VƏ ya çərçivənin animasiyalı olması kartın ümumi kadr sayını təyin edir —
+    # qısa olan tərəf modulo ilə təkrarlanır (bax: aşağıdaki frames siyahısı).
+    total_frames = max(len(banner_images), len(frame_images))
 
     last_seen_txt = None
     if last_seen_ts:
@@ -217,7 +240,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         else:
             last_seen_txt = f"Son görülmə: {days_ago} gün əvvəl"
 
-    def _render_frame(banner_img):
+    def _render_frame(banner_img, frame_img):
         if banner_img is not None:
             bi  = ImageOps.fit(banner_img, (WIDTH, HEIGHT), Image.LANCZOS)
             ov  = Image.new("RGB", (WIDTH, HEIGHT), BG_TOP)
@@ -255,10 +278,10 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
             draw.ellipse([(av_x, av_y),(av_x+av_size, av_y+av_size)], fill=PANEL, outline=BORDER, width=2)
 
         # Çərçivə / level halqası
-        if fr is not None:
-            fx  = av_x + av_size//2 - fr.width//2
-            fy  = av_y + av_size//2 - fr.height//2
-            img.alpha_composite(fr, (fx, fy))
+        if frame_img is not None:
+            fx  = av_x + av_size//2 - frame_img.width//2
+            fy  = av_y + av_size//2 - frame_img.height//2
+            img.alpha_composite(frame_img, (fx, fy))
         else:
             _ring(draw, av_x, av_y, av_size, level_color)
 
@@ -344,7 +367,7 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         # ~0.7s) buraxılır — GIF formatı onsuz da 256-rəng palitrəsinə sıxışdırılır (quantize),
         # ona görə əlavə hamarlama dəyəri azdır, sürət isə matçdan sonra /profile-ın tez
         # cavab verməsi üçün vacibdir. Statik (tək kadrlı) kartda keyfiyyət tam saxlanılır.
-        if len(banner_images) > 1:
+        if total_frames > 1:
             return img
         return _finalize(img)
 
@@ -353,13 +376,17 @@ def generate_profile_card(nick, so2_id, elo, wins, losses, avatar_bytes=None,
         (1200,1350,"rank.nova1"),(1350,1500,"rank.nova2"),(1500,1700,"rank.supernova"),(1700,9999,"rank.zenith"),
     ]
 
-    frames = [_render_frame(b) for b in banner_images]
+    frames = [
+        _render_frame(banner_images[i % len(banner_images)], frame_images[i % len(frame_images)])
+        for i in range(total_frames)
+    ]
 
     if len(frames) > 1:
         gif_path = os.path.splitext(output_path)[0] + ".gif"
+        out_durations = durations if len(banner_images) > 1 else (frame_durations if len(frame_durations) > 1 else 80)
         frames[0].save(
             gif_path, format="GIF", save_all=True, append_images=frames[1:],
-            duration=durations if durations else 70, loop=0
+            duration=out_durations, loop=0
         )
         return gif_path
 
