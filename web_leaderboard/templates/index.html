@@ -314,9 +314,36 @@
     100% { background-position: 0% 50%; }
   }
 
+  .table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 12px;
+  }
+
   @media (max-width: 600px) {
-    .id-cell { display: none; }
-    h1 { font-size: 36px; }
+    .id-cell, th[data-key="id"] { display: none; }
+    .matches-cell, th[data-key="matches"] { display: none; }
+    h1 { font-size: 32px; }
+    .subtitle { font-size: 13px; }
+    header { padding: 44px 16px 24px; }
+    .container { padding: 24px 14px 0; }
+    td, th { padding: 10px 10px; font-size: 12.5px; }
+    .player-cell { max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .stat-chip { padding: 10px 14px; min-width: 100px; }
+    .stat-chip .value { font-size: 21px; }
+    .side-panel { padding: 14px; }
+    #viewerBadge { font-size: 10px; padding: 6px 10px; top: 10px; left: 10px; }
+    #soundToggle, #paletteBtn { width: 32px; height: 32px; font-size: 13px; top: 10px; }
+    #soundToggle { right: 48px; }
+    #paletteBtn { right: 10px; }
+    #backToTop { width: 38px; height: 38px; bottom: 16px; left: 16px; }
+    #matchToast { right: 16px; left: 16px; max-width: none; transform: translateY(120px); }
+    #matchToast.show { transform: translateY(0); }
+  }
+
+  @media (max-width: 380px) {
+    .controls { flex-direction: column; align-items: stretch; }
+    .sort-select { width: 100%; }
   }
 
   #viewerBadge {
@@ -753,6 +780,7 @@
     </select>
   </div>
 
+  <div class="table-scroll">
   <table id="leaderboardTable">
     <thead>
       <tr id="tableHeadRow"></tr>
@@ -773,6 +801,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
 
   <div id="emptyState" class="empty-state" style="display:none;">
     Hələ qeydiyyatdan keçən oyunçu yoxdur.
@@ -1031,7 +1060,7 @@ const COLUMN_DEFS = {
   player:  { label: 'Player', cell: (p) => `<td class="player-cell">${escapeHtml(p.nick)}</td>` },
   id:      { label: 'SO2 ID', cell: (p) => `<td class="id-cell">${escapeHtml(String(p.so2_id))}</td>` },
   elo:     { label: 'ELO',    cell: (p, ctx) => `<td class="elo-cell${ctx.eloPulseClass}">${p.elo}</td>` },
-  matches: { label: 'M',      cell: (p) => `<td>${p.matches}</td>` },
+  matches: { label: 'M',      cell: (p) => `<td class="matches-cell">${p.matches}</td>` },
   wins:    { label: 'W',      cell: (p) => `<td>${p.wins}</td>` },
   losses:  { label: 'L',      cell: (p) => `<td>${p.losses}</td>` },
   wr:      { label: 'WR%',    cell: (p) => `<td class="wr-cell">${p.win_rate}%</td>` },
