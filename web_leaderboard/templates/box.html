@@ -263,10 +263,54 @@
     border-radius: 10px;
     padding: 16px 10px;
     text-align: center;
+    cursor: pointer;
+    transition: transform 0.12s, border-color 0.15s;
   }
+  .odds-card:hover, .odds-card:active { transform: translateY(-2px); }
   .odds-card .ic { font-size: 28px; }
   .odds-card .lbl { font-size: 12px; font-weight: 700; margin-top: 8px; }
   .odds-card .pct { font-family: var(--font-mono); font-size: 18px; margin-top: 6px; }
+  .odds-card .tap-hint { font-size: 9.5px; color: var(--text-dim); margin-top: 6px; opacity: 0.7; }
+
+  /* ── Önizləmə modalı (bax: /market-asset/<id>) ── */
+  .preview-overlay {
+    display: none;
+    position: fixed; inset: 0; z-index: 90;
+    background: rgba(0,0,0,0.7);
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .preview-overlay.show { display: flex; }
+  .preview-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--gold);
+    border-radius: 14px;
+    max-width: 420px;
+    width: 100%;
+    padding: 22px;
+    text-align: center;
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .preview-close {
+    position: absolute; top: 10px; right: 10px;
+    background: var(--bg-row-alt); border: 1px solid var(--border); color: var(--text-dim);
+    width: 30px; height: 30px; border-radius: 50%; cursor: pointer; font-size: 14px;
+  }
+  .preview-close:hover { color: var(--gold); border-color: var(--gold); }
+  .preview-media {
+    width: 100%;
+    min-height: 100px;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-row-alt);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 14px;
+  }
+  .preview-media img { width: 100%; max-height: 240px; object-fit: contain; }
+  .preview-icon-big { font-size: 64px; padding: 30px 0; }
+  .preview-title { font-family: var(--font-display); font-size: 20px; margin-bottom: 6px; }
+  .preview-desc { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
 
   /* ── Son açılışlar ticker ── */
   .ticker-section { margin-top: 44px; }
@@ -365,12 +409,22 @@
     <div class="section-title">Çıxma Ehtimalları</div>
     <div class="odds-grid">
       {% for o in odds %}
-      <div class="odds-card" style="border-color:{{ o.color }}44;">
+      <div class="odds-card" data-idx="{{ loop.index0 }}" style="border-color:{{ o.color }}44;">
         <div class="ic">{{ o.icon }}</div>
         <div class="lbl">{{ o.label }}</div>
         <div class="pct" style="color:{{ o.color }};">{{ o.pct }}%</div>
+        <div class="tap-hint">👆 baxmaq üçün toxun</div>
       </div>
       {% endfor %}
+    </div>
+  </div>
+
+  <div class="preview-overlay" id="previewOverlay">
+    <div class="preview-card">
+      <button class="preview-close" id="previewClose" type="button">✕</button>
+      <div class="preview-media" id="previewMedia"></div>
+      <div class="preview-title" id="previewTitle">—</div>
+      <div class="preview-desc" id="previewDesc"></div>
     </div>
   </div>
 
@@ -467,6 +521,52 @@
       tickerTrack.removeChild(tickerTrack.lastChild);
     }
   }
+
+  // ── Qutu daxilində olan məhsula toxunduqda önizləmə (əsasən banner/çərçivə şəkli) ──
+  const previewOverlay = document.getElementById('previewOverlay');
+  const previewMedia = document.getElementById('previewMedia');
+  const previewTitle = document.getElementById('previewTitle');
+  const previewDesc = document.getElementById('previewDesc');
+
+  function describeItem(o) {
+    if (o.kind === 'card') {
+      if (o.card_type === 'protect') {
+        return `Məğlubiyyətdə ELO itkisinin qarşısını alır — ${o.qty} ədəd, növbəti uyğun matçda avtomatik işləyir.`;
+      }
+      return `Qələbə zamanı ELO qazancını 1.5x edir — ${o.qty} ədəd, avtomatik işləyir (əl ilə heç nə etmirsiniz).`;
+    }
+    if (o.kind === 'coins') {
+      return `${o.amount} coin birbaşa balansınıza əlavə olunur.`;
+    }
+    if (o.kind === 'cosmetic') {
+      return o.item_type === 'banner'
+        ? 'Qutuya xüsusi banner — Market → İnventarım-dan aktivləşdirin, profil kartınızın arxa fonu olacaq.'
+        : 'Qutuya xüsusi avatar çərçivəsi — Market → İnventarım-dan aktivləşdirin, avatarınızın ətrafında görünəcək.';
+    }
+    return '';
+  }
+
+  function openPreview(o) {
+    previewTitle.textContent = `${o.icon} ${o.label}`;
+    previewDesc.textContent = describeItem(o);
+    if (o.kind === 'cosmetic') {
+      previewMedia.innerHTML = `<img src="/market-asset/${o.item_id}" alt="${o.label}" loading="lazy">`;
+    } else {
+      previewMedia.innerHTML = `<div class="preview-icon-big" style="color:${o.color};">${o.icon}</div>`;
+    }
+    previewOverlay.classList.add('show');
+  }
+
+  document.querySelectorAll('.odds-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const o = ODDS[parseInt(card.dataset.idx, 10)];
+      if (o) openPreview(o);
+    });
+  });
+  document.getElementById('previewClose').addEventListener('click', () => previewOverlay.classList.remove('show'));
+  previewOverlay.addEventListener('click', (e) => {
+    if (e.target === previewOverlay) previewOverlay.classList.remove('show');
+  });
 
   if (openBtn && !openBtn.disabled) {
     openBtn.addEventListener('click', async () => {

@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request, abort, session, redirect
+from flask import Flask, jsonify, render_template, request, abort, session, redirect, send_file
 import sqlite3
 import os
 import time
@@ -7,6 +7,9 @@ import secrets
 import requests
 import database
 from visual_cards import get_rank, RANKS
+from market_assets import ensure_market_assets
+
+_MARKET_ASSET_PATHS = ensure_market_assets()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(os.environ.get("DATA_DIR", BASE_DIR), "bot_database.db")
@@ -268,6 +271,16 @@ def api_box_open():
 @app.route("/api/box/recent")
 def api_box_recent():
     return jsonify(database.get_recent_box_openings(limit=12))
+
+
+@app.route("/market-asset/<item_id>")
+def market_asset(item_id):
+    """Mystery Box-dakı banner/çərçivə önizləməsi üçün — prosedural yaradılan PNG/GIF
+    fayllarını (bax: market_assets.ensure_market_assets) birbaşa serve edir."""
+    path = _MARKET_ASSET_PATHS.get(item_id)
+    if not path or not os.path.exists(path):
+        abort(404)
+    return send_file(path)
 
 
 @app.route("/sw.js")
