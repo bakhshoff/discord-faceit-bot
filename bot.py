@@ -42,6 +42,7 @@ from database import (
     get_inactive_unplayed_players,
     reset_all_player_data,
     get_or_create_current_season, add_season_stat, backfill_season_from_lifetime,
+    season_23_bounds, set_season_dates,
     get_season_stat, get_season_leaderboard, close_season,
     get_completed_seasons, reset_all_players_for_new_season,
     ensure_5v5_stats_row, get_player_5v5, get_player_stats_dict_5v5, update_team_elo_5v5,
@@ -415,11 +416,8 @@ async def _post_audit_log(action, target_id, field, old_val, new_val, reason, ad
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# KARYERA YOLU — Aylıq ELO Sezonları
+# KARYERA YOLU — Aylıq ELO Sezonları (hər ayın 23-ü başlayıb-bitir, bax: season_23_bounds)
 # ═══════════════════════════════════════════════════════════════════════════════
-
-SEASON_START_DATE = datetime.date(2026, 10, 23)  # FACEIT-in başladığı tarix (AZ vaxtı) — sezon dövrləri bundan hesablanır
-SEASON_LENGTH_DAYS = 30
 
 _last_season_rotation_cycle = None
 
@@ -600,19 +598,23 @@ async def _post_season_reward_intro(channel):
 
 @tasks.loop(minutes=30)
 async def season_rotation_loop():
-    """FACEIT-in başladığı tarixdən (SEASON_START_DATE, AZ vaxtı) etibarən sabit 30-günlük
-    dövrlərlə 5v5 sezonunu bağlayıb yeni sezon açır — AYIN SONUNA görə YOX (bax:
-    _rotate_season_for_mode, reset_all_players_for_new_season). 30 dəqiqəlik interval bot-un son
-    restart vaxtından asılı olmadan dövrün bitdiyini tezliklə aşkarlanmasını təmin edir. Bayraq
-    DB-də (get_meta/set_meta) saxlanılır — YALNIZ yaddaşda saxlansaydı, dövr bitən gün bot bir
-    neçə dəfə restart olduqda (deploy və s.) hər restart eyni dövrü YENİDƏN rotasiya edərdi
-    (sezon nömrəsi lazımsız yerə bir neçə dəfə artardı)."""
+    """Aktiv 5v5 sezonunun `end_date`-i (seasons cədvəli, həmişə ayın 23-ü — bax:
+    season_23_bounds/get_or_create_current_season) keçiləndə sezonu bağlayıb yeni sezon
+    açır (bax: _rotate_season_for_mode, reset_all_players_for_new_season). Əvvəllər
+    SEASON_START_DATE-dən etibarən sabit 30-günlük dövr istifadə olunurdu — bu, ayın 23-ü
+    ilə tədricən sürüşürdü (30 gün 31-günlük aylardan QISA), ona görə təqvim ayına uyğun
+    dəyişdirildi. 30 dəqiqəlik interval bot-un son restart vaxtından asılı olmadan dövrün
+    bitdiyini tezliklə aşkarlanmasını təmin edir. Bayraq DB-də (get_meta/set_meta) saxlanılır
+    — YALNIZ yaddaşda saxlansaydı, dövr bitən gün bot bir neçə dəfə restart olduqda (deploy
+    və s.) hər restart eyni dövrü YENİDƏN rotasiya edərdi (sezon nömrəsi lazımsız yerə bir
+    neçə dəfə artardı)."""
     global _last_season_rotation_cycle
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=4)  # AZ vaxtı
-    days_elapsed = (now.date() - SEASON_START_DATE).days
-    if days_elapsed < SEASON_LENGTH_DAYS:
+    current = get_or_create_current_season("5v5")
+    end_date = datetime.date.fromisoformat(current["end_date"])
+    if now.date() < end_date:
         return
-    cycle_key = str(days_elapsed // SEASON_LENGTH_DAYS)
+    cycle_key = current["end_date"]
     if _last_season_rotation_cycle == cycle_key:
         return
     if get_meta("last_season_rotation_cycle") == cycle_key:
@@ -2584,6 +2586,17 @@ async def on_ready():
         except Exception as e:
             print(f"[SEED] Xəta: {e}")
         set_meta("align_season1_with_lifetime_2026_10_30", "1")
+
+    if not get_meta("fix_season_dates_23rd_2026_10_30"):
+        try:
+            import datetime as _dt
+            season = get_or_create_current_season("5v5")
+            start, end = season_23_bounds(_dt.date.today())
+            set_season_dates(season["id"], start.isoformat(), end.isoformat())
+            print(f"[SEED] Sezon #{season['season_number']} tarixləri ayın 23-ü dövrünə uyğunlaşdırıldı: {start} → {end}.")
+        except Exception as e:
+            print(f"[SEED] Xəta: {e}")
+        set_meta("fix_season_dates_23rd_2026_10_30", "1")
 
     saved_log = get_meta("log_channel_id")
     if saved_log:

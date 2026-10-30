@@ -3093,9 +3093,27 @@ def migrate_combat_stats_to_5v5():
 # SEASON SİSTEMİ
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def season_23_bounds(today):
+    """Ayın 23-ü ilə başlayıb-bitən sezon dövrünü hesablayır (bax: istifadəçi tələbi —
+    'hər ayın 23ü'). `today`-nin günü >= 23-dürsə bu ayın 23-ü başlanğıcdır, əks halda
+    keçən ayın 23-ü. Bitmə tarixi həmişə başlanğıcdan BİR AY sonrakı 23-dür."""
+    if today.day >= 23:
+        start = today.replace(day=23)
+    elif today.month == 1:
+        start = today.replace(year=today.year - 1, month=12, day=23)
+    else:
+        start = today.replace(month=today.month - 1, day=23)
+    if start.month == 12:
+        end = start.replace(year=start.year + 1, month=1, day=23)
+    else:
+        end = start.replace(month=start.month + 1, day=23)
+    return start, end
+
+
 def get_or_create_current_season(mode="2v2"):
     """`mode`-a görə ayrıca sezon-nömrə qatarı saxlayır (2v2 və 5v5 paralel, müstəqil
-    #1-dən başlayan sezon tarixçələridir)."""
+    #1-dən başlayan sezon tarixçələridir). Sezonlar hər ayın 23-ü başlayıb-bitir
+    (bax: season_23_bounds)."""
     import datetime as dt
     conn = _get_conn()
     cursor = conn.cursor()
@@ -3108,13 +3126,8 @@ def get_or_create_current_season(mode="2v2"):
         conn.close()
         return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3], "mode": mode}
     # Yeni sezon yarat
-    now = dt.date.today()
-    # Ayın 1-i başlayır, ayın son günü bitir
-    start = now.replace(day=1).isoformat()
-    if now.month == 12:
-        end = now.replace(year=now.year+1, month=1, day=1).isoformat()
-    else:
-        end = now.replace(month=now.month+1, day=1).isoformat()
+    start, end = season_23_bounds(dt.date.today())
+    start, end = start.isoformat(), end.isoformat()
     cursor.execute("SELECT COALESCE(MAX(season_number),0)+1 FROM seasons WHERE mode=?", (mode,))
     season_num = cursor.fetchone()[0]
     cursor.execute("INSERT INTO seasons (season_number, mode, start_date, end_date, status) VALUES (?,?,?,?,'active')",
@@ -3123,6 +3136,14 @@ def get_or_create_current_season(mode="2v2"):
     sid = cursor.lastrowid
     conn.close()
     return {"id": sid, "season_number": season_num, "start_date": start, "end_date": end, "mode": mode}
+
+
+def set_season_dates(season_id, start_date, end_date):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE seasons SET start_date=?, end_date=? WHERE id=?", (start_date, end_date, season_id))
+    conn.commit()
+    conn.close()
 
 
 def get_season_by_number(season_number):
