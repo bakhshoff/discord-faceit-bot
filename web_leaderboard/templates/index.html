@@ -697,6 +697,32 @@
   }
   .mode-toggle-btn.active { border-color: var(--gold); color: var(--gold); background: var(--gold-soft); }
   .mode-toggle-btn:hover { border-color: var(--gold); }
+
+  /* ── Sezon bitmə geri sayımı ── */
+  .season-countdown {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    padding: 8px 18px;
+    font-size: 13px;
+  }
+  .season-countdown .sc-label { color: var(--text-dim); }
+  .season-countdown .sc-season { color: var(--gold); font-weight: 700; }
+  .season-countdown .sc-time {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .season-countdown.sc-urgent { border-color: var(--red); animation: pulse 1.5s infinite; }
+  .season-countdown.sc-urgent .sc-time { color: var(--red); }
+  @media (max-width: 600px) {
+    .season-countdown { font-size: 11.5px; padding: 7px 14px; gap: 6px; }
+  }
 </style>
 </head>
 <body>
@@ -726,6 +752,7 @@
   <div class="eyebrow">Standoff 2 · Competitive</div>
   <h1>Nextlevelaz Leaderboard</h1>
   <p class="subtitle" id="subtitleText"></p>
+  <div id="seasonCountdown" class="season-countdown" style="display:none;"></div>
   <a href="/magaza" style="display:inline-block;margin-top:16px;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 14px;">🛍️ Mağaza</a>
   <a href="/qutu" style="display:inline-block;margin-top:16px;margin-left:8px;font-family:var(--font-mono);font-size:12px;color:var(--text-dim);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:6px 14px;">🎁 Mystery Box</a>
 </header>
@@ -1475,6 +1502,37 @@ async function loadRisingStar() {
   } catch (e) { document.getElementById('risingStarBody').innerHTML = '<span class="rising-star-empty">Yüklənə bilmədi.</span>'; }
 }
 loadRisingStar();
+
+// ── Sezon bitmə geri sayımı (canlı, hər saniyə yenilənir) ──────────────────
+let _seasonEndTs = null;
+let _seasonNumber = null;
+function tickSeasonCountdown() {
+  const el = document.getElementById('seasonCountdown');
+  if (!el || _seasonEndTs === null) return;
+  let diff = _seasonEndTs - Date.now();
+  if (diff < 0) diff = 0;
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+  const secs = Math.floor((diff % 60000) / 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  el.innerHTML = `<span class="sc-label">🏆</span><span class="sc-season">Sezon #${_seasonNumber}</span>` +
+    `<span class="sc-label">bitir:</span><span class="sc-time">${days}g ${pad(hours)}:${pad(mins)}:${pad(secs)}</span>`;
+  el.classList.toggle('sc-urgent', diff < 86400000); // < 1 gün qalanda qırmızı yanıb-sönür
+}
+async function loadSeasonCountdown() {
+  try {
+    const r = await fetch('/api/current_season');
+    const data = await r.json();
+    _seasonEndTs = new Date(data.end_date).getTime();
+    _seasonNumber = data.season_number;
+    const el = document.getElementById('seasonCountdown');
+    if (el) el.style.display = 'inline-flex';
+    tickSeasonCountdown();
+    setInterval(tickSeasonCountdown, 1000);
+  } catch (e) { /* sezon məlumatı yüklənmədi — badge gizli qalır */ }
+}
+loadSeasonCountdown();
 
 // ── Rütbə Bölgüsü (donut chart) ────────────────────────────────────────────
 async function loadRankDonut() {

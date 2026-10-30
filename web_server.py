@@ -472,6 +472,11 @@ def api_seasons():
     return jsonify(database.get_completed_seasons("5v5"))
 
 
+@app.route("/api/current_season")
+def api_current_season():
+    return jsonify(database.get_or_create_current_season("5v5"))
+
+
 @app.route("/api/season/<int:season_id>")
 def api_season_leaderboard(season_id):
     rows = database.get_season_leaderboard(season_id, limit=10)
