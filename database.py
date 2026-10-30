@@ -242,6 +242,18 @@ def init_db():
     if "image_path" not in [r[1] for r in cursor.fetchall()]:
         cursor.execute("ALTER TABLE store_products ADD COLUMN image_path TEXT")
 
+    # ── Mystery Box (sayt, Discord login ilə) — bax: open_mystery_box ──────────
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS box_openings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discord_id INTEGER NOT NULL,
+            nick TEXT,
+            item_key TEXT NOT NULL,
+            item_label TEXT NOT NULL,
+            opened_at INTEGER NOT NULL
+        )
+    """)
+
     # ── Achievements ──────────────────────────────────────────────────────────
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS achievements (
@@ -2367,6 +2379,81 @@ def get_boost_card_counts(discord_id):
     return {"boost50": row[0], "boost100": row[1], "protect": row[2]}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# MYSTERY BOX — saytda Discord girişi ilə açılan qutu (100 coin), ELO Boost/Qoruma
+# kartları verir. Kartlar mövcud boost50/protect iqtisadiyyatına düşür — bax:
+# apply_elo_modifiers/consume_boost_card (bot.py-da ƏLAVƏ dəyişiklik lazım deyil,
+# matçda AVTOMATİK istifadə olunur).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BOX_COST_COINS = 100
+
+MYSTERY_BOX_ITEMS = [
+    # (key, label, icon, color, card_type, qty, weight)
+    {"key": "boost_1", "label": "1x ELO Boost", "icon": "⚡", "color": "#8d8794",
+     "card_type": "boost50", "qty": 1, "weight": 40},
+    {"key": "boost_2", "label": "2x ELO Boost", "icon": "⚡", "color": "#5fd07a",
+     "card_type": "boost50", "qty": 2, "weight": 27},
+    {"key": "boost_3", "label": "3x ELO Boost", "icon": "⚡", "color": "#50a0dc",
+     "card_type": "boost50", "qty": 3, "weight": 18},
+    {"key": "boost_5", "label": "5x ELO Boost", "icon": "⚡", "color": "#b89cf0",
+     "card_type": "boost50", "qty": 5, "weight": 10},
+    {"key": "shield_1", "label": "ELO Qoruma Kartı", "icon": "🛡️", "color": "#f0b429",
+     "card_type": "protect", "qty": 1, "weight": 5},
+]
+
+
+def get_box_odds():
+    total = sum(i["weight"] for i in MYSTERY_BOX_ITEMS)
+    return [
+        {**i, "pct": round(i["weight"] / total * 100, 1)}
+        for i in MYSTERY_BOX_ITEMS
+    ]
+
+
+def open_mystery_box(discord_id, nick, cost=BOX_COST_COINS):
+    """100 coin xərcləyib çəkiyə görə random mükafat verir. Kifayət qədər coin yoxdursa
+    {"error": "insufficient_coins", "balance": N} qaytarır. Coin xərci `add_coin_log`
+    vasitəsilə qeyd olunur ki, Discord `/profile` coin tarixçəsində də görünsün."""
+    import time
+    import random as _random
+
+    if not spend_coins(discord_id, cost):
+        return {"error": "insufficient_coins", "balance": get_coins(discord_id)}
+
+    weights = [i["weight"] for i in MYSTERY_BOX_ITEMS]
+    item = _random.choices(MYSTERY_BOX_ITEMS, weights=weights, k=1)[0]
+
+    add_boost_cards(discord_id, item["card_type"], item["qty"])
+    new_balance = get_coins(discord_id)
+    add_coin_log(discord_id, -cost, f"🎁 Mystery Box: {item['label']}", "spend", new_balance)
+
+    now = int(time.time())
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO box_openings (discord_id, nick, item_key, item_label, opened_at) VALUES (?, ?, ?, ?, ?)",
+        (discord_id, nick, item["key"], item["label"], now)
+    )
+    conn.commit()
+    conn.close()
+
+    return {"error": None, "item": item, "balance": new_balance}
+
+
+def get_recent_box_openings(limit=12):
+    conn = _get_conn()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT nick, item_key, item_label, opened_at FROM box_openings ORDER BY id DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {"nick": r[0], "item_key": r[1], "item_label": r[2], "opened_at": r[3]}
+        for r in rows
+    ]
 
 
 

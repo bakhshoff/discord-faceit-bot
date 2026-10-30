@@ -1,8 +1,10 @@
-from flask import Flask, jsonify, render_template, request, abort
+from flask import Flask, jsonify, render_template, request, abort, session, redirect, url_for
 import sqlite3
 import os
 import time
 import uuid
+import secrets
+import requests
 import database
 from visual_cards import get_rank, RANKS
 
@@ -12,7 +14,18 @@ TEMPLATE_DIR = os.path.join(BASE_DIR, "web_leaderboard", "templates")
 STATIC_DIR = os.path.join(BASE_DIR, "web_leaderboard", "static")
 ADMIN_DASHBOARD_TOKEN = os.environ.get("ADMIN_DASHBOARD_TOKEN", "")
 
+# ── Discord OAuth2 (Mystery Box girişi üçün) ─────────────────────────────────
+# Railway-də əlavə edilməlidir: DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET,
+# OAUTH_REDIRECT_URI (məs. https://.../callback), FLASK_SECRET_KEY.
+DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
+DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
+OAUTH_REDIRECT_URI = os.environ.get("OAUTH_REDIRECT_URI", "")
+DISCORD_INVITE_URL = "https://discord.gg/nextlevelaz"
+
 app = Flask(__name__, template_folder=TEMPLATE_DIR, static_folder=STATIC_DIR)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+if not os.environ.get("FLASK_SECRET_KEY"):
+    print("[WARN] FLASK_SECRET_KEY təyin olunmayıb — hər restart-da bütün girişlər sıfırlanacaq.", flush=True)
 
 # ── Canlı baxanlar sayğacı ────────────────────────────────────────────────────
 # Sadə heartbeat-əsaslı izləmə: hər səhifə ~12 saniyədə bir /api/heartbeat çağırır,
@@ -138,6 +151,123 @@ def store_page():
     for cat in categories:
         cat["products"] = database.get_store_products(cat["id"])
     return render_template("store.html", categories=categories, discord_invite="https://discord.gg/nextlevelaz")
+
+
+@app.route("/login")
+def login():
+    if not DISCORD_CLIENT_ID or not OAUTH_REDIRECT_URI:
+        abort(503)
+    next_path = request.args.get("next", "/qutu")
+    state = secrets.token_urlsafe(16)
+    session["oauth_state"] = state
+    session["oauth_next"] = next_path if next_path.startswith("/") else "/qutu"
+    params = (
+        f"client_id={DISCORD_CLIENT_ID}&redirect_uri={requests.utils.quote(OAUTH_REDIRECT_URI, safe='')}"
+        f"&response_type=code&scope=identify&state={state}"
+    )
+    return redirect(f"https://discord.com/api/oauth2/authorize?{params}")
+
+
+@app.route("/callback")
+def oauth_callback():
+    code = request.args.get("code")
+    state = request.args.get("state")
+    if not code or not state or state != session.get("oauth_state"):
+        abort(400)
+    next_path = session.pop("oauth_next", "/qutu")
+    session.pop("oauth_state", None)
+
+    try:
+        token_resp = requests.post(
+            "https://discord.com/api/oauth2/token",
+            data={
+                "client_id": DISCORD_CLIENT_ID,
+                "client_secret": DISCORD_CLIENT_SECRET,
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=10,
+        )
+        token_resp.raise_for_status()
+        access_token = token_resp.json()["access_token"]
+
+        user_resp = requests.get(
+            "https://discord.com/api/users/@me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+        )
+        user_resp.raise_for_status()
+        user = user_resp.json()
+    except requests.RequestException:
+        abort(502)
+
+    session["discord_id"] = int(user["id"])
+    session["discord_username"] = user.get("username", "")
+    session["discord_avatar"] = user.get("avatar")
+    return redirect(next_path)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+
+def _current_site_user():
+    """Sessiyadakı Discord istifadəçisini + qeydiyyat/coin vəziyyətini qaytarır (login yoxdursa None)."""
+    discord_id = session.get("discord_id")
+    if not discord_id:
+        return None
+    avatar = session.get("discord_avatar")
+    avatar_url = (
+        f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar}.png"
+        if avatar else "https://cdn.discordapp.com/embed/avatars/0.png"
+    )
+    player = database.get_player(discord_id)
+    return {
+        "discord_id": discord_id,
+        "username": session.get("discord_username", ""),
+        "avatar_url": avatar_url,
+        "is_registered": player is not None,
+        "nick": player[1] if player else None,
+        "coins": database.get_coins(discord_id) if player else 0,
+    }
+
+
+@app.route("/qutu")
+def mystery_box_page():
+    user = _current_site_user()
+    return render_template(
+        "box.html",
+        user=user,
+        oauth_ready=bool(DISCORD_CLIENT_ID and OAUTH_REDIRECT_URI),
+        discord_invite=DISCORD_INVITE_URL,
+        box_cost=database.BOX_COST_COINS,
+        odds=database.get_box_odds(),
+        recent=database.get_recent_box_openings(limit=12),
+    )
+
+
+@app.route("/api/box/open", methods=["POST"])
+def api_box_open():
+    user = _current_site_user()
+    if not user:
+        return jsonify({"ok": False, "error": "not_logged_in"}), 401
+    if not user["is_registered"]:
+        return jsonify({"ok": False, "error": "not_registered"}), 403
+
+    result = database.open_mystery_box(user["discord_id"], user["nick"])
+    if result["error"] == "insufficient_coins":
+        return jsonify({"ok": False, "error": "insufficient_coins", "balance": result["balance"]}), 400
+
+    return jsonify({"ok": True, "item": result["item"], "balance": result["balance"]})
+
+
+@app.route("/api/box/recent")
+def api_box_recent():
+    return jsonify(database.get_recent_box_openings(limit=12))
 
 
 @app.route("/sw.js")
