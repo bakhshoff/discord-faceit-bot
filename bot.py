@@ -1609,6 +1609,7 @@ class MatchResultView5v5(discord.ui.View):
             loser_kills=[stats_by_id[did]["kills"] for did in loser_ids] if has_full_combat_stats else None,
             loser_assists=[stats_by_id[did]["assists"] for did in loser_ids] if has_full_combat_stats else None,
             loser_deaths=[stats_by_id[did]["deaths"] for did in loser_ids] if has_full_combat_stats else None,
+            season_id=current_season["id"],
         )
         asyncio.create_task(_update_live_board_message_5v5(f"5v5 Matç No{self.match_number}: **{winner_label}** qalib gəldi"))
         asyncio.create_task(_send_webhook_event("match_finished", {
@@ -5683,8 +5684,29 @@ class ConfirmSwapMatchView(discord.ui.View):
             match["match_type"], old_loser_ids, old_winner_ids,
             [r["old_elo"] for r in results["winners"]], [r["new_elo"] for r in results["winners"]],
             [r["old_elo"] for r in results["losers"]], [r["new_elo"] for r in results["losers"]],
-            match_number=self.match_number
+            match_number=self.match_number, season_id=match["season_id"],
+            # Köhnə uduzanlar indi qalib — kill/asist/ölüm OYUNÇUYA bağlıdır, komanda etiketinə
+            # yox, ona görə sadəcə köhnə loser/winner massivləri yerini dəyişir (dəyərlər eynidir).
+            winner_kills=match["loser_kills"], winner_assists=match["loser_assists"], winner_deaths=match["loser_deaths"],
+            loser_kills=match["winner_kills"], loser_assists=match["winner_assists"], loser_deaths=match["winner_deaths"],
         )
+
+        # season_stats-ı da YENİ (dəyişdirilmiş) nəticəyə uyğun yenidən tətbiq et — delete_match_and_revert
+        # artıq köhnə nəticəni geri aldı, bura yalnız düzgün (swap edilmiş) nəticəni əlavə edir.
+        # match["season_id"] yoxdursa (köhnə, bu dəyişiklikdən əvvəlki matç) sezon tərəfinə toxunulmur.
+        if match["season_id"] is not None:
+            w_k = match["loser_kills"] or [0] * len(old_loser_ids)
+            w_a = match["loser_assists"] or [0] * len(old_loser_ids)
+            w_d = match["loser_deaths"] or [0] * len(old_loser_ids)
+            for r, k, a, d in zip(results["winners"], w_k, w_a, w_d):
+                add_season_stat(r["discord_id"], match["season_id"], kills=k, assists=a, deaths=d, wins=1,
+                                 elo_gained=r["new_elo"] - r["old_elo"], mode=match["match_type"])
+            l_k = match["winner_kills"] or [0] * len(old_winner_ids)
+            l_a = match["winner_assists"] or [0] * len(old_winner_ids)
+            l_d = match["winner_deaths"] or [0] * len(old_winner_ids)
+            for r, k, a, d in zip(results["losers"], l_k, l_a, l_d):
+                add_season_stat(r["discord_id"], match["season_id"], kills=k, assists=a, deaths=d, losses=1,
+                                 elo_gained=r["new_elo"] - r["old_elo"], mode=match["match_type"])
 
         # Yeni rola uyğun təzə coin mükafatı — köhnə ədəd köçürülmür, standart düsturla yenidən verilir
         coin_lines = []

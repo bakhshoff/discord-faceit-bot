@@ -626,6 +626,8 @@ def init_db():
     for _col in ("winner_kills", "winner_assists", "winner_deaths", "loser_kills", "loser_assists", "loser_deaths"):
         if _col not in _match_history_cols:
             cursor.execute(f"ALTER TABLE match_history ADD COLUMN {_col} TEXT DEFAULT NULL")
+    if "season_id" not in _match_history_cols:
+        cursor.execute("ALTER TABLE match_history ADD COLUMN season_id INTEGER DEFAULT NULL")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS daily_claims (
@@ -2503,7 +2505,7 @@ def get_recent_box_openings(limit=12):
 def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, winner_elo_after,
                           loser_elo_before, loser_elo_after, match_number=None, map_name=None,
                           winner_kills=None, winner_assists=None, winner_deaths=None,
-                          loser_kills=None, loser_assists=None, loser_deaths=None):
+                          loser_kills=None, loser_assists=None, loser_deaths=None, season_id=None):
     """
     match_type: "1v1" veya "5v5"
     winner_ids, loser_ids: discord_id siyahÄ±sÄ± (1v1 Ã¼Ã§Ã¼n tÉ™k elementli)
@@ -2511,6 +2513,9 @@ def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, w
     winner_kills/assists/deaths, loser_kills/assists/deaths: (optional) hər oyunçunun bu matçdakı
     K/A/D-si, ids ilə eyni sırada — scan təsdiqlənməyibsə None qalır (bax: get_player_match_history,
     ELO/K-D trend qrafiki üçün istifadə olunur).
+    season_id: matçın aid olduğu sezon — bax: delete_match_and_revert/revert edilən admin alətləri,
+    bunsuz season_stats-ı HƏDƏF matçla sinxron saxlamaq mümkün deyil (bax: "sezon ilə ümumi
+    leaderboard fərqlidir" insidenti).
     """
     import json as _json
     import time as _time
@@ -2524,14 +2529,15 @@ def record_match_history(match_type, winner_ids, loser_ids, winner_elo_before, w
         """INSERT INTO match_history
            (match_type, played_at, match_number, winner_ids, loser_ids,
             winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, map,
-            winner_kills, winner_assists, winner_deaths, loser_kills, loser_assists, loser_deaths)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            winner_kills, winner_assists, winner_deaths, loser_kills, loser_assists, loser_deaths,
+            season_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (match_type, int(_time.time()), match_number,
          _json.dumps(winner_ids), _json.dumps(loser_ids),
          _json.dumps(winner_elo_before), _json.dumps(winner_elo_after),
          _json.dumps(loser_elo_before), _json.dumps(loser_elo_after), map_name,
          _dump(winner_kills), _dump(winner_assists), _dump(winner_deaths),
-         _dump(loser_kills), _dump(loser_assists), _dump(loser_deaths))
+         _dump(loser_kills), _dump(loser_assists), _dump(loser_deaths), season_id)
     )
     conn.commit()
     conn.close()
@@ -2764,7 +2770,9 @@ def get_match_by_number(match_number):
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, match_type, played_at, match_number, winner_ids, loser_ids, "
-        "winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after "
+        "winner_elo_before, winner_elo_after, loser_elo_before, loser_elo_after, "
+        "winner_kills, winner_assists, winner_deaths, loser_kills, loser_assists, loser_deaths, "
+        "season_id "
         "FROM match_history WHERE match_number=? ORDER BY id DESC LIMIT 1",
         (match_number,)
     )
@@ -2773,18 +2781,29 @@ def get_match_by_number(match_number):
     if not row:
         return None
     import json as _json
+
+    def _load(v):
+        return _json.loads(v) if v is not None else None
+
     return {
         "id": row[0], "match_type": row[1], "played_at": row[2], "match_number": row[3],
         "winner_ids": _json.loads(row[4]), "loser_ids": _json.loads(row[5]),
         "winner_elo_before": _json.loads(row[6]), "winner_elo_after": _json.loads(row[7]),
-        "loser_elo_before": _json.loads(row[8]), "loser_elo_after": _json.loads(row[9])
+        "loser_elo_before": _json.loads(row[8]), "loser_elo_after": _json.loads(row[9]),
+        "winner_kills": _load(row[10]), "winner_assists": _load(row[11]), "winner_deaths": _load(row[12]),
+        "loser_kills": _load(row[13]), "loser_assists": _load(row[14]), "loser_deaths": _load(row[15]),
+        "season_id": row[16],
     }
 
 
 def delete_match_and_revert(match_number):
     """
     Matçı silir, hər oyunçunun ELO-sunu elo_before-a qaytarır, wins/losses-i 1
-    azaldır. Coin/kill-assist-death/nailiyyət dəyişiklikləri geri alınmır.
+    azaldır, VƏ matçın aid olduğu sezonun season_stats-ını da geri alır (bax:
+    "sezon leaderboard ümumi ilə fərqlidir" insidenti — əvvəllər bura toxunulmurdu,
+    silinən/dəyişdirilən matçlar sezon rəqəmlərində əbədi qalırdı). Köhnə (bu dəyişiklikdən
+    əvvəlki) matçlarda season_id yoxdur — həmin halda season_stats toxunulmadan keçilir.
+    Coin/kill-assist-death/nailiyyət (lifetime) dəyişiklikləri geri alınmır.
     Təsirlənən oyunçuların siyahısını qaytarır, tapılmasa None.
     `match_type`-a görə düzgün cədvələ (5v5 -> players_5v5, köhnə 2v2 tarixi
     qeydlər -> players) yazır ki, leaderboard/rank rolu ilə uyğunsuzluq yaranmasın.
@@ -2803,6 +2822,25 @@ def delete_match_and_revert(match_number):
         cursor.execute("SELECT so2_nick FROM players WHERE discord_id=?", (did,))
         row = cursor.fetchone()
         return row[0] if row else str(did)
+
+    if match["season_id"] is not None:
+        w_kills = match["winner_kills"] or [0] * len(match["winner_ids"])
+        w_assists = match["winner_assists"] or [0] * len(match["winner_ids"])
+        w_deaths = match["winner_deaths"] or [0] * len(match["winner_ids"])
+        for did, before, after, k, a, d in zip(
+            match["winner_ids"], match["winner_elo_before"], match["winner_elo_after"], w_kills, w_assists, w_deaths
+        ):
+            add_season_stat(did, match["season_id"], kills=-k, assists=-a, deaths=-d, wins=-1,
+                             elo_gained=-(after - before), mode=match["match_type"], cursor=cursor)
+
+        l_kills = match["loser_kills"] or [0] * len(match["loser_ids"])
+        l_assists = match["loser_assists"] or [0] * len(match["loser_ids"])
+        l_deaths = match["loser_deaths"] or [0] * len(match["loser_ids"])
+        for did, before, after, k, a, d in zip(
+            match["loser_ids"], match["loser_elo_before"], match["loser_elo_after"], l_kills, l_assists, l_deaths
+        ):
+            add_season_stat(did, match["season_id"], kills=-k, assists=-a, deaths=-d, losses=-1,
+                             elo_gained=-(after - before), mode=match["match_type"], cursor=cursor)
 
     for did, elo_before in zip(match["winner_ids"], match["winner_elo_before"]):
         cursor.execute(f"SELECT elo FROM {table} WHERE discord_id=?", (did,))
@@ -3098,9 +3136,17 @@ def get_season_by_number(season_number):
     return {"id": row[0], "season_number": row[1], "start_date": row[2], "end_date": row[3], "status": row[4]}
 
 
-def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0, losses=0, elo_gained=0, elo_start=0, mode="2v2"):
-    conn = _get_conn()
-    cursor = conn.cursor()
+def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0, losses=0, elo_gained=0,
+                     elo_start=0, mode="2v2", cursor=None):
+    """cursor verilsə (bax: delete_match_and_revert) YENİ connection AÇMIR, eyni transaction
+    üzərində işləyir — açıq bir yazı transaction-u davam edərkən ayrı connection ilə UPDATE
+    cəhdi SQLite-da kilidlənməyə səbəb ola bilər (bax: consume_boost_card-dakı eyni qeyd).
+    Mənfi dəyərlər vermək (kills=-k, wins=-1 və.s) əvvəlki əlavəni DÜZGÜN geri qaytarır,
+    çünki toplama additiv işləyir."""
+    own_conn = None
+    if cursor is None:
+        own_conn = _get_conn()
+        cursor = own_conn.cursor()
     cursor.execute("""
         INSERT INTO season_stats (discord_id, season_id, mode, elo_start, elo_gained, kills, assists, deaths, wins, losses)
         VALUES (?,?,?,?,?,?,?,?,?,?)
@@ -3112,8 +3158,9 @@ def add_season_stat(discord_id, season_id, kills=0, assists=0, deaths=0, wins=0,
             wins=wins+excluded.wins,
             losses=losses+excluded.losses
     """, (discord_id, season_id, mode, elo_start, elo_gained, kills, assists, deaths, wins, losses))
-    conn.commit()
-    conn.close()
+    if own_conn:
+        own_conn.commit()
+        own_conn.close()
 
 
 def get_season_stat(discord_id, season_id):
